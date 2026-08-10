@@ -1,4 +1,0 @@
-numpy>=1.21
-torch>=2.0
-numba>=0.55
-biotite>=0.40
