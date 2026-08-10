@@ -1,0 +1,133 @@
+{
+  "lambda": 2.823133194226683,
+  "K": 0.08848002995612211,
+  "reference_length": 300,
+  "gap_open": -2.0,
+  "gap_extend": -0.5,
+  "seed": 0,
+  "length_table": [
+    {
+      "length": 20,
+      "lambda": 3.480891898327941,
+      "K": 0.18296322971163936,
+      "n_pairs": 4000,
+      "null_score_mean": 1.3991270850673319,
+      "null_score_std": 0.36845436963381184,
+      "lambda_raw": 3.480891898327941,
+      "K_raw": 0.18296322971163936
+    },
+    {
+      "length": 30,
+      "lambda": 3.1116673977776332,
+      "K": 0.12103770606808424,
+      "n_pairs": 4000,
+      "null_score_mean": 1.6831511230617762,
+      "null_score_std": 0.4124453652923509,
+      "lambda_raw": 3.109623572210014,
+      "K_raw": 0.11699266711711472
+    },
+    {
+      "length": 40,
+      "lambda": 3.1116673977776332,
+      "K": 0.12103770606808424,
+      "n_pairs": 4000,
+      "null_score_mean": 1.8763364654481411,
+      "null_score_std": 0.41190391085270317,
+      "lambda_raw": 3.1137112233452524,
+      "K_raw": 0.12092259342073321
+    },
+    {
+      "length": 60,
+      "lambda": 3.059717541136169,
+      "K": 0.12103770606808424,
+      "n_pairs": 4000,
+      "null_score_mean": 2.1862129092216493,
+      "null_score_std": 0.41917262391665516,
+      "lambda_raw": 3.059717541136169,
+      "K_raw": 0.12534180890034077
+    },
+    {
+      "length": 80,
+      "lambda": 2.938229798839534,
+      "K": 0.10728281070617551,
+      "n_pairs": 4000,
+      "null_score_mean": 2.4194779102802277,
+      "null_score_std": 0.4365042620793011,
+      "lambda_raw": 2.938229798839534,
+      "K_raw": 0.10728281070617551
+    },
+    {
+      "length": 120,
+      "lambda": 2.8876512626477,
+      "K": 0.0995301813054361,
+      "n_pairs": 4000,
+      "null_score_mean": 2.7183398501873017,
+      "null_score_std": 0.45497359549768596,
+      "lambda_raw": 2.8189544247263627,
+      "K_raw": 0.08296611547169587
+    },
+    {
+      "length": 160,
+      "lambda": 2.8876512626477,
+      "K": 0.0995301813054361,
+      "n_pairs": 4000,
+      "null_score_mean": 2.9097715500295163,
+      "null_score_std": 0.4338290981075602,
+      "lambda_raw": 2.9563481005690373,
+      "K_raw": 0.11940123910070888
+    },
+    {
+      "length": 220,
+      "lambda": 2.823133194226683,
+      "K": 0.08848002995612211,
+      "n_pairs": 4000,
+      "null_score_mean": 3.1635741589665414,
+      "null_score_std": 0.4592876279803425,
+      "lambda_raw": 2.7924763307945173,
+      "K_raw": 0.07963792953083368
+    },
+    {
+      "length": 300,
+      "lambda": 2.823133194226683,
+      "K": 0.08848002995612211,
+      "n_pairs": 4000,
+      "null_score_mean": 3.38675530141592,
+      "null_score_std": 0.4494198256524953,
+      "lambda_raw": 2.8537900576588484,
+      "K_raw": 0.09830385781193875
+    },
+    {
+      "length": 500,
+      "lambda": 2.6847651246790516,
+      "K": 0.05934498396214574,
+      "n_pairs": 800,
+      "null_score_mean": 3.7925269851088523,
+      "null_score_std": 0.47771397891470513,
+      "lambda_raw": 2.6847651246790516,
+      "K_raw": 0.05934498396214573
+    },
+    {
+      "length": 1000,
+      "lambda": 2.6585965363598483,
+      "K": 0.047765815331318934,
+      "n_pairs": 800,
+      "null_score_mean": 4.269651679694652,
+      "null_score_std": 0.4824161216722007,
+      "lambda_raw": 2.6585965363598483,
+      "K_raw": 0.047765815331318934
+    },
+    {
+      "length": 2000,
+      "lambda": 2.5595941133919955,
+      "K": 0.02815383318764318,
+      "n_pairs": 800,
+      "null_score_mean": 4.76987689435482,
+      "null_score_std": 0.5010754726507081,
+      "lambda_raw": 2.5595941133919955,
+      "K_raw": 0.028153833187643182
+    }
+  ],
+  "note": "Length-dependent Karlin-Altschul Gumbel parameters (method-of-moments) for the token Smith-Waterman score under Structure-BLOSUM. The CLI interpolates (lambda, K) to the query length via evalue.params_for_length (lambda linearly, K in log space) to correct the finite-length edge effect that inflates significance for short RNAs. Database E-value for a hit scoring S is E = K * m * N * exp(-lambda * S), with m the query length and N the total token count of the target database. The scalar lambda/K are the reference_length row, kept as a fallback for older readers.",
+  "n_db_tokens": 352759,
+  "n_chains": 885
+}
