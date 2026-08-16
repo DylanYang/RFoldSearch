@@ -3,11 +3,7 @@
 RFoldseek enables fast RNA tertiary-structure search with **3Dr**, a learned
 discrete structural alphabet. Each nucleotide's local geometry is quantised
 into one of 80 states by a VQ-VAE; chains become token strings searched with
-an inverted-index k-mer prefilter (similar-k-mer expansion under a
-Structure-BLOSUM matrix, Foldseek's double-match rule) and reranked by
-affine-gap token Smith-Waterman, with a Karlin-Altschul database E-value per
-hit. The deployed tokenizer, Structure-BLOSUM matrix and E-value calibration
-are bundled — search works straight after installation.
+an inverted-index k-mer prefilter and reranked by affine-gap token Smith-Waterman, with a Karlin-Altschul database E-value per hit. The deployed tokenizer, Structure-BLOSUM matrix and E-value calibration are bundled — search works straight after installation.
 
 <p align="center"><img src=".github/fig1.jpeg" width="720" /></p>
 
@@ -141,7 +137,3 @@ rfoldseek/
   assets/                     deployed tokenizer, matrix, E-value params
 ```
 
-## Third-party components
-
-Core model, descriptor and alignment code is ported unchanged from
-`RFoldseek-paper-code`; provenance is noted at the top of each ported file.
