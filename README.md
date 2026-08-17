@@ -1,9 +1,12 @@
 # <img src=".github/logo.PNG" height="40" align="left" style="margin-right:12px" /> RFoldseek
 
 RFoldseek enables fast RNA tertiary-structure search with **3Dr**, a learned
-discrete structural alphabet. Each nucleotide's local geometry is quantised
-into one of 80 states by a VQ-VAE; chains become token strings searched with
-an inverted-index k-mer prefilter and reranked by affine-gap token Smith-Waterman, with a Karlin-Altschul database E-value per hit. The deployed tokenizer, Structure-BLOSUM matrix and E-value calibration are bundled — search works straight after installation.
+discrete structural alphabet. Each nucleotide's local geometry is quantised into
+one of 80 states by a VQ-VAE; chains become token strings searched with an
+inverted-index k-mer prefilter and reranked by affine-gap token Smith-Waterman,
+with a Karlin-Altschul database E-value per hit. The deployed tokenizer,
+Structure-BLOSUM matrix and E-value calibration are bundled — search works
+straight after installation.
 
 <p align="center"><img src=".github/fig1.jpeg" width="720" /></p>
 
@@ -22,6 +25,7 @@ an inverted-index k-mer prefilter and reranked by affine-gap token Smith-Waterma
   * [Reproducing the paper's search results](#reproducing-the-papers-search-results)
   * [Repository layout](#repository-layout)
   * [Third-party components](#third-party-components)
+  * [License](#license)
 
 ## Installation
 
@@ -49,6 +53,10 @@ Convert a directory of `.pdb` / `.cif` files into a backbone-coordinate JSONL:
 rfoldseek preprocess --pdb_dir my_structures/ --output my.jsonl
 ```
 
+| Option      | Description                                            |
+| ----------- | ------------------------------------------------------ |
+| `--max_len` | Skip chains longer than this many nucleotides           |
+
 ### Build a database
 
 Tokenize the JSONL and write a searchable token database:
@@ -56,6 +64,11 @@ Tokenize the JSONL and write a searchable token database:
 ```
 rfoldseek build --data my.jsonl --output my_db.pt
 ```
+
+| Option         | Description                                                     |
+| -------------- | --------------------------------------------------------------- |
+| `--min_len`    | Skip chains shorter than this (default: 20, as used in the paper) |
+| `--checkpoint` | VQ-VAE tokenizer to encode with (default: the bundled one)       |
 
 ### Search
 
@@ -73,11 +86,18 @@ rfoldseek search --query queries_db.pt --query_id chainA --db my_db.pt
 
 #### Important search parameters
 
-| Option       | Category    | Description                                                       |
-| ------------ | ----------- | ----------------------------------------------------------------- |
-| `--top_k`    | Output      | Number of top hits to return (default: 10)                        |
-| `--evalue`   | Sensitivity | Report matches at or below this E-value                           |
-| `--query_id` | Input       | Chain id to look up inside `--query` when it is a database file   |
+| Option       | Category    | Description                                                                        |
+| ------------ | ----------- | ---------------------------------------------------------------------------------- |
+| `--top_k`    | Output      | Number of top hits to return (default: 10)                                         |
+| `--top_n`    | Sensitivity | Candidate-pool depth reranked by Smith-Waterman (default: 200, selected on the validation split) |
+| `--min_diag` | Sensitivity | k-mer hits required on a common diagonal to admit a target (default: 2, Foldseek's double-match rule) |
+| `--query_id` | Input       | Chain id to look up inside `--query` when it is a database file                    |
+| `--model`    | Input       | VQ-VAE tokenizer for the query (default: the bundled one)                          |
+| `--matrix`   | Scoring     | Substitution matrix (default: the bundled Structure-BLOSUM)                        |
+
+Raising `--top_n` costs little: the prefilter often returns fewer than `top_n`
+candidates for queries from small families, so the deeper pool is free for
+exactly those queries that cannot fill it.
 
 ### Python API
 
@@ -86,8 +106,12 @@ from rfoldseek import Searcher
 
 s = Searcher("my_db.pt")
 hits = s.search_id("my_chain", top_k=10)
-# [{'target': …, 'sw_score': …, 'bits': …, 'evalue': …}, …]
+# [{'rank': 1, 'target': …, 'sw_score': …, 'bits': …, 'evalue': …}, …]
 ```
+
+`search_id` forwards keyword arguments to `search`, so `top_n` and `min_diag`
+are available there too. `bits` and `evalue` are present when E-value
+parameters are loaded, which they are by default.
 
 ## Main modules
 
@@ -137,3 +161,18 @@ rfoldseek/
   assets/                     deployed tokenizer, matrix, E-value params
 ```
 
+## Third-party components
+
+No third-party source is vendored. `backbone.py`, `tokenizer.py` and
+`prefilter_reference.py` are ported from the authors' own
+`RFoldseek-paper-code`, with imports adjusted; the ported files say so in their
+module docstrings.
+
+The prefilter's double-match rule — admitting a target only on two k-mer hits
+sharing a diagonal — follows Foldseek (van Kempen et al., *Nat. Biotechnol.*
+2024). Runtime dependencies are `numpy`, `torch`, `numba` and `biotite`, each
+under its own license.
+
+## License
+
+Apache License 2.0. See [LICENSE](LICENSE).
