@@ -84,6 +84,25 @@ Or search a chain from a separate query database:
 rfoldseek search --query queries_db.pt --query_id chainA --db my_db.pt
 ```
 
+#### Output format
+
+A comment line naming the query and the database, then one row per hit, ranked
+by Smith-Waterman score:
+
+```
+# query: chainA  (128 tokens)   database: my_db.pt  (885 chains)
+rank  target                    SW_score    bits    E-value    len
+   1  4V9F_A                      412.00   118.3    2.1e-30    129
+   2  6XU8_B                      287.50    83.1    5.4e-19    121
+   3  7QR4_A                      231.00    67.4    8.8e-14    134
+```
+
+Values above are illustrative; the column layout is what `rfoldseek search`
+prints. `len` is the target's token length. `bits` and `E-value` appear when
+E-value parameters are loaded, which they are by default. When nothing
+survives the prefilter, a single comment line says so and suggests lowering
+`--min_diag`.
+
 #### Important search parameters
 
 | Option       | Category    | Description                                                                        |
