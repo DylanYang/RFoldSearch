@@ -24,12 +24,20 @@ USALIGN_URL = "https://github.com/pylelab/USalign"
 MIN_RESIDUES = 3
 
 
+class USalignNotFound(FileNotFoundError):
+    """The USalign binary could not be resolved."""
+
+
+class USalignFailed(RuntimeError):
+    """The USalign binary ran but exited non-zero."""
+
+
 def find_usalign(explicit: str = None) -> str:
     """Resolve the USalign binary: explicit path, then $USALIGN, then PATH."""
     for cand in (explicit, os.environ.get("USALIGN"), shutil.which("USalign")):
         if cand and os.path.isfile(cand) and os.access(cand, os.X_OK):
             return cand
-    raise FileNotFoundError(
+    raise USalignNotFound(
         "USalign binary not found. Pass --usalign PATH, set the USALIGN "
         f"environment variable, or put USalign on your PATH. Build it from "
         f"{USALIGN_URL}."
@@ -122,7 +130,7 @@ def score_pool(binary: str, query_coords, query_mask, candidates,
                "-mol", "RNA", "-outfmt", "2"]
         proc = subprocess.run(cmd, capture_output=True, text=True)
         if proc.returncode != 0:
-            raise RuntimeError(
+            raise USalignFailed(
                 f"US-align failed (exit {proc.returncode}): {proc.stderr.strip()}"
             )
         return assemble_scores(index_to_id, parse_outfmt2(proc.stdout)), skipped

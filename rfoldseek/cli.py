@@ -10,6 +10,7 @@ import torch
 from .database import build_database, short_id, structure_to_entry
 from .search import (DEFAULT_MIN_DIAG, DEFAULT_TOP_N, Searcher, asset)
 from .tokenizer import encode_entry, load_model
+from .usalign import USalignFailed, USalignNotFound
 
 
 def cmd_preprocess(a):
@@ -131,7 +132,10 @@ def main(argv=None):
     p.set_defaults(fn=cmd_search)
 
     a = ap.parse_args(argv)
-    a.fn(a)
+    try:
+        a.fn(a)
+    except (USalignNotFound, USalignFailed) as e:
+        raise SystemExit(str(e))
 
 
 if __name__ == "__main__":
