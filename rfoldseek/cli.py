@@ -35,10 +35,11 @@ def cmd_build(a):
 
 def cmd_search(a):
     s = Searcher(a.db, matrix_path=a.matrix)
+    kw = dict(top_k=a.top_k, top_n=a.top_n, min_diag=a.min_diag,
+              rerank=a.rerank, usalign=a.usalign)
     if a.query in s.id2i:
         qname = a.query
-        hits = s.search_id(a.query, top_k=a.top_k, top_n=a.top_n,
-                           min_diag=a.min_diag)
+        hits = s.search_id(a.query, **kw)
         qlen = len(s.toks[s.id2i[a.query]])
     elif a.query.endswith(".json"):
         model, ckpt, _, _ = load_model(a.model)
@@ -49,7 +50,7 @@ def cmd_search(a):
             raise SystemExit("query structure could not be encoded")
         qname, qtok = short_id(a.query, 0), np.asarray(enc["tokens"], np.int64)
         qlen = len(qtok)
-        hits = s.search(qtok, top_k=a.top_k, top_n=a.top_n, min_diag=a.min_diag)
+        hits = s.search(qtok, query_entry=enc, **kw)
     elif a.query.endswith(".pt"):
         if not a.query_id:
             raise SystemExit("--query is a .pt database; pass --query_id CHAIN_ID")
@@ -57,15 +58,30 @@ def cmd_search(a):
         qmap = {short_id(e.get("id"), i): i for i, e in enumerate(q["entries"])}
         if a.query_id not in qmap:
             raise SystemExit(f"{a.query_id!r} not found in {a.query}")
-        qtok = np.asarray(q["entries"][qmap[a.query_id]]["tokens"], np.int64)
+        qent = q["entries"][qmap[a.query_id]]
+        qtok = np.asarray(qent["tokens"], np.int64)
         qname, qlen = a.query_id, len(qtok)
-        hits = s.search(qtok, top_k=a.top_k, top_n=a.top_n, min_diag=a.min_diag)
+        hits = s.search(qtok, query_entry=qent, **kw)
     else:
         raise SystemExit(f"query {a.query!r} is not a db chain id, a .json, or a .pt")
 
-    print(f"# query: {qname}  ({qlen} tokens)   database: {a.db}  ({len(s.toks)} chains)")
+    head = f"# query: {qname}  ({qlen} tokens)   database: {a.db}  ({len(s.toks)} chains)"
+    if a.rerank == "tm":
+        head += "   rerank: US-align TM"
+    print(head)
     if not hits:
         print("# no candidates passed the prefilter (try lowering --min_diag)")
+        return
+    skipped = getattr(s, "last_tm_skipped", None)
+    if skipped:
+        print(f"# {len(skipped)} candidate(s) skipped: too few resolved residues")
+    if "tm_mean" in hits[0]:
+        print(f"{'rank':>4}  {'target':<24}{'TM_mean':>9}{'TM_query':>10}"
+              f"{'TM_target':>11}  {'len':>5}")
+        for h in hits:
+            print(f"{h['rank']:>4}  {h['target']:<24}{h['tm_mean']:>9.4f}"
+                  f"{h['tm_query']:>10.4f}{h['tm_target']:>11.4f}"
+                  f"  {h['length']:>5}")
         return
     has_ev = "evalue" in hits[0]
     header = f"{'rank':>4}  {'target':<24}{'SW_score':>10}"
@@ -107,6 +123,11 @@ def main(argv=None):
     p.add_argument("--top_k", type=int, default=10)
     p.add_argument("--top_n", type=int, default=DEFAULT_TOP_N)
     p.add_argument("--min_diag", type=int, default=DEFAULT_MIN_DIAG)
+    p.add_argument("--rerank", choices=("sw", "tm"), default="sw",
+                   help="rerank the candidate pool by token Smith-Waterman "
+                        "(default) or by US-align TM-score (RFoldseek-TM)")
+    p.add_argument("--usalign", default=None,
+                   help="path to the USalign binary (default: $USALIGN, then PATH)")
     p.set_defaults(fn=cmd_search)
 
     a = ap.parse_args(argv)
