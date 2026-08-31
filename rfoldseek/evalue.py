@@ -37,6 +37,65 @@ def background_frequencies(token_lists, n_codes: int) -> np.ndarray:
     return counts / counts.sum()
 
 
+def _fit_gumbel_mle(scores, max_iter: int = 200, tol: float = 1e-10):
+    """Maximum-likelihood Gumbel ``(lambda, mu)`` for local-alignment scores.
+
+    The optimal local score of random sequence pairs is asymptotically Gumbel;
+    MLE uses the whole shape of the score distribution (not just its variance),
+    so it is statistically more efficient and less sensitive to the upper tail
+    than the method-of-moments estimator. Profiling out the location ``mu``
+    leaves a one-dimensional score equation for ``lambda``,
+
+        1/lambda = mean(s) - <s>_w,   <s>_w = sum(s e^{-lambda s}) / sum(e^{-lambda s}),
+
+    whose right-hand side is monotone, so a sign-changing bracket around the
+    method-of-moments lambda is bisected to convergence. The location then
+    follows in closed form from d(logL)/d(mu) = 0,
+
+        mu = s_min + (1/lambda) * ln( n / sum_i e^{-lambda (s_i - s_min)} ).
+
+    Weights are computed relative to ``s_min`` so ``exp`` never overflows.
+    Returns ``(lambda, mu)``; the Karlin-Altschul K is ``exp(lambda*mu)/(m n)``.
+    """
+    s = np.asarray(scores, dtype=np.float64)
+    n = s.size
+    smean = float(s.mean())
+    smin = float(s.min())
+    std = float(s.std(ddof=1))
+    if std <= 0:
+        raise ValueError("degenerate null score distribution (std=0); check matrix/gaps")
+
+    def g(lam):
+        w = np.exp(-lam * (s - smin))          # in (0, 1], = 1 at s_min
+        return 1.0 / lam - smean + float((s * w).sum() / w.sum())
+
+    lam0 = float(np.pi / (std * np.sqrt(6.0)))  # method-of-moments initialiser
+    lo, hi = lam0 * 0.2, lam0 * 5.0
+    glo, ghi = g(lo), g(hi)
+    it = 0
+    while glo * ghi > 0.0 and it < 80:          # widen until the root is bracketed
+        lo *= 0.5
+        hi *= 1.5
+        glo, ghi = g(lo), g(hi)
+        it += 1
+    if glo * ghi > 0.0:
+        return lam0, smin + (1.0 / lam0) * float(
+            np.log(n / np.exp(-lam0 * (s - smin)).sum()))
+    lam = lam0
+    for _ in range(max_iter):                   # bisection (g is monotone in lam)
+        lam = 0.5 * (lo + hi)
+        gm = g(lam)
+        if abs(gm) < tol or (hi - lo) < tol * lam:
+            break
+        if glo * gm <= 0.0:
+            hi, ghi = lam, gm
+        else:
+            lo, glo = lam, gm
+    w = np.exp(-lam * (s - smin))
+    mu = smin + (1.0 / lam) * float(np.log(n / w.sum()))
+    return float(lam), float(mu)
+
+
 def calibrate(
     sub_matrix: np.ndarray,
     background: np.ndarray,
@@ -45,6 +104,7 @@ def calibrate(
     length: int = 300,
     n_pairs: int = 4000,
     seed: int = 0,
+    method: str = "mle",
 ) -> dict:
     """Fit Karlin-Altschul lambda/K from random token-pair SW scores.
 
@@ -75,12 +135,21 @@ def calibrate(
     std = float(scores.std(ddof=1))
     if std <= 0:
         raise ValueError("degenerate null score distribution (std=0); check matrix/gaps")
-    lam = float(np.pi / (std * np.sqrt(6.0)))
     mn = float(length) * float(length)
-    k_param = float(np.exp(lam * mean - EULER_GAMMA) / mn)
+    if method == "mle":
+        # Maximum-likelihood Gumbel fit (uses the whole score distribution).
+        lam, mu = _fit_gumbel_mle(scores)
+        k_param = float(np.exp(lam * mu) / mn)
+    elif method == "mom":
+        # Method-of-moments (Altschul & Gish, 1996): variance -> lambda, mean -> K.
+        lam = float(np.pi / (std * np.sqrt(6.0)))
+        k_param = float(np.exp(lam * mean - EULER_GAMMA) / mn)
+    else:
+        raise ValueError(f"unknown method {method!r}; use 'mle' or 'mom'")
     return {
         "lambda": lam,
         "K": k_param,
+        "method": method,
         "gap_open": float(gap_open),
         "gap_extend": float(gap_extend),
         "calib_length": int(length),
@@ -133,6 +202,7 @@ def calibrate_length_dependent(
     long_thresh: int = 300,
     seed: int = 0,
     monotone: bool = True,
+    method: str = "mle",
 ) -> list:
     """Calibrate lambda/K on a grid of sequence lengths.
 
@@ -152,7 +222,7 @@ def calibrate_length_dependent(
     table = []
     for L in lengths:
         npair = n_pairs if L <= long_thresh else long_n_pairs
-        par = calibrate(sub_matrix, background, gap_open, gap_extend, int(L), npair, seed)
+        par = calibrate(sub_matrix, background, gap_open, gap_extend, int(L), npair, seed, method)
         table.append({
             "length": int(L),
             "lambda": par["lambda"],
