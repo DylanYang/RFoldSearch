@@ -1,4 +1,5 @@
 """Build and load searchable token databases (.pt)."""
+from __future__ import annotations
 import json
 import os
 
