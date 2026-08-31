@@ -19,7 +19,6 @@ straight after installation.
     + [Preprocess structures](#preprocess-structures)
     + [Build a database](#build-a-database)
     + [Search](#search)
-    + [RFoldseek-TM: US-align reranking](#rfoldseek-tm-us-align-reranking)
     + [Python API](#python-api)
   * [Main modules](#main-modules)
   * [Prefilter implementation](#prefilter-implementation)
@@ -85,10 +84,45 @@ Or search a chain from a separate query database:
 rfoldseek search --query queries_db.pt --query_id chainA --db my_db.pt
 ```
 
+Both commands run the same two-stage pipeline — a k-mer prefilter over the 3Dr
+tokens, then a reranking of the surviving candidates. What differs is how the
+candidates are reranked, chosen with `--rerank`:
+
+- **`sw`** (default) — affine-gap token Smith-Waterman, with a Karlin-Altschul
+  E-value per hit. Fast, self-contained, and what the rest of this README
+  benchmarks.
+- **`tm`** — **RFoldseek-TM**: the candidate pool is handed to
+  [US-align](https://github.com/pylelab/USalign) and ranked by the mean of its
+  two length-normalised TM-scores. This measures structural similarity directly
+  instead of scoring a token alignment, at a large cost in speed. It is the
+  Foldseek-style coordinate-reranking variant used in the paper's
+  remote-homologue analysis.
+
+```
+rfoldseek search --query my_chain --db my_db.pt --rerank tm
+```
+
+TM mode is the one part of RFoldseek that does **not** work straight after
+installation: it needs a `USalign` binary, which is neither bundled nor a pip
+dependency. Build it once from source and either put it on your `PATH`, set
+`$USALIGN`, or pass `--usalign`:
+
+```
+git clone https://github.com/pylelab/USalign && cd USalign && g++ -O3 -o USalign USalign.cpp
+```
+
+No structure files are needed at search time. US-align uses C3' as the
+representative atom for RNA, and the token database already stores C3' for
+every residue, so RFoldseek writes the coordinates it needs straight out of the
+`.pt` file. Existing databases work unchanged, and the original PDB/mmCIF
+inputs do not have to still exist. This is verified rather than assumed:
+scoring a C3'-only file and a file carrying all five stored backbone atoms
+returns TM-scores identical to five decimal places.
+
 #### Output format
 
-A comment line naming the query and the database, then one row per hit, ranked
-by Smith-Waterman score:
+A comment line naming the query and the database, then one row per hit. Under
+the default `--rerank sw`, hits are ranked by Smith-Waterman score:
 
 ```
 # query: chainA  (128 tokens)   database: my_db.pt  (885 chains)
@@ -98,38 +132,8 @@ rank  target                    SW_score    bits    E-value    len
    3  7QR4_A                      231.00    67.4    8.8e-14    134
 ```
 
-Values above are illustrative; the column layout is what `rfoldseek search`
-prints. `len` is the target's token length. `bits` and `E-value` appear when
-E-value parameters are loaded, which they are by default. When nothing
-survives the prefilter, a single comment line says so and suggests lowering
-`--min_diag`.
-
-#### Important search parameters
-
-| Option       | Category    | Description                                                                        |
-| ------------ | ----------- | ---------------------------------------------------------------------------------- |
-| `--top_k`    | Output      | Number of top hits to return (default: 10)                                         |
-| `--top_n`    | Sensitivity | Candidate-pool depth reranked by Smith-Waterman (default: 200, selected on the validation split) |
-| `--min_diag` | Sensitivity | k-mer hits required on a common diagonal to admit a target (default: 2, Foldseek's double-match rule) |
-| `--query_id` | Input       | Chain id to look up inside `--query` when it is a database file                    |
-| `--model`    | Input       | VQ-VAE tokenizer for the query (default: the bundled one)                          |
-| `--matrix`   | Scoring     | Substitution matrix (default: the bundled Structure-BLOSUM)                        |
-
-Raising `--top_n` costs little: the prefilter often returns fewer than `top_n`
-candidates for queries from small families, so the deeper pool is free for
-exactly those queries that cannot fill it.
-
-### RFoldseek-TM: US-align reranking
-
-RFoldseek-TM keeps the token prefilter and replaces only the reranking stage:
-the candidate pool is handed to [US-align](https://github.com/pylelab/USalign)
-and ranked by the mean of its two length-normalised TM-scores. This is the
-Foldseek-style coordinate-reranking variant used in the paper's
-remote-homologue analysis.
-
-```
-rfoldseek search --query my_chain --db my_db.pt --rerank tm
-```
+Under `--rerank tm` the comment line names the backend and the score columns
+change:
 
 ```
 # query: PDB_00007O81_1_AJ  (74 tokens)   database: db.pt  (885 chains)   rerank: US-align TM
@@ -139,34 +143,71 @@ rank  target                    TM_mean  TM_query  TM_target    len
    3  PDB_00008AW3_1_1           0.6688    0.6662     0.6715     73
 ```
 
-There is no `bits` or `E-value` column: the Karlin-Altschul parameters are
-calibrated against Smith-Waterman scores and say nothing about TM-scores.
+`len` is the target's token length. The SW table's `bits` and `E-value` appear
+when E-value parameters are loaded, which they are by default. The TM table has
+no such columns at all: the Karlin-Altschul parameters are calibrated against
+Smith-Waterman scores and say nothing about TM-scores, so RFoldseek prints
+nothing rather than a meaningless number. When nothing survives the prefilter,
+a single comment line says so and suggests lowering `--min_diag`.
 
-| Option      | Description                                                     |
-| ----------- | --------------------------------------------------------------- |
-| `--rerank`  | `sw` (default) or `tm`                                          |
-| `--usalign` | Path to the `USalign` binary (default: `$USALIGN`, then `PATH`) |
+#### Important search parameters
 
-Unlike the rest of RFoldseek, TM mode does **not** work straight after
-installation: it needs a `USalign` binary, which is not bundled and not a pip
-dependency. Build it once from source:
+| Option       | Category    | Description                                                                        |
+| ------------ | ----------- | ---------------------------------------------------------------------------------- |
+| `--top_k`    | Output      | Number of top hits to return (default: 10)                                         |
+| `--rerank`   | Scoring     | `sw` (default) or `tm`                                                             |
+| `--top_n`    | Sensitivity | Candidate-pool depth passed to the reranker (default: 200, selected on the validation split) |
+| `--min_diag` | Sensitivity | k-mer hits required on a common diagonal to admit a target (default: 2, Foldseek's double-match rule) |
+| `--query_id` | Input       | Chain id to look up inside `--query` when it is a database file                    |
+| `--model`    | Input       | VQ-VAE tokenizer for the query (default: the bundled one)                          |
+| `--matrix`   | Scoring     | Substitution matrix (default: the bundled Structure-BLOSUM)                        |
+| `--usalign`  | Scoring     | Path to the `USalign` binary, `--rerank tm` only (default: `$USALIGN`, then `PATH`) |
 
-```
-git clone https://github.com/pylelab/USalign && cd USalign && g++ -O3 -o USalign USalign.cpp
-```
+#### Choosing the parameters
 
-No structure files are needed at search time. US-align uses C3' as the
-representative atom for RNA, and the token database already stores C3' for
-every residue, so RFoldseek writes the coordinates it needs straight out of
-the `.pt` file. Existing databases work unchanged, and the original PDB/mmCIF
-inputs do not have to still exist. This is verified rather than assumed:
-scoring a C3'-only file and a file carrying all five stored backbone atoms
-returns TM-scores identical to five decimal places.
+**`--rerank` is the choice that matters.** Everything else is a smaller
+adjustment on top of it.
 
-The whole candidate pool is scored in a single US-align invocation, so process
-overhead does not scale with `--top_n`. The alignments themselves are not free,
-though: `--top_n` defaults to 200, meaning 200 structural superpositions per
-query. Lower it for interactive use on large chains.
+Under `sw`, reranking is negligible next to the prefilter, so the search is
+effectively as fast as the prefilter: a mean of 1.12 s per query against an
+83,156-chain database. Under `tm`, reranking dominates completely. The cost of
+one US-align superposition grows steeply with chain length, and `--top_n`
+of them run per query — measured single-core, on 2,700-3,100 nt queries with a
+full pool of 200 candidates, one query takes **20-23 minutes**. Short chains
+are cheap by comparison: a 74 nt query against the same 200-candidate pool
+finishes in well under a second. Cost is driven by the length of the chains
+involved, not by database size.
+
+Two consequences worth planning around. Use `sw` for interactive work and for
+anything that needs an E-value; reach for `tm` when ranking quality on a
+specific query matters more than latency. And if you are running `tm` over a
+whole query set, expect a batch job rather than an interactive one, and budget
+by the length of your longest chains rather than by the number of queries.
+
+**`--top_n` behaves very differently under the two backends.** Under `sw`,
+raising it costs almost nothing: the prefilter often returns fewer than `top_n`
+candidates for queries from small families, so the deeper pool is free for
+exactly those queries that cannot fill it. Under `tm`, `--top_n` is the direct
+multiplier on runtime — halving it roughly halves the query's cost. The default
+of 200 was selected on the validation split for `sw` reranking; it is kept
+under `tm` so the two backends rank the same candidate pool and stay
+comparable, which is what the paper's RFoldseek-TM does. Lower it when you want
+`tm` results on long chains without waiting.
+
+**`--min_diag` trades sensitivity against pool size** and applies to both
+backends, since it acts before reranking. The default of 2 is Foldseek's
+double-match rule: a target is admitted only when two k-mer hits share a
+diagonal. Lowering it to 1 admits far more candidates — worth trying when a
+query returns nothing, but under `tm` it also multiplies the number of
+superpositions.
+
+**`--top_k` is output-only.** It slices the ranking that has already been
+computed, so it has no effect on runtime or on the ranking itself.
+
+**`--model` and `--matrix` default to the bundled deployed artifacts** and
+should be left alone unless you are reproducing an ablation. The tokenizer in
+particular must match the one the database was built with, or the token strings
+are not comparable.
 
 ### Python API
 
