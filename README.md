@@ -19,6 +19,7 @@ straight after installation.
     + [Preprocess structures](#preprocess-structures)
     + [Build a database](#build-a-database)
     + [Search](#search)
+    + [RFoldseek-TM: US-align reranking](#rfoldseek-tm-us-align-reranking)
     + [Python API](#python-api)
   * [Main modules](#main-modules)
   * [Prefilter implementation](#prefilter-implementation)
@@ -118,6 +119,55 @@ Raising `--top_n` costs little: the prefilter often returns fewer than `top_n`
 candidates for queries from small families, so the deeper pool is free for
 exactly those queries that cannot fill it.
 
+### RFoldseek-TM: US-align reranking
+
+RFoldseek-TM keeps the token prefilter and replaces only the reranking stage:
+the candidate pool is handed to [US-align](https://github.com/pylelab/USalign)
+and ranked by the mean of its two length-normalised TM-scores. This is the
+Foldseek-style coordinate-reranking variant used in the paper's
+remote-homologue analysis.
+
+```
+rfoldseek search --query my_chain --db my_db.pt --rerank tm
+```
+
+```
+# query: PDB_00007O81_1_AJ  (74 tokens)   database: db.pt  (885 chains)   rerank: US-align TM
+rank  target                    TM_mean  TM_query  TM_target    len
+   1  PDB_00008B2L_1_W2          0.7076    0.7143     0.7008     76
+   2  PDB_00008KD9_1_M           0.6724    0.6674     0.6773     72
+   3  PDB_00008AW3_1_1           0.6688    0.6662     0.6715     73
+```
+
+There is no `bits` or `E-value` column: the Karlin-Altschul parameters are
+calibrated against Smith-Waterman scores and say nothing about TM-scores.
+
+| Option      | Description                                                     |
+| ----------- | --------------------------------------------------------------- |
+| `--rerank`  | `sw` (default) or `tm`                                          |
+| `--usalign` | Path to the `USalign` binary (default: `$USALIGN`, then `PATH`) |
+
+Unlike the rest of RFoldseek, TM mode does **not** work straight after
+installation: it needs a `USalign` binary, which is not bundled and not a pip
+dependency. Build it once from source:
+
+```
+git clone https://github.com/pylelab/USalign && cd USalign && g++ -O3 -o USalign USalign.cpp
+```
+
+No structure files are needed at search time. US-align uses C3' as the
+representative atom for RNA, and the token database already stores C3' for
+every residue, so RFoldseek writes the coordinates it needs straight out of
+the `.pt` file. Existing databases work unchanged, and the original PDB/mmCIF
+inputs do not have to still exist. This is verified rather than assumed:
+scoring a C3'-only file and a file carrying all five stored backbone atoms
+returns TM-scores identical to five decimal places.
+
+The whole candidate pool is scored in a single US-align invocation, so process
+overhead does not scale with `--top_n`. The alignments themselves are not free,
+though: `--top_n` defaults to 200, meaning 200 structural superpositions per
+query. Lower it for interactive use on large chains.
+
 ### Python API
 
 ```python
@@ -128,15 +178,15 @@ hits = s.search_id("my_chain", top_k=10)
 # [{'rank': 1, 'target': …, 'sw_score': …, 'bits': …, 'evalue': …}, …]
 ```
 
-`search_id` forwards keyword arguments to `search`, so `top_n` and `min_diag`
-are available there too. `bits` and `evalue` are present when E-value
+`search_id` forwards keyword arguments to `search`, so `top_n`, `min_diag` and
+`rerank` are available there too. `bits` and `evalue` are present when E-value
 parameters are loaded, which they are by default.
 
 ## Main modules
 
 - `rfoldseek preprocess` — parse `.pdb` / `.cif` structures into a backbone JSONL
 - `rfoldseek build` — tokenize a JSONL into a searchable token database
-- `rfoldseek search` — prefilter + Smith-Waterman search against a database
+- `rfoldseek search` — prefilter + Smith-Waterman (or US-align TM) search against a database
 
 ## Prefilter implementation
 
@@ -175,6 +225,7 @@ rfoldseek/
   prefilter.py                release prefilter (compiled O(n) kernel)
   prefilter_reference.py      reference implementation (semantic ground truth)
   smith_waterman.py           numba token Smith-Waterman
+  usalign.py                  US-align TM-score reranking (RFoldseek-TM)
   evalue.py                   Karlin-Altschul bit score / E-value
   search.py, cli.py           pipeline and command line
   assets/                     deployed tokenizer, matrix, E-value params
@@ -191,6 +242,10 @@ The prefilter's double-match rule — admitting a target only on two k-mer hits
 sharing a diagonal — follows Foldseek (van Kempen et al., *Nat. Biotechnol.*
 2024). Runtime dependencies are `numpy`, `torch`, `numba` and `biotite`, each
 under its own license.
+
+`--rerank tm` calls US-align (Zhang et al., *Nat. Methods* 2022) as an external
+program. Its source is not vendored and it is not installed by `pip`; users
+supply their own binary.
 
 ## License
 
