@@ -102,3 +102,18 @@ def test_cli_sw_output_is_unchanged(db_path, capsys):
 
     out = capsys.readouterr().out
     assert "SW_score" in out and "rerank:" not in out
+
+
+def test_cli_reports_a_missing_usalign_without_a_traceback(db_path, monkeypatch,
+                                                           capsys):
+    import shutil
+    from rfoldseek import cli
+
+    monkeypatch.delenv("USALIGN", raising=False)
+    monkeypatch.setattr(shutil, "which", lambda name: None)
+
+    with pytest.raises(SystemExit) as e:
+        cli.main(["search", "--query", "chain_000", "--db", db_path,
+                  "--rerank", "tm"])
+
+    assert "USalign" in str(e.value)
