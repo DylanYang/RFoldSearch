@@ -1,12 +1,7 @@
 """US-align TM-score reranking: the only module that knows US-align exists.
 
 RFoldseek-TM keeps the token prefilter and replaces the Smith-Waterman
-reranking stage with a real structural superposition. US-align uses C3' as
-the representative atom for RNA, the way it uses CA for proteins, and the
-token database already stores C3' in channel 0 of each entry's ``coords``,
-so a synthesised C3'-only PDB scores identically to the original structure
-file. The database is therefore self-contained; original PDB/mmCIF inputs
-need not still exist.
+reranking stage with a real structural superposition.
 
 The binary is invoked once for the whole candidate pool via ``-dir2``, so
 per-candidate process overhead does not scale with ``--top_n``.
