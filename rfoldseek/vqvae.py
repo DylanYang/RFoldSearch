@@ -8,6 +8,7 @@ VQ-VAE encoder, EMA codebook, decoder, and the reconstruction loss.
 See `descriptors/__init__.py` for the descriptor layout, and
 `descriptors/compose.py` for `compute_descriptor` / `parse_descriptor`.
 """
+from __future__ import annotations
 
 from __future__ import annotations
 
