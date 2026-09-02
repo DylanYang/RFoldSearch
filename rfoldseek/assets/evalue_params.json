@@ -1,6 +1,6 @@
 {
-  "lambda": 2.823133194226683,
-  "K": 0.08848002995612211,
+  "lambda": 0.44632538637856906,
+  "K": 0.000191632063080528,
   "reference_length": 300,
   "gap_open": -2.0,
   "gap_extend": -0.5,
@@ -8,126 +8,125 @@
   "length_table": [
     {
       "length": 20,
-      "lambda": 3.480891898327941,
-      "K": 0.18296322971163936,
-      "n_pairs": 4000,
-      "null_score_mean": 1.3991270850673319,
-      "null_score_std": 0.36845436963381184,
-      "lambda_raw": 3.480891898327941,
-      "K_raw": 0.18296322971163936
+      "lambda": 0.6470947380677297,
+      "K": 0.0010597153365108109,
+      "n_pairs": 1200,
+      "null_score_mean": 4.363851518929005,
+      "null_score_std": 1.7256763597381057,
+      "lambda_raw": 0.6470947380677297,
+      "K_raw": 0.0010597153365108107
     },
     {
       "length": 30,
-      "lambda": 3.1116673977776332,
-      "K": 0.12103770606808424,
-      "n_pairs": 4000,
-      "null_score_mean": 1.6831511230617762,
-      "null_score_std": 0.4124453652923509,
-      "lambda_raw": 3.109623572210014,
-      "K_raw": 0.11699266711711472
+      "lambda": 0.5558904679256997,
+      "K": 0.0007257851508834754,
+      "n_pairs": 1200,
+      "null_score_mean": 4.9331609959403675,
+      "null_score_std": 2.0232795859185986,
+      "lambda_raw": 0.5558904679256997,
+      "K_raw": 0.0007257851508834755
     },
     {
       "length": 40,
-      "lambda": 3.1116673977776332,
-      "K": 0.12103770606808424,
-      "n_pairs": 4000,
-      "null_score_mean": 1.8763364654481411,
-      "null_score_std": 0.41190391085270317,
-      "lambda_raw": 3.1137112233452524,
-      "K_raw": 0.12092259342073321
+      "lambda": 0.47195382589336343,
+      "K": 0.0005286536282809423,
+      "n_pairs": 1200,
+      "null_score_mean": 5.693849983259484,
+      "null_score_std": 2.347094578657185,
+      "lambda_raw": 0.47195382589336343,
+      "K_raw": 0.000528653628280942
     },
     {
       "length": 60,
-      "lambda": 3.059717541136169,
-      "K": 0.12103770606808424,
-      "n_pairs": 4000,
-      "null_score_mean": 2.1862129092216493,
-      "null_score_std": 0.41917262391665516,
-      "lambda_raw": 3.059717541136169,
-      "K_raw": 0.12534180890034077
+      "lambda": 0.44738195546863285,
+      "K": 0.00045375841344568374,
+      "n_pairs": 1200,
+      "null_score_mean": 6.580032697430363,
+      "null_score_std": 2.4511822774674896,
+      "lambda_raw": 0.44738195546863285,
+      "K_raw": 0.0004537584134456836
     },
     {
       "length": 80,
-      "lambda": 2.938229798839534,
-      "K": 0.10728281070617551,
-      "n_pairs": 4000,
-      "null_score_mean": 2.4194779102802277,
-      "null_score_std": 0.4365042620793011,
-      "lambda_raw": 2.938229798839534,
-      "K_raw": 0.10728281070617551
+      "lambda": 0.44632538637856906,
+      "K": 0.00032191089401166067,
+      "n_pairs": 1200,
+      "null_score_mean": 7.154201688369115,
+      "null_score_std": 2.8086408716899087,
+      "lambda_raw": 0.4051201587311141,
+      "K_raw": 0.0003219108940116608
     },
     {
       "length": 120,
-      "lambda": 2.8876512626477,
-      "K": 0.0995301813054361,
-      "n_pairs": 4000,
-      "null_score_mean": 2.7183398501873017,
-      "null_score_std": 0.45497359549768596,
-      "lambda_raw": 2.8189544247263627,
-      "K_raw": 0.08296611547169587
+      "lambda": 0.44632538637856906,
+      "K": 0.0002604935213341883,
+      "n_pairs": 1200,
+      "null_score_mean": 7.879485686509698,
+      "null_score_std": 2.7550969174510085,
+      "lambda_raw": 0.3829875976980498,
+      "K_raw": 0.0002604935213341883
     },
     {
       "length": 160,
-      "lambda": 2.8876512626477,
-      "K": 0.0995301813054361,
-      "n_pairs": 4000,
-      "null_score_mean": 2.9097715500295163,
-      "null_score_std": 0.4338290981075602,
-      "lambda_raw": 2.9563481005690373,
-      "K_raw": 0.11940123910070888
+      "lambda": 0.44632538637856906,
+      "K": 0.0002407364860868804,
+      "n_pairs": 1200,
+      "null_score_mean": 7.749053306270529,
+      "null_score_std": 2.633021372449205,
+      "lambda_raw": 0.4033820465002566,
+      "K_raw": 0.00024073648608688024
     },
     {
       "length": 220,
-      "lambda": 2.823133194226683,
-      "K": 0.08848002995612211,
-      "n_pairs": 4000,
-      "null_score_mean": 3.1635741589665414,
-      "null_score_std": 0.4592876279803425,
-      "lambda_raw": 2.7924763307945173,
-      "K_raw": 0.07963792953083368
+      "lambda": 0.44632538637856906,
+      "K": 0.00022088470402894194,
+      "n_pairs": 1200,
+      "null_score_mean": 7.632953985863262,
+      "null_score_std": 2.4723002022605707,
+      "lambda_raw": 0.4215703706583665,
+      "K_raw": 0.00022088470402894188
     },
     {
       "length": 300,
-      "lambda": 2.823133194226683,
-      "K": 0.08848002995612211,
-      "n_pairs": 4000,
-      "null_score_mean": 3.38675530141592,
-      "null_score_std": 0.4494198256524953,
-      "lambda_raw": 2.8537900576588484,
-      "K_raw": 0.09830385781193875
+      "lambda": 0.44632538637856906,
+      "K": 0.000191632063080528,
+      "n_pairs": 1200,
+      "null_score_mean": 7.619343580581524,
+      "null_score_std": 2.336154620704822,
+      "lambda_raw": 0.439491148146917,
+      "K_raw": 0.00019163206308052787
     },
     {
       "length": 500,
-      "lambda": 2.6847651246790516,
-      "K": 0.05934498396214574,
-      "n_pairs": 800,
-      "null_score_mean": 3.7925269851088523,
-      "null_score_std": 0.47771397891470513,
-      "lambda_raw": 2.6847651246790516,
-      "K_raw": 0.05934498396214573
+      "lambda": 0.44632538637856906,
+      "K": 0.00017210889557572656,
+      "n_pairs": 400,
+      "null_score_mean": 7.429530356327692,
+      "null_score_std": 2.2287927564884713,
+      "lambda_raw": 0.48920809503858803,
+      "K_raw": 0.0001721088955757266
     },
     {
       "length": 1000,
-      "lambda": 2.6585965363598483,
-      "K": 0.047765815331318934,
-      "n_pairs": 800,
-      "null_score_mean": 4.269651679694652,
-      "null_score_std": 0.4824161216722007,
-      "lambda_raw": 2.6585965363598483,
-      "K_raw": 0.047765815331318934
+      "lambda": 0.44632538637856906,
+      "K": 8.472611840597063e-05,
+      "n_pairs": 400,
+      "null_score_mean": 7.034996712870068,
+      "null_score_std": 2.093011937482419,
+      "lambda_raw": 0.5218366195391932,
+      "K_raw": 8.472611840597058e-05
     },
     {
       "length": 2000,
-      "lambda": 2.5595941133919955,
-      "K": 0.02815383318764318,
-      "n_pairs": 800,
-      "null_score_mean": 4.76987689435482,
-      "null_score_std": 0.5010754726507081,
-      "lambda_raw": 2.5595941133919955,
-      "K_raw": 0.028153833187643182
+      "lambda": 0.44632538637856906,
+      "K": 6.525076131774463e-05,
+      "n_pairs": 400,
+      "null_score_mean": 7.463853255245421,
+      "null_score_std": 2.314508778847537,
+      "lambda_raw": 0.507007054716067,
+      "K_raw": 6.525076131774465e-05
     }
   ],
-  "note": "Length-dependent Karlin-Altschul Gumbel parameters (method-of-moments) for the token Smith-Waterman score under Structure-BLOSUM. The CLI interpolates (lambda, K) to the query length via evalue.params_for_length (lambda linearly, K in log space) to correct the finite-length edge effect that inflates significance for short RNAs. Database E-value for a hit scoring S is E = K * m * N * exp(-lambda * S), with m the query length and N the total token count of the target database. The scalar lambda/K are the reference_length row, kept as a fallback for older readers.",
-  "n_db_tokens": 352759,
-  "n_chains": 885
+  "null": "real database chain pairs, top 10% censored",
+  "note": "Length-dependent Karlin-Altschul Gumbel parameters for the token Smith-Waterman score under Structure-BLOSUM. The null is the score distribution between REAL database chains with the highest-scoring 10% censored, not randomised token strings: randomisation destroys the helical grammar shared by all RNA structures and makes E-values anti-conservative by orders of magnitude. Parameters are fitted by maximum likelihood and interpolated to the query length via evalue.params_for_length (lambda linearly, K in log space). E = K * m * N * exp(-lambda * S)."
 }
