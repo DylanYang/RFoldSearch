@@ -37,7 +37,7 @@ def cmd_build(a):
 def cmd_search(a):
     s = Searcher(a.db, matrix_path=a.matrix)
     kw = dict(top_k=a.top_k, top_n=a.top_n, min_diag=a.min_diag,
-              rerank=a.rerank, usalign=a.usalign)
+              rerank=a.rerank, usalign=a.usalign, tie_seed=a.tie_seed)
     if a.query in s.id2i:
         qname = a.query
         hits = s.search_id(a.query, **kw)
@@ -129,6 +129,10 @@ def main(argv=None):
                         "(default) or by US-align TM-score (RFoldseek-TM)")
     p.add_argument("--usalign", default=None,
                    help="path to the USalign binary (default: $USALIGN, then PATH)")
+    p.add_argument("--tie_seed", type=int, default=None,
+                   help="break equal scores by a hash of the chain id seeded "
+                        "with this integer, instead of by database order; "
+                        "omit to keep the historical index-order behaviour")
     p.set_defaults(fn=cmd_search)
 
     a = ap.parse_args(argv)

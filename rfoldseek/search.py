@@ -17,11 +17,13 @@ from .prefilter import KMER_K, KmerPrefilter
 from .smith_waterman import smith_waterman_numba
 from . import evalue as _evalue
 from . import usalign as _usalign
+from . import tiebreak as _tiebreak
 
 GAP_OPEN = -2.0
 GAP_EXTEND = -0.5
 DEFAULT_TOP_N = 200      # candidate-pool size after the prefilter (validation-selected)
 DEFAULT_MIN_DIAG = 2     # Foldseek double-match rule
+_NO_CUT = 1 << 62        # ask the prefilter for every candidate, uncut
 
 _ASSETS = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets")
 
@@ -48,22 +50,40 @@ class Searcher:
         self.n_db_tokens = int(sum(len(t) for t in self.toks))
         ev_path = evalue_params_path or asset("evalue_params.json")
         self.ev_par = json.load(open(ev_path)) if os.path.exists(ev_path) else None
+        self._tie_cache = {}
+
+    def tie_keys(self, seed):
+        """Hash tie-break keys for every chain, cached per seed."""
+        if seed not in self._tie_cache:
+            self._tie_cache[seed] = _tiebreak.tie_keys(self.ids, seed)
+        return self._tie_cache[seed]
 
     def search(self, qtok, top_k=10, top_n=DEFAULT_TOP_N,
                min_diag=DEFAULT_MIN_DIAG, self_idx=-1, rerank="sw",
-               usalign=None, query_entry=None):
+               usalign=None, query_entry=None, tie_seed=None):
         """-> list of hit dicts, ranked by the chosen backend's score.
 
         ``rerank="sw"`` ranks by Smith-Waterman score and reports bits and an
         E-value. ``rerank="tm"`` ranks by US-align TM-score and reports
         ``tm_mean``/``tm_query``/``tm_target`` instead.
+
+        ``tie_seed`` makes equal scores break by a hash of the chain id
+        rather than by database index, at both the prefilter's ``top_n``
+        cut and the reranking. ``None`` keeps the historical index-order
+        behaviour.
         """
         if rerank not in ("sw", "tm"):
             raise ValueError(f"unknown rerank backend {rerank!r}; use 'sw' or 'tm'")
         qtok = np.asarray(qtok, dtype=np.int64)
         if len(qtok) < KMER_K:
             raise ValueError(f"query has {len(qtok)} tokens; need >= {KMER_K}")
-        cand, _ = self.prefilter.candidates(qtok, top_n, min_diag, self_idx)
+        if tie_seed is None:
+            cand, _ = self.prefilter.candidates(qtok, top_n, min_diag, self_idx)
+        else:
+            cand, pre = self.prefilter.candidates(qtok, _NO_CUT, min_diag, self_idx)
+            if len(cand):
+                keys = self.tie_keys(tie_seed)[cand]
+                cand = cand[np.lexsort((keys, -pre))][:top_n]
         if len(cand) == 0:
             return []
         if rerank == "tm":
@@ -74,10 +94,13 @@ class Searcher:
                         "the database or pass query_entry"
                     )
                 query_entry = self.ents[self_idx]
-            return self._rerank_tm(query_entry, cand, top_k, usalign)
+            return self._rerank_tm(query_entry, cand, top_k, usalign, tie_seed)
         sw = np.array([smith_waterman_numba(qtok, self.toks[t], self.sub,
                                             GAP_OPEN, GAP_EXTEND) for t in cand])
-        order = np.argsort(-sw, kind="stable")
+        if tie_seed is None:
+            order = np.argsort(-sw, kind="stable")
+        else:
+            order = np.lexsort((self.tie_keys(tie_seed)[cand], -sw))
         hits = []
         for rank, oi in enumerate(order[:top_k], 1):
             t, sc = int(cand[oi]), float(sw[oi])
@@ -91,7 +114,7 @@ class Searcher:
             hits.append(hit)
         return hits
 
-    def _rerank_tm(self, query_entry, cand, top_k, usalign):
+    def _rerank_tm(self, query_entry, cand, top_k, usalign, tie_seed=None):
         """Rank the candidate pool by US-align TM-score (RFoldseek-TM)."""
         binary = _usalign.find_usalign(usalign)
         pool = [(self.ids[int(t)], self.ents[int(t)]["coords"],
@@ -99,9 +122,14 @@ class Searcher:
         scores, skipped = _usalign.score_pool(
             binary, query_entry["coords"], query_entry["mask"], pool)
         self.last_tm_skipped = skipped
+        keys = self.tie_keys(tie_seed) if tie_seed is not None else None
+
+        def _key(r):
+            mean = -0.5 * (r[1] + r[2])
+            return (mean, keys[self.id2i[r[0]]]) if keys is not None else (mean,)
+
         ranked = sorted(
-            ((cid, tm_q, tm_t) for cid, (tm_q, tm_t) in scores.items()),
-            key=lambda r: -0.5 * (r[1] + r[2]))
+            ((cid, tm_q, tm_t) for cid, (tm_q, tm_t) in scores.items()), key=_key)
         hits = []
         for rank, (cid, tm_q, tm_t) in enumerate(ranked[:top_k], 1):
             hits.append({
