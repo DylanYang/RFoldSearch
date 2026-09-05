@@ -15,9 +15,11 @@ print(f"chains={len(toks)}  alphabet={sub.shape[0]}", flush=True)
 
 old = json.load(open(OUT))
 t0 = time.time()
+# Sample sizes and the monotone switch come from calibrate_length_dependent's
+# own defaults: 1200/400 pairs left the L=500 point several percent off, and
+# the asset is built once offline.
 table = EV.calibrate_length_dependent(sub, toks, gap_open=old["gap_open"],
-                                      gap_extend=old["gap_extend"], seed=old.get("seed", 0),
-                                      n_pairs=1200, long_n_pairs=400)
+                                      gap_extend=old["gap_extend"], seed=old.get("seed", 0))
 print(f"calibrated {len(table)} length points in {time.time()-t0:.0f}s", flush=True)
 ref = [r for r in table if r["length"] == old["reference_length"]]
 new = {"lambda": ref[0]["lambda"] if ref else table[len(table)//2]["lambda"],
