@@ -149,25 +149,36 @@ def calibrate_length_dependent(
     gap_extend: float = -0.5,
     lengths=(20, 30, 40, 60, 80, 120, 160, 220, 300, 500, 1000, 2000),
     n_pairs: int = 4000,
-    long_n_pairs: int = 800,
+    long_n_pairs: int = 4000,
     long_thresh: int = 300,
     seed: int = 0,
-    monotone: bool = True,
+    monotone: bool = False,
 ) -> list:
     """Calibrate lambda/K on a grid of sequence lengths.
 
     Asymptotic Karlin-Altschul theory is length-independent, but at finite
-    length the random local-alignment score distribution has an edge effect:
-    short sequences give a *larger* lambda/K and long sequences a smaller one,
-    so a single fixed calibration over-estimates significance for long chains
-    (rRNA) and under-estimates it for short ones. Since ~two thirds of the
-    database chains are < 100 nt, we calibrate lambda/K at several lengths and
-    let the caller interpolate to the actual query length. Long lengths
-    (> ``long_thresh``) use fewer random pairs: lambda/K are essentially
-    converged there and the O(L^2) alignment is expensive. With
-    ``monotone=True`` the lambda and log-K grids are smoothed to be
-    non-increasing (both are physically monotone in length), removing
-    method-of-moments wobble; raw values are retained as ``lambda_raw``/``K_raw``.
+    length the random local-alignment score distribution has an edge effect,
+    so lambda/K are calibrated at several lengths and the caller interpolates
+    to the actual query length. Since ~two thirds of the database chains are
+    < 100 nt, the grid is dense at the short end.
+
+    Measured on the 885-chain benchmark, lambda falls with length only over
+    the short arm, reaching about 0.38 near L=120, and then *rises* again to
+    about 0.51 by L=1000, where it flattens. Repeating each point over three
+    seeds puts the seed-to-seed spread at +/-0.005, fifteen times smaller than
+    that rise, so the shape is real and not sampling noise. ``monotone`` is
+    therefore off by default: forcing the grid to be non-increasing collapses
+    every point above L=80 onto one value and discards a genuine trend. With
+    lambda pinned 15% low at L=1000, and E proportional to exp(-lambda S),
+    a score of 60 comes out roughly two orders of magnitude too conservative
+    -- and long chains are the ribosomal targets a search hits most often.
+    Set ``monotone=True`` to restore the old smoothing; raw values are kept as
+    ``lambda_raw``/``K_raw`` whenever it is on.
+
+    ``long_n_pairs`` applies above ``long_thresh``, where the O(L^2) alignment
+    is expensive. It matches ``n_pairs`` by default: at 800 pairs the L=500
+    estimate was off by 6% against the 4000-pair value, and one length point
+    costs about 30 seconds.
     """
     table = []
     for L in lengths:
