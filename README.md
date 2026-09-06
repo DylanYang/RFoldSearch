@@ -1,12 +1,6 @@
-# <img src=".github/logo.PNG" height="40" align="left" style="margin-right:12px" /> RFoldseek
+<h1><a name="rfoldseek"></a><img src=".github/header.PNG" alt="RFoldseek" height="88" /></h1>
 
-RFoldseek enables fast RNA tertiary-structure search with **3Dr**, a learned
-discrete structural alphabet. Each nucleotide's local geometry is quantised into
-one of 80 states by a VQ-VAE; chains become token strings searched with an
-inverted-index k-mer prefilter and reranked by affine-gap token Smith-Waterman,
-with a Karlin-Altschul database E-value per hit. The deployed tokenizer,
-Structure-BLOSUM matrix and E-value calibration are bundled — search works
-straight after installation.
+RFoldseek enables fast RNA tertiary-structure search with **3Dr**, a learned discrete structural alphabet. Each nucleotide's local geometry is quantised into one of 80 states by a VQ-VAE, converting RNA chains into token strings that are searched with an inverted-index k-mer prefilter. The standard RFoldseek mode reranks prefilter hits by affine-gap token Smith-Waterman alignment and assigns a Karlin-Altschul database E-value to each hit. We also provide RFoldseek-TM, an accuracy-oriented mode in which the same prefilter candidates are reranked by coordinate alignment with US-align using the mean of the two length-normalised TM-scores.
 
 <p align="center"><img src=".github/fig1.jpeg" width="720" /></p>
 
@@ -21,8 +15,6 @@ straight after installation.
     + [Search](#search)
     + [Python API](#python-api)
   * [Main modules](#main-modules)
-  * [Prefilter implementation](#prefilter-implementation)
-  * [Reproducing the paper's search results](#reproducing-the-papers-search-results)
   * [Repository layout](#repository-layout)
   * [Third-party components](#third-party-components)
   * [License](#license)
@@ -33,8 +25,7 @@ straight after installation.
 pip install .
 ```
 
-Requires Python >= 3.9. Runtime dependencies: `numpy`, `torch`, `numba`,
-`biotite`.
+Requires Python >= 3.9. Runtime dependencies: `numpy`, `torch`, `numba`, `biotite`.
 
 ## Hardware and memory requirements
 
@@ -84,39 +75,62 @@ Or search a chain from a separate query database:
 rfoldseek search --query queries_db.pt --query_id chainA --db my_db.pt
 ```
 
-#### Output format
+Both commands run the same two-stage pipeline — a k-mer prefilter over the 3Dr tokens, 
+then a reranking of the surviving candidates. What differs is how the candidates are reranked, chosen with `--rerank`:
 
-A comment line naming the query and the database, then one row per hit, ranked
-by Smith-Waterman score:
+- **`sw`** (default) — affine-gap token Smith-Waterman, with a Karlin-Altschul
+  E-value per hit. Fast, self-contained, and what the rest of this README
+  benchmarks.
+- **`tm`** — RFoldseek-TM: the candidate pool is handed to
+  [US-align](https://github.com/pylelab/USalign) and ranked by the mean of its two length-normalised TM-scores. This measures structural similarity directly instead of scoring a token alignment, at a large cost in speed.
 
 ```
-# query: chainA  (128 tokens)   database: my_db.pt  (885 chains)
+rfoldseek search --query my_chain --db my_db.pt --rerank tm
+```
+
+TM mode is the one part of RFoldseek that does **not** work straight after
+installation: it needs a `USalign` binary, which is neither bundled nor a pip
+dependency. Build it once from source and either put it on your `PATH`, set
+`$USALIGN`, or pass `--usalign`:
+
+```
+git clone https://github.com/pylelab/USalign && cd USalign && g++ -O3 -o USalign USalign.cpp
+```
+
+#### Output format
+
+A comment line naming the query and the database, then one row per hit. Under the default mode, hits are ranked by Smith-Waterman score:
+
+```
+# query: chainA  (128 tokens)   database: my_db.pt
 rank  target                    SW_score    bits    E-value    len
    1  4V9F_A                      412.00   118.3    2.1e-30    129
    2  6XU8_B                      287.50    83.1    5.4e-19    121
    3  7QR4_A                      231.00    67.4    8.8e-14    134
 ```
 
-Values above are illustrative; the column layout is what `rfoldseek search`
-prints. `len` is the target's token length. `bits` and `E-value` appear when
-E-value parameters are loaded, which they are by default. When nothing
-survives the prefilter, a single comment line says so and suggests lowering
-`--min_diag`.
+Under `--rerank tm` the comment line names the backend and the score columns change:
+
+```
+# query: PDB_00007O81_1_AJ  (74 tokens)   database: db.pt  (885 chains)   rerank: US-align TM
+rank  target                    TM_mean  TM_query  TM_target    len
+   1  PDB_00008B2L_1_W2          0.7076    0.7143     0.7008     76
+   2  PDB_00008KD9_1_M           0.6724    0.6674     0.6773     72
+   3  PDB_00008AW3_1_1           0.6688    0.6662     0.6715     73
+```
 
 #### Important search parameters
 
 | Option       | Category    | Description                                                                        |
 | ------------ | ----------- | ---------------------------------------------------------------------------------- |
 | `--top_k`    | Output      | Number of top hits to return (default: 10)                                         |
-| `--top_n`    | Sensitivity | Candidate-pool depth reranked by Smith-Waterman (default: 200, selected on the validation split) |
+| `--rerank`   | Scoring     | `sw` (default) or `tm`                                                             |
+| `--top_n`    | Sensitivity | Candidate-pool depth passed to the reranker (default: 200) |
 | `--min_diag` | Sensitivity | k-mer hits required on a common diagonal to admit a target (default: 2, Foldseek's double-match rule) |
 | `--query_id` | Input       | Chain id to look up inside `--query` when it is a database file                    |
 | `--model`    | Input       | VQ-VAE tokenizer for the query (default: the bundled one)                          |
 | `--matrix`   | Scoring     | Substitution matrix (default: the bundled Structure-BLOSUM)                        |
-
-Raising `--top_n` costs little: the prefilter often returns fewer than `top_n`
-candidates for queries from small families, so the deeper pool is free for
-exactly those queries that cannot fill it.
+| `--usalign`  | Scoring     | Path to the `USalign` binary, `--rerank tm` only (default: `$USALIGN`, then `PATH`) |
 
 ### Python API
 
@@ -128,42 +142,15 @@ hits = s.search_id("my_chain", top_k=10)
 # [{'rank': 1, 'target': …, 'sw_score': …, 'bits': …, 'evalue': …}, …]
 ```
 
-`search_id` forwards keyword arguments to `search`, so `top_n` and `min_diag`
-are available there too. `bits` and `evalue` are present when E-value
+`search_id` forwards keyword arguments to `search`, so `top_n`, `min_diag` and
+`rerank` are available there too. `bits` and `evalue` are present when E-value
 parameters are loaded, which they are by default.
 
 ## Main modules
 
 - `rfoldseek preprocess` — parse `.pdb` / `.cif` structures into a backbone JSONL
 - `rfoldseek build` — tokenize a JSONL into a searchable token database
-- `rfoldseek search` — prefilter + Smith-Waterman search against a database
-
-## Prefilter implementation
-
-The prefilter in this release computes per-target best-diagonal hit counts in
-three linear compiled passes (counting-sort by target, diagonal scatter,
-per-segment bincount) instead of materialising and sorting every posting.
-**Its output is identical to the reference implementation** — candidate set,
-ranking and scores — which ships in `rfoldseek/prefilter_reference.py` and is
-enforced by `tests/test_prefilter_equivalence.py`; it was additionally
-verified query-for-query against the paper pipeline at database sizes of
-1,000 / 10,000 / 83,156 (20/20 identical at each).
-
-Single-core cost against an 83,156-structure predicted-RNA database
-(mean / median per query): **1.12 s / 0.037 s**, with a 3.3 s one-off index
-build. The reference implementation costs 49 s / 0.78 s on the same
-benchmark.
-
-## Reproducing the paper's search results
-
-`tests/test_paper_db.py` checks this package against the analysis repository's
-bundled 885-chain database:
-
-```
-RFOLDSEEK_PAPER_DB=/path/to/RFoldseek-paper-code/files/models/db.pt pytest tests/
-```
-
-The top hits and Smith-Waterman scores match the paper pipeline exactly.
+- `rfoldseek search` — prefilter + Smith-Waterman (or US-align TM) search against a database
 
 ## Repository layout
 
@@ -175,6 +162,7 @@ rfoldseek/
   prefilter.py                release prefilter (compiled O(n) kernel)
   prefilter_reference.py      reference implementation (semantic ground truth)
   smith_waterman.py           numba token Smith-Waterman
+  usalign.py                  US-align TM-score reranking (RFoldseek-TM)
   evalue.py                   Karlin-Altschul bit score / E-value
   search.py, cli.py           pipeline and command line
   assets/                     deployed tokenizer, matrix, E-value params
@@ -191,6 +179,10 @@ The prefilter's double-match rule — admitting a target only on two k-mer hits
 sharing a diagonal — follows Foldseek (van Kempen et al., *Nat. Biotechnol.*
 2024). Runtime dependencies are `numpy`, `torch`, `numba` and `biotite`, each
 under its own license.
+
+`--rerank tm` calls US-align (Zhang et al., *Nat. Methods* 2022) as an external
+program. Its source is not vendored and it is not installed by `pip`; users
+supply their own binary.
 
 ## License
 
