@@ -201,6 +201,90 @@ def calibrate_length_dependent(
     return table
 
 
+def calibrate_clustermax(
+    sub_matrix: np.ndarray,
+    token_lists,
+    clusters,
+    gap_open: float = -2.0,
+    gap_extend: float = -0.5,
+    length: int = 300,
+    n_queries: int = 64,
+    seed: int = 0,
+    exclude=None,
+) -> dict:
+    """Fit the null to cluster maxima rather than to individual pairs.
+
+    A Gumbel is the limit law of a maximum, so the sample it is fitted to
+    should be maxima. Taking the best score a query reaches against each
+    sequence cluster makes that true, and at the same time makes redundancy
+    harmless: a family present four hundred times contributes one draw, not
+    four hundred. Nothing then has to be censored to keep near-duplicates from
+    dominating the tail, which removes the one parameter that had to be
+    retuned for every database.
+
+    ``clusters`` gives a cluster label per chain, as produced upstream by
+    ``cd-hit-est -c 0.8 -n 5 -aS 0.8 -aL 0.8 -g 1``; this function does not
+    cluster anything itself. ``exclude(i, j)`` may reject a query/target pair
+    on labels the caller holds, such as the same Rfam family or clan.
+
+    Returns ``mu``/``beta`` of the fitted Gumbel together with the cluster and
+    chain counts; feed ``mu``, ``beta`` and the cluster count to
+    ``evalue_clustermax``.
+    """
+    rng = np.random.default_rng(seed)
+    sub = np.asarray(sub_matrix, dtype=np.float32)
+    toks = [np.asarray(t, dtype=np.int64) for t in token_lists]
+    clusters = np.asarray(clusters, dtype=object)
+    if len(clusters) != len(toks):
+        raise ValueError("clusters must give one label per chain")
+    members: dict = {}
+    for i, c in enumerate(clusters):
+        members.setdefault(c, []).append(i)
+    if len(members) < 2:
+        raise ValueError("need at least two clusters to calibrate")
+
+    lens = np.array([len(t) for t in toks])
+    order = np.argsort(np.abs(lens - float(length)))
+    pool = [int(i) for i in order[: max(2, min(len(order), n_queries))]]
+
+    maxima = []
+    for qi in pool:
+        for c, mem in members.items():
+            if c == clusters[qi]:
+                continue
+            mem = [j for j in mem if j != qi and (exclude is None or not exclude(qi, j))]
+            if not mem:
+                continue
+            maxima.append(max(smith_waterman_numba(toks[qi], toks[j], sub,
+                                                   gap_open, gap_extend) for j in mem))
+    x = np.asarray(maxima, dtype=np.float64)
+    if x.size < 20:
+        raise ValueError("too few cluster maxima to fit; widen the query pool")
+    mu, beta = _gumbel_mle(x)
+    return {
+        "mu": float(mu),
+        "beta": float(beta),
+        "lambda": float(1.0 / beta),
+        "n_clusters": len(members),
+        "n_chains": len(toks),
+        "n_maxima": int(x.size),
+        "length": int(length),
+        "null_score_mean": float(x.mean()),
+        "null_score_std": float(x.std(ddof=1)) if x.size > 1 else 0.0,
+    }
+
+
+def evalue_clustermax(score, mu: float, beta: float, n_clusters: int):
+    """Expected number of clusters reaching ``score`` by chance.
+
+    The null was fitted to one maximum per cluster, so the search space is
+    counted in clusters as well; a database that holds a family four hundred
+    times still poses one question about it.
+    """
+    s = np.asarray(score, dtype=np.float64)
+    return float(n_clusters) * (1.0 - np.exp(-np.exp(-(s - mu) / beta)))
+
+
 def params_for_length(params: dict, m: float):
     """Interpolate (lambda, K) for a query of length ``m`` from a length table.
 
