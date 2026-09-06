@@ -12,15 +12,19 @@ chance:
 where ``m`` is the query length, ``N`` is the total number of tokens in the
 target database, and ``lambda``/``K`` are the Gumbel parameters of the null
 score distribution. Gapped local alignment has no closed form for
-``lambda``/``K``; we calibrate them once by scoring random token-sequence pairs
-drawn from the database's background token frequencies, with the *same* matrix
-and gap penalties as the search, and fitting a Gumbel distribution to the
-optimal local scores. Calibration is done by build_evalue_params.py and cached
+``lambda``/``K``; we calibrate them once by scoring pairs of real database
+chains, with the *same* matrix and gap penalties as the search, censoring the
+highest-scoring fraction (which is where genuinely related chains land) and
+fitting a Gumbel distribution to the remainder. Randomised strings must not be
+used for this: shuffling or resampling tokens destroys the generic helical
+grammar shared by all RNA structures, putting the null far below real unrelated
+chains and inflating significance by orders of magnitude. Calibration is done by build_evalue_params.py and cached
 to files/models/evalue_params.json; the RFoldseek CLI only reads that file.
 """
 
 from __future__ import annotations
 
+import math
 import numpy as np
 
 from .smith_waterman import smith_waterman_numba
@@ -28,73 +32,89 @@ from .smith_waterman import smith_waterman_numba
 EULER_GAMMA = 0.5772156649015329
 
 
-def background_frequencies(token_lists, n_codes: int) -> np.ndarray:
-    """Empirical token frequencies over the whole database (Laplace-smoothed)."""
-    counts = np.ones(n_codes, dtype=np.float64)  # +1 smoothing avoids p == 0
-    for t in token_lists:
-        if len(t):
-            counts += np.bincount(np.asarray(t, dtype=np.int64), minlength=n_codes)[:n_codes]
-    return counts / counts.sum()
+def _gumbel_mle(scores):
+    """Maximum-likelihood Gumbel fit; returns (mu, beta)."""
+    x = np.asarray(scores, dtype=np.float64)
+    beta = max(np.std(x, ddof=1) * math.sqrt(6.0) / math.pi, 1e-6)
+    for _ in range(200):                      # Newton on the profile likelihood
+        z = np.exp(-x / beta)
+        sz, sxz = z.sum(), (x * z).sum()
+        f = x.mean() - sxz / sz - beta
+        if abs(f) < 1e-10:
+            break
+        sxxz = (x * x * z).sum()
+        df = (sxz * sxz) / (sz * sz * beta * beta) - sxxz / (sz * beta * beta) - 1.0
+        step = f / df if abs(df) > 1e-12 else 0.0
+        beta = max(beta - step, 1e-6)
+    mu = -beta * math.log(np.exp(-x / beta).mean())
+    return float(mu), float(beta)
 
 
 def calibrate(
     sub_matrix: np.ndarray,
-    background: np.ndarray,
+    token_lists,
     gap_open: float = -2.0,
     gap_extend: float = -0.5,
     length: int = 300,
     n_pairs: int = 4000,
     seed: int = 0,
+    censor: float = 0.10,
 ) -> dict:
-    """Fit Karlin-Altschul lambda/K from random token-pair SW scores.
+    """Fit Karlin-Altschul lambda/K from REAL database chain pairs.
 
-    Random sequences of ``length`` tokens are drawn i.i.d. from ``background``
-    and aligned with the deployed matrix / gap penalties. The optimal local
-    score of independent sequences is asymptotically Gumbel-distributed:
+    The null must describe what an *unrelated real RNA* scores, not what a
+    randomised string scores. Sampling tokens independently from the database
+    background composition -- as this function previously did -- destroys the
+    generic helical grammar every RNA structure shares, so the null sits far
+    below real unrelated chains and the resulting E-values overstate
+    significance by orders of magnitude.
 
-        E[S]  = (ln(K m n) + gamma) / lambda,
-        Var[S] = pi^2 / (6 lambda^2).
-
-    Method-of-moments estimator (Altschul & Gish, 1996):
-        lambda = pi / (std(S) * sqrt(6)),
-        K      = exp(lambda * mean(S) - gamma) / (m * n).
+    Query chains of approximately ``length`` tokens are therefore aligned
+    against uniformly drawn database chains. A redundant database contributes
+    some genuinely related chains to such a sample, so the highest-scoring
+    ``censor`` fraction is dropped before fitting (Pearson, 1998). The
+    remaining scores are fitted by maximum likelihood and converted to the
+    Karlin-Altschul parameterisation via beta = 1/lambda and
+    mu = ln(K m n) / lambda.
     """
-    n_codes = sub_matrix.shape[0]
     rng = np.random.default_rng(seed)
     sub = np.asarray(sub_matrix, dtype=np.float32)
-    p = np.asarray(background, dtype=np.float64)
-    p = p / p.sum()
+    toks = [np.asarray(t, dtype=np.int64) for t in token_lists if len(t) >= 4]
+    if not toks:
+        raise ValueError("no usable chains for calibration")
+    lens = np.array([len(t) for t in toks])
+
+    # queries: the chains closest in length to the requested calibration point
+    order = np.argsort(np.abs(lens - float(length)))
+    pool = order[: max(8, min(len(order), 64))]
 
     scores = np.empty(n_pairs, dtype=np.float64)
+    q_len = np.empty(n_pairs)
+    t_len = np.empty(n_pairs)
     for i in range(n_pairs):
-        a = rng.choice(n_codes, size=length, p=p).astype(np.int64)
-        b = rng.choice(n_codes, size=length, p=p).astype(np.int64)
-        scores[i] = smith_waterman_numba(a, b, sub, gap_open, gap_extend)
+        qi = int(pool[rng.integers(len(pool))])
+        ti = int(rng.integers(len(toks)))
+        while ti == qi:
+            ti = int(rng.integers(len(toks)))
+        scores[i] = smith_waterman_numba(toks[qi], toks[ti], sub, gap_open, gap_extend)
+        q_len[i], t_len[i] = len(toks[qi]), len(toks[ti])
 
-    mean = float(scores.mean())
-    std = float(scores.std(ddof=1))
-    if std <= 0:
-        raise ValueError("degenerate null score distribution (std=0); check matrix/gaps")
-    lam = float(np.pi / (std * np.sqrt(6.0)))
-    mn = float(length) * float(length)
-    k_param = float(np.exp(lam * mean - EULER_GAMMA) / mn)
+    keep = np.argsort(scores)[: max(10, int(round(n_pairs * (1.0 - censor))))]
+    kept = scores[keep]
+    mu, beta = _gumbel_mle(kept)
+    lam = 1.0 / beta
+    m_eff, n_eff = float(q_len[keep].mean()), float(t_len[keep].mean())
+    k_param = float(math.exp(lam * mu) / (m_eff * n_eff))
     return {
-        "lambda": lam,
+        "lambda": float(lam),
         "K": k_param,
-        "gap_open": float(gap_open),
-        "gap_extend": float(gap_extend),
-        "calib_length": int(length),
+        "length": int(length),
         "n_pairs": int(n_pairs),
-        "seed": int(seed),
-        "null_score_mean": mean,
-        "null_score_std": std,
-        "null_score_min": float(scores.min()),
-        "note": (
-            "Karlin-Altschul Gumbel parameters (method-of-moments) for the token "
-            "Smith-Waterman score under Structure-BLOSUM. Database E-value for a "
-            "hit scoring S is E = K * m * N * exp(-lambda * S), with m the query "
-            "length and N the total token count of the target database."
-        ),
+        "censor": float(censor),
+        "m_eff": m_eff,
+        "n_eff": n_eff,
+        "null_score_mean": float(kept.mean()),
+        "null_score_std": float(kept.std(ddof=1)),
     }
 
 
@@ -124,35 +144,46 @@ def _isotonic_nonincreasing(y) -> np.ndarray:
 
 def calibrate_length_dependent(
     sub_matrix: np.ndarray,
-    background: np.ndarray,
+    token_lists,
     gap_open: float = -2.0,
     gap_extend: float = -0.5,
     lengths=(20, 30, 40, 60, 80, 120, 160, 220, 300, 500, 1000, 2000),
     n_pairs: int = 4000,
-    long_n_pairs: int = 800,
+    long_n_pairs: int = 4000,
     long_thresh: int = 300,
     seed: int = 0,
-    monotone: bool = True,
+    monotone: bool = False,
 ) -> list:
     """Calibrate lambda/K on a grid of sequence lengths.
 
     Asymptotic Karlin-Altschul theory is length-independent, but at finite
-    length the random local-alignment score distribution has an edge effect:
-    short sequences give a *larger* lambda/K and long sequences a smaller one,
-    so a single fixed calibration over-estimates significance for long chains
-    (rRNA) and under-estimates it for short ones. Since ~two thirds of the
-    database chains are < 100 nt, we calibrate lambda/K at several lengths and
-    let the caller interpolate to the actual query length. Long lengths
-    (> ``long_thresh``) use fewer random pairs: lambda/K are essentially
-    converged there and the O(L^2) alignment is expensive. With
-    ``monotone=True`` the lambda and log-K grids are smoothed to be
-    non-increasing (both are physically monotone in length), removing
-    method-of-moments wobble; raw values are retained as ``lambda_raw``/``K_raw``.
+    length the random local-alignment score distribution has an edge effect,
+    so lambda/K are calibrated at several lengths and the caller interpolates
+    to the actual query length. Since ~two thirds of the database chains are
+    < 100 nt, the grid is dense at the short end.
+
+    Measured on the 885-chain benchmark, lambda falls with length only over
+    the short arm, reaching about 0.38 near L=120, and then *rises* again to
+    about 0.51 by L=1000, where it flattens. Repeating each point over three
+    seeds puts the seed-to-seed spread at +/-0.005, fifteen times smaller than
+    that rise, so the shape is real and not sampling noise. ``monotone`` is
+    therefore off by default: forcing the grid to be non-increasing collapses
+    every point above L=80 onto one value and discards a genuine trend. With
+    lambda pinned 15% low at L=1000, and E proportional to exp(-lambda S),
+    a score of 60 comes out roughly two orders of magnitude too conservative
+    -- and long chains are the ribosomal targets a search hits most often.
+    Set ``monotone=True`` to restore the old smoothing; raw values are kept as
+    ``lambda_raw``/``K_raw`` whenever it is on.
+
+    ``long_n_pairs`` applies above ``long_thresh``, where the O(L^2) alignment
+    is expensive. It matches ``n_pairs`` by default: at 800 pairs the L=500
+    estimate was off by 6% against the 4000-pair value, and one length point
+    costs about 30 seconds.
     """
     table = []
     for L in lengths:
         npair = n_pairs if L <= long_thresh else long_n_pairs
-        par = calibrate(sub_matrix, background, gap_open, gap_extend, int(L), npair, seed)
+        par = calibrate(sub_matrix, token_lists, gap_open, gap_extend, int(L), npair, seed)
         table.append({
             "length": int(L),
             "lambda": par["lambda"],
@@ -168,6 +199,90 @@ def calibrate_length_dependent(
             r["lambda_raw"], r["K_raw"] = r["lambda"], r["K"]
             r["lambda"], r["K"] = float(lam), float(kk)
     return table
+
+
+def calibrate_clustermax(
+    sub_matrix: np.ndarray,
+    token_lists,
+    clusters,
+    gap_open: float = -2.0,
+    gap_extend: float = -0.5,
+    length: int = 300,
+    n_queries: int = 64,
+    seed: int = 0,
+    exclude=None,
+) -> dict:
+    """Fit the null to cluster maxima rather than to individual pairs.
+
+    A Gumbel is the limit law of a maximum, so the sample it is fitted to
+    should be maxima. Taking the best score a query reaches against each
+    sequence cluster makes that true, and at the same time makes redundancy
+    harmless: a family present four hundred times contributes one draw, not
+    four hundred. Nothing then has to be censored to keep near-duplicates from
+    dominating the tail, which removes the one parameter that had to be
+    retuned for every database.
+
+    ``clusters`` gives a cluster label per chain, as produced upstream by
+    ``cd-hit-est -c 0.8 -n 5 -aS 0.8 -aL 0.8 -g 1``; this function does not
+    cluster anything itself. ``exclude(i, j)`` may reject a query/target pair
+    on labels the caller holds, such as the same Rfam family or clan.
+
+    Returns ``mu``/``beta`` of the fitted Gumbel together with the cluster and
+    chain counts; feed ``mu``, ``beta`` and the cluster count to
+    ``evalue_clustermax``.
+    """
+    rng = np.random.default_rng(seed)
+    sub = np.asarray(sub_matrix, dtype=np.float32)
+    toks = [np.asarray(t, dtype=np.int64) for t in token_lists]
+    clusters = np.asarray(clusters, dtype=object)
+    if len(clusters) != len(toks):
+        raise ValueError("clusters must give one label per chain")
+    members: dict = {}
+    for i, c in enumerate(clusters):
+        members.setdefault(c, []).append(i)
+    if len(members) < 2:
+        raise ValueError("need at least two clusters to calibrate")
+
+    lens = np.array([len(t) for t in toks])
+    order = np.argsort(np.abs(lens - float(length)))
+    pool = [int(i) for i in order[: max(2, min(len(order), n_queries))]]
+
+    maxima = []
+    for qi in pool:
+        for c, mem in members.items():
+            if c == clusters[qi]:
+                continue
+            mem = [j for j in mem if j != qi and (exclude is None or not exclude(qi, j))]
+            if not mem:
+                continue
+            maxima.append(max(smith_waterman_numba(toks[qi], toks[j], sub,
+                                                   gap_open, gap_extend) for j in mem))
+    x = np.asarray(maxima, dtype=np.float64)
+    if x.size < 20:
+        raise ValueError("too few cluster maxima to fit; widen the query pool")
+    mu, beta = _gumbel_mle(x)
+    return {
+        "mu": float(mu),
+        "beta": float(beta),
+        "lambda": float(1.0 / beta),
+        "n_clusters": len(members),
+        "n_chains": len(toks),
+        "n_maxima": int(x.size),
+        "length": int(length),
+        "null_score_mean": float(x.mean()),
+        "null_score_std": float(x.std(ddof=1)) if x.size > 1 else 0.0,
+    }
+
+
+def evalue_clustermax(score, mu: float, beta: float, n_clusters: int):
+    """Expected number of clusters reaching ``score`` by chance.
+
+    The null was fitted to one maximum per cluster, so the search space is
+    counted in clusters as well; a database that holds a family four hundred
+    times still poses one question about it.
+    """
+    s = np.asarray(score, dtype=np.float64)
+    return float(n_clusters) * (1.0 - np.exp(-np.exp(-(s - mu) / beta)))
 
 
 def params_for_length(params: dict, m: float):
@@ -221,21 +336,25 @@ def neg_log10_evalue(score, m, n, lam: float, k_param: float):
 
 
 if __name__ == "__main__":
-    # Sanity: random pairs -> E ~ O(m*n) (not significant); identical -> E << 1.
+    # Sanity on synthetic "chains" with local structure: unrelated pairs should
+    # be unremarkable, a self-alignment overwhelming.
     rng = np.random.default_rng(0)
     n_codes = 80
     sub = rng.standard_normal((n_codes, n_codes)).astype(np.float32) * 0.4
     sub = (sub + sub.T) / 2
     np.fill_diagonal(sub, 1.0)
-    bg = np.ones(n_codes) / n_codes
-    par = calibrate(sub, bg, length=200, n_pairs=1500, seed=1)
+    chains = []
+    for _ in range(60):                     # runs of repeated tokens, as real
+        out = []                            # token strings are autocorrelated
+        while len(out) < 200:
+            out += [int(rng.integers(n_codes))] * int(rng.integers(1, 5))
+        chains.append(np.asarray(out[:200], dtype=np.int64))
+    par = calibrate(sub, chains, length=200, n_pairs=400, seed=1)
     lam, kp = par["lambda"], par["K"]
     print("lambda=%.4f K=%.4g null mean=%.2f std=%.2f" %
           (lam, kp, par["null_score_mean"], par["null_score_std"]))
-    a = rng.choice(n_codes, size=200, p=bg).astype(np.int64)
-    b = rng.choice(n_codes, size=200, p=bg).astype(np.int64)
-    N = 200 * 500  # pretend a 500-chain database of length-200 chains
-    print("random  : S=%.1f  E=%.3g" % (smith_waterman_numba(a, b, sub, -2, -0.5),
-          evalue(smith_waterman_numba(a, b, sub, -2, -0.5), 200, N, lam, kp)))
-    print("identical: S=%.1f  E=%.3g" % (smith_waterman_numba(a, a, sub, -2, -0.5),
-          evalue(smith_waterman_numba(a, a, sub, -2, -0.5), 200, N, lam, kp)))
+    N = 200 * 500
+    for name, (a, b) in {"unrelated": (chains[0], chains[1]),
+                         "identical": (chains[0], chains[0])}.items():
+        sc = smith_waterman_numba(a, b, sub, -2, -0.5)
+        print("%-10s S=%.1f  E=%.3g" % (name, sc, evalue(sc, 200, N, lam, kp)))
