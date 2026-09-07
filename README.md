@@ -14,6 +14,7 @@ RFoldseek enables fast RNA tertiary-structure search with **3Dr**, a learned dis
     + [Build a database](#build-a-database)
     + [Search](#search)
     + [Python API](#python-api)
+      - [Tokenize a structure into 3Dr](#tokenize-a-structure-into-3dr)
   * [Third-party components](#third-party-components)
   * [License](#license)
 
@@ -141,7 +142,38 @@ rank  target                    TM_mean  TM_query  TM_target    len
 
 ### Python API
 
-Search a chain that is already in the database:
+#### Tokenize a structure into 3Dr
+
+The alphabet is the primitive everything else is built on: `encode_entry`
+turns one chain into a token per nucleotide, each an integer in `0..79`. There
+is no letter form — 80 states do not fit the Latin alphabet — so the tokens are
+an integer array, and a chain is a string over that alphabet.
+
+```python
+import torch
+from rfoldseek import structure_to_entry
+from rfoldseek.search import asset
+from rfoldseek.tokenizer import encode_entry, load_model
+
+model, ckpt, n_codes, _ = load_model(asset("desc_vqvae_best.pt"))   # or your own
+enc = encode_entry(model, structure_to_entry("query.cif"), torch.device("cpu"),
+                   ckpt.get("norm_mean"), ckpt.get("norm_std"))
+
+enc["tokens"]     # int16, one 3Dr state per resolved nucleotide, e.g. [22, 53, 53, 44, …]
+enc["n_valid"]    # how many nucleotides were resolved well enough to tokenize
+enc["coords"]     # (n_valid, 5, 3) backbone coordinates, kept for US-align
+```
+
+`encode_entry` returns `None` when a chain has no resolved nucleotides at all,
+or when its edge arrays disagree with its mask; there is no minimum length here,
+`--min_len` is applied by `rfoldseek build`. `structure_to_entry` reads both
+`.cif` and `.pdb`, and `load_model` puts the model on whatever device you pass,
+so `torch.device("cuda")` runs the tokenizer on a GPU.
+
+#### Search
+
+A query already in the database needs no tokenizer, since the database holds
+its tokens:
 
 ```python
 from rfoldseek import Searcher
@@ -151,37 +183,26 @@ hits = s.search_id("my_chain", top_k=10)
 # [{'rank': 1, 'target': …, 'sw_score': …, 'bits': …, 'evalue': …}, …]
 ```
 
-`search_id` forwards keyword arguments to `search`, so `top_n`, `min_diag` and
-`rerank` are available there too. `bits` and `evalue` are present when E-value parameters are loaded, which they are by default.
-
-`Searcher` takes no tokenizer: searching happens on tokens, and the database
-already holds them. It does accept the two files that interpret those tokens —
-`Searcher(db, matrix_path=…, evalue_params_path=…)` — which is how you search
-under a different Structure-BLOSUM matrix or a calibration of your own.
-
-The VQ-VAE checkpoint is needed only to turn a structure *file* into tokens, so
-a query that is not in the database is encoded first and searched second:
+Anything else is searched by handing `search` the tokens from above:
 
 ```python
-import numpy as np, torch
-from rfoldseek import Searcher, structure_to_entry
-from rfoldseek.search import asset
-from rfoldseek.tokenizer import encode_entry, load_model
+import numpy as np
 
-model, ckpt, _, _ = load_model(asset("desc_vqvae_best.pt"))   # or your own
-entry = structure_to_entry("query.cif")
-enc = encode_entry(model, entry, torch.device("cpu"),
-                   ckpt.get("norm_mean"), ckpt.get("norm_std"))
-
-s = Searcher("my_db.pt")
 hits = s.search(np.asarray(enc["tokens"], np.int64), query_entry=enc, top_k=10)
 ```
 
-`encode_entry` returns `None` for a chain it cannot encode. `query_entry` is
-only read by `rerank="tm"`, which needs the query coordinates for US-align;
-plain Smith-Waterman search can leave it out. The equivalent on the command
-line is `rfoldseek search --model`, and `rfoldseek build --checkpoint` at build
-time; both default to the bundled checkpoint.
+`query_entry` is read only by `rerank="tm"`, which needs the query coordinates
+for US-align; plain Smith-Waterman search can leave it out. `search_id`
+forwards its keyword arguments to `search`, so `top_n`, `min_diag`, `rerank`
+and `tie_seed` are available from both. `bits` and `evalue` are present when
+E-value parameters are loaded, which they are by default.
+
+`Searcher` deliberately takes no tokenizer — searching happens on tokens, not
+structures. It does accept the two files that interpret those tokens,
+`Searcher(db, matrix_path=…, evalue_params_path=…)`, which is how to search
+under a different Structure-BLOSUM matrix or a calibration of your own. On the
+command line the same choices are `rfoldseek search --model / --matrix` and
+`rfoldseek build --checkpoint`; all default to the bundled files.
 
 ## Third-party components
 
