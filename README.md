@@ -15,6 +15,7 @@ RFoldseek enables fast RNA tertiary-structure search with **3Dr**, a learned dis
     + [Search](#search)
     + [Python API](#python-api)
       - [Tokenize a structure into 3Dr](#tokenize-a-structure-into-3dr)
+      - [Search](#search) 
   * [Third-party components](#third-party-components)
   * [License](#license)
 
@@ -86,9 +87,9 @@ rfoldseek search --query queries_db.pt --query_id chainA --db my_db.pt
 Both commands run the same two-stage pipeline — a k-mer prefilter over the 3Dr tokens, 
 then a reranking of the candidates. What differs is how the candidates are reranked, chosen with `--rerank`:
 
-- **`sw`** (default) — affine-gap token Smith-Waterman, with a Karlin-Altschul
+- **`sw`** (default): affine-gap token Smith-Waterman, with a Karlin-Altschul
   E-value per hit. Fast, self-contained.
-- **`tm`** — RFoldseek-TM: the candidate pool is handed to
+- **`tm`** (RFoldseek-TM): the candidate pool is handed to
   [US-align](https://github.com/pylelab/USalign) and ranked by the mean of its two length-normalised TM-scores. 
   This measures structural similarity directly instead of scoring a token alignment, at a large cost in speed.
 
@@ -110,17 +111,17 @@ git clone https://github.com/pylelab/USalign && cd USalign && g++ -O3 -o USalign
 A comment line naming the query and the database, then one row per hit. Under the default mode, hits are ranked by Smith-Waterman score:
 
 ```
-# query: chainA  (128 tokens)   database: my_db.pt
+# query: chainA  (128 tokens)   database: my_db.pt  (12043 chains)
 rank  target                    SW_score    bits    E-value    len
    1  4V9F_A                      412.00   118.3    2.1e-30    129
    2  6XU8_B                      287.50    83.1    5.4e-19    121
    3  7QR4_A                      231.00    67.4    8.8e-14    134
 ```
 
-Under `--rerank tm` the comment line names the backend and the score columns change:
+Under `--rerank tm` — RFoldseek-TM — the comment line names the mode and the score columns change:
 
 ```
-# query: PDB_00007O81_1_AJ  (74 tokens)   database: db.pt  (885 chains)   rerank: US-align TM
+# query: PDB_00007O81_1_AJ  (74 tokens)   database: db.pt  (885 chains)   rerank: RFoldseek-TM (US-align)
 rank  target                    TM_mean  TM_query  TM_target    len
    1  PDB_00008B2L_1_W2          0.7076    0.7143     0.7008     76
    2  PDB_00008KD9_1_M           0.6724    0.6674     0.6773     72
@@ -144,10 +145,8 @@ rank  target                    TM_mean  TM_query  TM_target    len
 
 #### Tokenize a structure into 3Dr
 
-The alphabet is the primitive everything else is built on: `encode_entry`
-turns one chain into a token per nucleotide, each an integer in `0..79`. There
-is no letter form — 80 states do not fit the Latin alphabet — so the tokens are
-an integer array, and a chain is a string over that alphabet.
+The **3Dr** alphabet is built on: `encode_entry` turns one chain into a token per nucleotide, each an integer in `0..79`. 
+There is no letter form — 80 states do not fit the Latin alphabet — so the tokens are an integer array, and a chain is a string over that alphabet.
 
 ```python
 import torch
@@ -172,8 +171,7 @@ so `torch.device("cuda")` runs the tokenizer on a GPU.
 
 #### Search
 
-A query already in the database needs no tokenizer, since the database holds
-its tokens:
+A query already in the database needs no tokenizer, since the database holds its tokens:
 
 ```python
 from rfoldseek import Searcher
@@ -206,17 +204,8 @@ command line the same choices are `rfoldseek search --model / --matrix` and
 
 ## Third-party components
 
-No third-party source is vendored. `backbone.py`, `tokenizer.py` and
-`prefilter_reference.py` are ported from the authors' own
-`RFoldseek-paper-code`, with imports adjusted; the ported files say so in their
-module docstrings.
-
-The prefilter's double-match rule — admitting a target only on two k-mer hits
-sharing a diagonal — follows Foldseek (van Kempen et al., *Nat. Biotechnol.*
-2024). Runtime dependencies are `numpy`, `torch`, `numba` and `biotite`, each
-under its own license.
-
-`--rerank tm` calls US-align (Zhang et al., *Nat. Methods* 2022) as an external
+No third-party source is vendored. Runtime dependencies are `numpy`, `torch`, `numba` and `biotite`, each
+under its own license. `--rerank tm` calls US-align (Zhang et al., *Nat. Methods* 2022) as an external
 program, and `--clusters` consumes the output of CD-HIT-EST (Fu et al.,
 *Bioinformatics* 2012). Neither source is vendored and neither is installed by
 `pip`; users supply their own binaries.

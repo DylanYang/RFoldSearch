@@ -69,7 +69,7 @@ def cmd_search(a):
 
     head = f"# query: {qname}  ({qlen} tokens)   database: {a.db}  ({len(s.toks)} chains)"
     if a.rerank == "tm":
-        head += "   rerank: US-align TM"
+        head += "   rerank: RFoldseek-TM (US-align)"
     print(head)
     if not hits:
         print("# no candidates passed the prefilter (try lowering --min_diag)")
