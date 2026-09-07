@@ -1,6 +1,6 @@
 <h1><a name="rfoldseek"></a><img src=".github/header.PNG" alt="RFoldseek" height="88" /></h1>
 
-RFoldseek enables fast RNA tertiary-structure search with **3Dr**, a learned discrete structural alphabet. Each nucleotide's local geometry is quantised into one of 80 states by a VQ-VAE, converting RNA chains into token strings that are searched with an inverted-index k-mer prefilter. The standard RFoldseek mode reranks prefilter hits by affine-gap token Smith-Waterman alignment and assigns a Karlin-Altschul database E-value to each hit. We also provide RFoldseek-TM, an accuracy-oriented mode in which the same prefilter candidates are reranked by coordinate alignment with US-align using the mean of the two length-normalised TM-scores.
+RFoldseek enables fast RNA tertiary-structure search with **3Dr**, a learned discrete structural alphabet. Each nucleotide's local geometry is quantised into one of 80 states by a VQ-VAE, converting RNA chains into token strings that are searched with an inverted-index k-mer prefilter. The standard RFoldseek mode reranks prefilter hits by affine-gap token Smith-Waterman alignment and assigns a Karlin-Altschul database E-value to each hit, counting the search space in CD-HIT-EST sequence clusters rather than in chains so that a family stored many times poses one question of the database. We also provide RFoldseek-TM, an accuracy-oriented mode in which the same prefilter candidates are reranked by coordinate alignment with US-align using the mean of the two length-normalised TM-scores.
 
 <p align="center"><img src=".github/fig1.jpeg" width="720" /></p>
 
@@ -50,10 +50,20 @@ rfoldseek preprocess --pdb_dir my_structures/ --output my.jsonl
 
 ### Build a database
 
-Tokenize the JSONL and write a searchable token database:
+Cluster the target sequences at 80% identity, then tokenize the JSONL and
+write a searchable token database:
 
 ```
-rfoldseek build --data my.jsonl --output my_db.pt
+cd-hit-est -i targets.fa -o nr80 -c 0.8 -n 5 -aS 0.8 -aL 0.8 -g 1
+rfoldseek build --data my.jsonl --output my_db.pt --clusters nr80.clstr
+```
+
+`cd-hit-est` is an external program, neither bundled nor installed by `pip`.
+Build it once from source if your platform has no package for it:
+
+```
+curl -L -O https://github.com/weizhongli/cdhit/releases/download/V4.8.1/cd-hit-v4.8.1-2019-0228.tar.gz
+tar xzf cd-hit-v4.8.1-2019-0228.tar.gz && cd cd-hit-v4.8.1-2019-0228 && make openmp=no
 ```
 
 | Option         | Description                                                     |
@@ -62,18 +72,17 @@ rfoldseek build --data my.jsonl --output my_db.pt
 | `--checkpoint` | VQ-VAE tokenizer to encode with (default: the bundled one)       |
 | `--clusters`   | CD-HIT `.clstr` (or id/cluster TSV) grouping near-duplicate chains |
 
-E-values count the search space in sequence clusters, so pass `--clusters` for
-any database that holds families more than once. Produce it with
+`--clusters` is what makes the E-value correct on a redundant database. The
+cluster labels are stored with the database, since the E-value needs the
+cluster count of whatever is being searched. Omit it — or search a database
+built before this option existed — and every chain counts as its own cluster:
+right for a non-redundant set, and too permissive for a redundant one. On a
+3717-chain database averaging 7.8 chains per cluster, chain counting reports
+E-values roughly two orders of magnitude too small at E = 0.1.
 
-```
-cd-hit-est -i targets.fa -o nr80 -c 0.8 -n 5 -aS 0.8 -aL 0.8 -g 1
-rfoldseek build --data my.jsonl --output my_db.pt --clusters nr80.clstr
-```
-
-Without it every chain counts as its own cluster, which is correct for a
-non-redundant database and reports E-values that are too small for a redundant
-one — on a 3717-chain database averaging 7.8 chains per cluster, roughly two
-orders of magnitude too small at E=0.1.
+The clustering thresholds above are the ones used in the paper. Any `.clstr`
+file works, as does a two-column `id<TAB>cluster` TSV, so an existing
+clustering can be reused instead of running CD-HIT again.
 
 ### Search
 
@@ -203,8 +212,9 @@ sharing a diagonal — follows Foldseek (van Kempen et al., *Nat. Biotechnol.*
 under its own license.
 
 `--rerank tm` calls US-align (Zhang et al., *Nat. Methods* 2022) as an external
-program. Its source is not vendored and it is not installed by `pip`; users
-supply their own binary.
+program, and `--clusters` consumes the output of CD-HIT-EST (Fu et al.,
+*Bioinformatics* 2012). Neither source is vendored and neither is installed by
+`pip`; users supply their own binaries.
 
 ## License
 
