@@ -60,6 +60,20 @@ rfoldseek build --data my.jsonl --output my_db.pt
 | -------------- | --------------------------------------------------------------- |
 | `--min_len`    | Skip chains shorter than this (default: 20, as used in the paper) |
 | `--checkpoint` | VQ-VAE tokenizer to encode with (default: the bundled one)       |
+| `--clusters`   | CD-HIT `.clstr` (or id/cluster TSV) grouping near-duplicate chains |
+
+E-values count the search space in sequence clusters, so pass `--clusters` for
+any database that holds families more than once. Produce it with
+
+```
+cd-hit-est -i targets.fa -o nr80 -c 0.8 -n 5 -aS 0.8 -aL 0.8 -g 1
+rfoldseek build --data my.jsonl --output my_db.pt --clusters nr80.clstr
+```
+
+Without it every chain counts as its own cluster, which is correct for a
+non-redundant database and reports E-values that are too small for a redundant
+one — on a 3717-chain database averaging 7.8 chains per cluster, roughly two
+orders of magnitude too small at E=0.1.
 
 ### Search
 
@@ -108,6 +122,14 @@ rank  target                    SW_score    bits    E-value    len
    2  6XU8_B                      287.50    83.1    5.4e-19    121
    3  7QR4_A                      231.00    67.4    8.8e-14    134
 ```
+
+Values above are illustrative; the column layout is what `rfoldseek search`
+prints. `len` is the target's token length. `bits` and `E-value` appear when
+E-value parameters are loaded, which they are by default. The E-value is the
+expected number of database *clusters* reaching this score by chance, and the
+bit score is `(S - mu) / (beta ln 2)`, so `E = N_clusters * 2**(-bits)`. When
+nothing survives the prefilter, a single comment line says so and suggests
+lowering `--min_diag`.
 
 Under `--rerank tm` the comment line names the backend and the score columns change:
 
@@ -163,7 +185,7 @@ rfoldseek/
   prefilter_reference.py      reference implementation (semantic ground truth)
   smith_waterman.py           numba token Smith-Waterman
   usalign.py                  US-align TM-score reranking (RFoldseek-TM)
-  evalue.py                   Karlin-Altschul bit score / E-value
+  evalue.py                   cluster-max bit score / E-value
   search.py, cli.py           pipeline and command line
   assets/                     deployed tokenizer, matrix, E-value params
 ```

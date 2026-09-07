@@ -31,7 +31,8 @@ def cmd_preprocess(a):
 
 
 def cmd_build(a):
-    build_database(a.checkpoint, a.data, a.output, min_len=a.min_len)
+    build_database(a.checkpoint, a.data, a.output, min_len=a.min_len,
+                   clusters=a.clusters)
 
 
 def cmd_search(a):
@@ -112,6 +113,11 @@ def main(argv=None):
     p.add_argument("--output", required=True)
     p.add_argument("--checkpoint", default=asset("desc_vqvae_best.pt"))
     p.add_argument("--min_len", type=int, default=20)
+    p.add_argument("--clusters", default=None,
+                   help="CD-HIT .clstr (or id/cluster TSV) grouping "
+                        "near-duplicate chains; E-values are counted in "
+                        "clusters, so without it a redundant database "
+                        "reports E-values that are too small")
     p.set_defaults(fn=cmd_build)
 
     p = sub.add_parser("search", help="search a query against a token database")

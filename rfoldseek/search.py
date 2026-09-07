@@ -43,11 +43,14 @@ class Searcher:
     """Load a database once, search many queries."""
 
     def __init__(self, db_path, matrix_path=None, evalue_params_path=None):
-        self.db, self.ents, self.toks, self.ids, self.n_codes = load_database(db_path)
+        (self.db, self.ents, self.toks, self.ids, self.n_codes,
+         self.clusters) = load_database(db_path)
         self.id2i = {cid: i for i, cid in enumerate(self.ids)}
         self.sub = load_matrix(matrix_path)
         self.prefilter = KmerPrefilter(self.toks, self.n_codes, self.sub)
-        self.n_db_tokens = int(sum(len(t) for t in self.toks))
+        # E-values count the search space in sequence clusters, so a family
+        # held four hundred times poses one question of the database.
+        self.n_clusters = len(set(self.clusters))
         ev_path = evalue_params_path or asset("evalue_params.json")
         self.ev_par = json.load(open(ev_path)) if os.path.exists(ev_path) else None
         self._tie_cache = {}
@@ -107,10 +110,11 @@ class Searcher:
             hit = {"rank": rank, "target": self.ids[t], "sw_score": sc,
                    "length": len(self.toks[t])}
             if self.ev_par is not None:
-                lam_m, k_m = _evalue.params_for_length(self.ev_par, len(qtok))
-                hit["bits"] = float(_evalue.bit_score(sc, len(qtok), lam_m, k_m))
-                hit["evalue"] = float(_evalue.evalue(sc, len(qtok),
-                                                     self.n_db_tokens, lam_m, k_m))
+                mu, beta = _evalue.clustermax_params_for_length(self.ev_par,
+                                                                len(qtok))
+                hit["bits"] = float(_evalue.bit_score_clustermax(sc, mu, beta))
+                hit["evalue"] = float(_evalue.evalue_clustermax(
+                    sc, mu, beta, self.n_clusters))
             hits.append(hit)
         return hits
 
