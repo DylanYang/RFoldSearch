@@ -107,3 +107,25 @@ def test_searcher_uses_the_cluster_count_of_the_loaded_database(tmp_path):
     assert h_many and h_few, "the synthetic query must retrieve something"
     assert "evalue" in h_many[0], "the packaged parameters were not applied"
     assert h_few[0]["evalue"] < h_many[0]["evalue"]
+
+
+def test_cli_header_reports_the_cluster_count_when_it_reports_an_evalue(tmp_path,
+                                                                        capsys):
+    """The E-value's search space is clusters, so the header must name them.
+
+    A reader given only "885 chains" cannot tell what N the E-value used, which
+    matters most on the redundant databases where the two numbers differ.
+    """
+    import numpy as np, torch
+    from rfoldseek import cli
+
+    rng = np.random.default_rng(0)
+    ents = [{"id": f"chain{i}", "tokens": [int(rng.integers(80)) for _ in range(40)],
+             "cluster": f"c{i // 4}"} for i in range(12)]
+    db = tmp_path / "db.pt"
+    torch.save({"n_codes": 80, "checkpoint": "none", "entries": ents}, str(db))
+
+    cli.main(["search", "--query", "chain0", "--db", str(db), "--top_k", "1"])
+    head = capsys.readouterr().out.splitlines()[0]
+    assert "12 chains" in head
+    assert "3 clusters" in head

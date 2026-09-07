@@ -111,7 +111,7 @@ git clone https://github.com/pylelab/USalign && cd USalign && g++ -O3 -o USalign
 A comment line naming the query and the database, then one row per hit. Under the default mode, hits are ranked by Smith-Waterman score:
 
 ```
-# query: chainA  (128 tokens)   database: my_db.pt  (12043 chains)
+# query: chainA  (128 tokens)   database: db.pt
 rank  target                    SW_score    bits    E-value    len
    1  4V9F_A                      412.00   118.3    2.1e-30    129
    2  6XU8_B                      287.50    83.1    5.4e-19    121
@@ -121,7 +121,7 @@ rank  target                    SW_score    bits    E-value    len
 Under `--rerank tm` — RFoldseek-TM — the comment line names the mode and the score columns change:
 
 ```
-# query: PDB_00007O81_1_AJ  (74 tokens)   database: db.pt  (885 chains)   rerank: RFoldseek-TM (US-align)
+# query: PDB_00007O81_1_AJ  (74 tokens)   database: db.pt   rerank: RFoldseek-TM
 rank  target                    TM_mean  TM_query  TM_target    len
    1  PDB_00008B2L_1_W2          0.7076    0.7143     0.7008     76
    2  PDB_00008KD9_1_M           0.6724    0.6674     0.6773     72

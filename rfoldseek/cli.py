@@ -67,7 +67,12 @@ def cmd_search(a):
     else:
         raise SystemExit(f"query {a.query!r} is not a db chain id, a .json, or a .pt")
 
-    head = f"# query: {qname}  ({qlen} tokens)   database: {a.db}  ({len(s.toks)} chains)"
+    # The E-value counts the search space in clusters, so say how many there
+    # are whenever one is going to be printed; TM reranking reports no E-value.
+    size = f"{len(s.toks)} chains"
+    if a.rerank != "tm" and s.ev_par is not None:
+        size += f", {s.n_clusters} clusters"
+    head = f"# query: {qname}  ({qlen} tokens)   database: {a.db}  ({size})"
     if a.rerank == "tm":
         head += "   rerank: RFoldseek-TM (US-align)"
     print(head)
