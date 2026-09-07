@@ -1,108 +1,100 @@
 {
-  "lambda": 0.4326232621755274,
-  "K": 0.00017337773645121796,
-  "reference_length": 300,
-  "gap_open": -2.0,
-  "gap_extend": -0.5,
-  "seed": 0,
-  "length_table": [
-    {
-      "length": 20,
-      "lambda": 0.6370454324724909,
-      "K": 0.001024733212919742,
-      "n_pairs": 4000,
-      "null_score_mean": 4.445442833403746,
-      "null_score_std": 1.721186819289601
-    },
-    {
-      "length": 30,
-      "lambda": 0.5576434218352923,
-      "K": 0.0006920556970418024,
-      "n_pairs": 4000,
-      "null_score_mean": 4.885006918609142,
-      "null_score_std": 2.0160100915686328
-    },
-    {
-      "length": 40,
-      "lambda": 0.47666536217626226,
-      "K": 0.0005035743632513261,
-      "n_pairs": 4000,
-      "null_score_mean": 5.592796315368679,
-      "null_score_std": 2.337064576468429
-    },
-    {
-      "length": 60,
-      "lambda": 0.44055489745077847,
-      "K": 0.00041294652007687173,
-      "n_pairs": 4000,
-      "null_score_mean": 6.569289753900634,
-      "null_score_std": 2.4874307299373175
-    },
-    {
-      "length": 80,
-      "lambda": 0.39670143055941925,
-      "K": 0.00031501344571349026,
-      "n_pairs": 4000,
-      "null_score_mean": 7.2359511477417415,
-      "null_score_std": 2.8798043483667013
-    },
-    {
-      "length": 120,
-      "lambda": 0.3789010616630801,
-      "K": 0.00023426896632099773,
-      "n_pairs": 4000,
-      "null_score_mean": 7.755396662354469,
-      "null_score_std": 2.764789972530401
-    },
-    {
-      "length": 160,
-      "lambda": 0.4038721807582169,
-      "K": 0.00021896982752730393,
-      "n_pairs": 4000,
-      "null_score_mean": 7.656411901546849,
-      "null_score_std": 2.574264518416727
-    },
-    {
-      "length": 220,
-      "lambda": 0.40507931783059264,
-      "K": 0.00018068142755216454,
-      "n_pairs": 4000,
-      "null_score_mean": 7.588490931259261,
-      "null_score_std": 2.561989724285023
-    },
-    {
-      "length": 300,
-      "lambda": 0.4326232621755274,
-      "K": 0.00017337773645121796,
-      "n_pairs": 4000,
-      "null_score_mean": 7.552374305890666,
-      "null_score_std": 2.3858811359321046
-    },
-    {
-      "length": 500,
-      "lambda": 0.4458410191407262,
-      "K": 0.00012286739270265563,
-      "n_pairs": 4000,
-      "null_score_mean": 7.502937209738626,
-      "null_score_std": 2.368484018553761
-    },
-    {
-      "length": 1000,
-      "lambda": 0.5072708446279485,
-      "K": 7.187196236552881e-05,
-      "n_pairs": 4000,
-      "null_score_mean": 7.146604681544834,
-      "null_score_std": 2.278036235885474
-    },
-    {
-      "length": 2000,
-      "lambda": 0.49364185360076773,
-      "K": 5.049174887264935e-05,
-      "n_pairs": 4000,
-      "null_score_mean": 7.473346608281136,
-      "null_score_std": 2.4304552276417053
-    }
-  ],
-  "null": "real database chain pairs, top 10% censored",
-  "note": "Length-dependent Karlin-Altschul Gumbel parameters for the token Smith-Waterman score under Structure-BLOSUM. The null is the score distribution between REAL database chains with the highest-scoring 10% censored, not randomised token strings: randomisation destroys the helical grammar shared by all RNA structures and makes E-values anti-conservative by orders of magnitude. Parameters are fitted by maximum likelihood and interpolated to the query length via evalue.params_for_length (lambda linearly, K in log space). E = K * m * N * exp(-lambda * S)."
+ "scheme": "cluster-max",
+ "gap_open": -2.0,
+ "gap_extend": -0.5,
+ "seed": 0,
+ "len_ratio": 3.0,
+ "calibration_database": "/Users/cassie/Desktop/RFoldseek-paper-code/files/models/db.pt",
+ "n_clusters": 882,
+ "n_chains": 885,
+ "skipped_lengths": [],
+ "length_table": [
+  {
+   "length": 20,
+   "mu": 3.681607851452168,
+   "beta": 2.2049071982506163,
+   "lambda": 0.4535338270895957,
+   "n_maxima": 7715
+  },
+  {
+   "length": 30,
+   "mu": 4.318213830212868,
+   "beta": 2.142801718467983,
+   "lambda": 0.46667873717917296,
+   "n_maxima": 12559
+  },
+  {
+   "length": 40,
+   "mu": 4.671987618454014,
+   "beta": 2.635210346382038,
+   "lambda": 0.37947634858558105,
+   "n_maxima": 14846
+  },
+  {
+   "length": 60,
+   "mu": 5.474719895978278,
+   "beta": 2.805932581122761,
+   "lambda": 0.3563877502715556,
+   "n_maxima": 15201
+  },
+  {
+   "length": 80,
+   "mu": 5.772794615881089,
+   "beta": 2.7694398030699623,
+   "lambda": 0.3610838548978339,
+   "n_maxima": 13125
+  },
+  {
+   "length": 120,
+   "mu": 7.259581991124825,
+   "beta": 2.932889103734647,
+   "lambda": 0.3409607266523075,
+   "n_maxima": 12053
+  },
+  {
+   "length": 160,
+   "mu": 7.58952147947528,
+   "beta": 2.9673456230981414,
+   "lambda": 0.33700152493726754,
+   "n_maxima": 11095
+  },
+  {
+   "length": 220,
+   "mu": 8.220892333062306,
+   "beta": 2.7725828084310318,
+   "lambda": 0.3606745295250124,
+   "n_maxima": 8031
+  },
+  {
+   "length": 300,
+   "mu": 8.720539493252323,
+   "beta": 3.148145760014543,
+   "lambda": 0.31764729978556666,
+   "n_maxima": 4087
+  },
+  {
+   "length": 500,
+   "mu": 8.450259640284866,
+   "beta": 2.4765796813949943,
+   "lambda": 0.4037826876770326,
+   "n_maxima": 2372
+  },
+  {
+   "length": 1000,
+   "mu": 9.312368469128588,
+   "beta": 1.7573420575198044,
+   "lambda": 0.5690411810955764,
+   "n_maxima": 2055
+  },
+  {
+   "length": 2000,
+   "mu": 10.829700401390879,
+   "beta": 4.004095918502507,
+   "lambda": 0.24974426695901686,
+   "n_maxima": 1826
+  }
+ ],
+ "clusters": "cd-hit-est -c 0.8 -n 5 -aS 0.8 -aL 0.8 -g 1",
+ "null": "cluster maxima over real database chains, same Rfam family or clan excluded; nothing censored",
+ "note": "Gumbel (mu, beta) of the cluster-max null on a grid of query lengths, interpolated by evalue.clustermax_params_for_length. E = N_clusters * (1 - exp(-exp(-(S - mu)/beta))); the bit score is (S - mu)/(beta ln 2). Fitting maxima rather than individual pairs removes the per-database censoring fraction the earlier chain-level calibration needed, and keeps the calibration stable across databases of different redundancy."
 }

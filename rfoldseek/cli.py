@@ -31,7 +31,8 @@ def cmd_preprocess(a):
 
 
 def cmd_build(a):
-    build_database(a.checkpoint, a.data, a.output, min_len=a.min_len)
+    build_database(a.checkpoint, a.data, a.output, min_len=a.min_len,
+                   clusters=a.clusters)
 
 
 def cmd_search(a):
@@ -66,9 +67,14 @@ def cmd_search(a):
     else:
         raise SystemExit(f"query {a.query!r} is not a db chain id, a .json, or a .pt")
 
-    head = f"# query: {qname}  ({qlen} tokens)   database: {a.db}  ({len(s.toks)} chains)"
+    # The E-value counts the search space in clusters, so say how many there
+    # are whenever one is going to be printed; TM reranking reports no E-value.
+    size = f"{len(s.toks)} chains"
+    if a.rerank != "tm" and s.ev_par is not None:
+        size += f", {s.n_clusters} clusters"
+    head = f"# query: {qname}  ({qlen} tokens)   database: {a.db}  ({size})"
     if a.rerank == "tm":
-        head += "   rerank: US-align TM"
+        head += "   rerank: RFoldseek-TM"
     print(head)
     if not hits:
         print("# no candidates passed the prefilter (try lowering --min_diag)")
@@ -112,6 +118,11 @@ def main(argv=None):
     p.add_argument("--output", required=True)
     p.add_argument("--checkpoint", default=asset("desc_vqvae_best.pt"))
     p.add_argument("--min_len", type=int, default=20)
+    p.add_argument("--clusters", default=None,
+                   help="CD-HIT .clstr (or id/cluster TSV) grouping "
+                        "near-duplicate chains; E-values are counted in "
+                        "clusters, so without it a redundant database "
+                        "reports E-values that are too small")
     p.set_defaults(fn=cmd_build)
 
     p = sub.add_parser("search", help="search a query against a token database")

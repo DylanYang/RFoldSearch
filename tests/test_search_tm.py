@@ -89,7 +89,7 @@ def test_cli_prints_the_tm_table_and_names_the_backend(db_path, monkeypatch, cap
               "--top_k", "2", "--rerank", "tm"])
 
     out = capsys.readouterr().out
-    assert "rerank: US-align TM" in out
+    assert "rerank: RFoldseek-TM" in out
     assert "TM_mean" in out and "TM_query" in out and "TM_target" in out
     assert "SW_score" not in out and "E-value" not in out
     assert "0.5000" in out

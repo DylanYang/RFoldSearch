@@ -1,6 +1,6 @@
 <h1><a name="rfoldseek"></a><img src=".github/header.PNG" alt="RFoldseek" height="88" /></h1>
 
-RFoldseek enables fast RNA tertiary-structure search with **3Dr**, a learned discrete structural alphabet. Each nucleotide's local geometry is quantised into one of 80 states by a VQ-VAE, converting RNA chains into token strings that are searched with an inverted-index k-mer prefilter. The standard RFoldseek mode reranks prefilter hits by affine-gap token Smith-Waterman alignment and assigns a Karlin-Altschul database E-value to each hit. We also provide RFoldseek-TM, an accuracy-oriented mode in which the same prefilter candidates are reranked by coordinate alignment with US-align using the mean of the two length-normalised TM-scores.
+RFoldseek enables fast RNA tertiary-structure search with **3Dr**, a learned discrete structural alphabet. Each nucleotide's local geometry is quantised into one of 80 states by a VQ-VAE, converting RNA chains into token strings that are searched with an inverted-index k-mer prefilter. The standard RFoldseek mode reranks prefilter hits by affine-gap token Smith-Waterman alignment and assigns a Karlin-Altschul database E-value to each hit, counting the search space in CD-HIT-EST sequence clusters rather than in chains so that a family stored many times poses one question of the database. We also provide RFoldseek-TM, an accuracy-oriented mode in which the same prefilter candidates are reranked by coordinate alignment with US-align using the mean of the two length-normalised TM-scores.
 
 <p align="center"><img src=".github/fig1.jpeg" width="720" /></p>
 
@@ -14,8 +14,8 @@ RFoldseek enables fast RNA tertiary-structure search with **3Dr**, a learned dis
     + [Build a database](#build-a-database)
     + [Search](#search)
     + [Python API](#python-api)
-  * [Main modules](#main-modules)
-  * [Repository layout](#repository-layout)
+      - [Tokenize a structure into 3Dr](#tokenize-a-structure-into-3dr)
+      - [Search](#search) 
   * [Third-party components](#third-party-components)
   * [License](#license)
 
@@ -29,10 +29,8 @@ Requires Python >= 3.9. Runtime dependencies: `numpy`, `torch`, `numba`, `biotit
 
 ## Hardware and memory requirements
 
-CPU-only; a single core is sufficient. Tokenization uses the bundled VQ-VAE
-checkpoint on CPU by default and moves to CUDA automatically if a GPU is
-visible to `torch`. Memory scales with database size — an 83,156-chain
-predicted-RNA database fits comfortably in a few GB of RAM.
+A single core CPU is sufficient. Tokenization uses the bundled VQ-VAE checkpoint on CPU by default 
+and moves to CUDA automatically if a GPU is available.
 
 ## Quick start
 
@@ -50,16 +48,27 @@ rfoldseek preprocess --pdb_dir my_structures/ --output my.jsonl
 
 ### Build a database
 
-Tokenize the JSONL and write a searchable token database:
+Cluster the target sequences at 80% identity, then tokenize the JSONL and
+write a searchable token database:
 
 ```
-rfoldseek build --data my.jsonl --output my_db.pt
+cd-hit-est -i targets.fa -o nr80 -c 0.8 -n 5 -aS 0.8 -aL 0.8 -g 1
+rfoldseek build --data my.jsonl --output my_db.pt --clusters nr80.clstr
+```
+
+`cd-hit-est` is an external program, neither bundled nor installed by `pip`.
+Build it once from source if your platform has no package for it:
+
+```
+curl -L -O https://github.com/weizhongli/cdhit/releases/download/V4.8.1/cd-hit-v4.8.1-2019-0228.tar.gz
+tar xzf cd-hit-v4.8.1-2019-0228.tar.gz && cd cd-hit-v4.8.1-2019-0228 && make openmp=no
 ```
 
 | Option         | Description                                                     |
 | -------------- | --------------------------------------------------------------- |
 | `--min_len`    | Skip chains shorter than this (default: 20, as used in the paper) |
 | `--checkpoint` | VQ-VAE tokenizer to encode with (default: the bundled one)       |
+| `--clusters`   | CD-HIT `.clstr` (or id/cluster TSV) grouping near-duplicate chains |
 
 ### Search
 
@@ -76,13 +85,13 @@ rfoldseek search --query queries_db.pt --query_id chainA --db my_db.pt
 ```
 
 Both commands run the same two-stage pipeline — a k-mer prefilter over the 3Dr tokens, 
-then a reranking of the surviving candidates. What differs is how the candidates are reranked, chosen with `--rerank`:
+then a reranking of the candidates. What differs is how the candidates are reranked, chosen with `--rerank`:
 
-- **`sw`** (default) — affine-gap token Smith-Waterman, with a Karlin-Altschul
-  E-value per hit. Fast, self-contained, and what the rest of this README
-  benchmarks.
-- **`tm`** — RFoldseek-TM: the candidate pool is handed to
-  [US-align](https://github.com/pylelab/USalign) and ranked by the mean of its two length-normalised TM-scores. This measures structural similarity directly instead of scoring a token alignment, at a large cost in speed.
+- **`sw`** (default): affine-gap token Smith-Waterman, with a Karlin-Altschul
+  E-value per hit. Fast, self-contained.
+- **`tm`** (RFoldseek-TM): the candidate pool is handed to
+  [US-align](https://github.com/pylelab/USalign) and ranked by the mean of its two length-normalised TM-scores. 
+  This measures structural similarity directly instead of scoring a token alignment, at a large cost in speed.
 
 ```
 rfoldseek search --query my_chain --db my_db.pt --rerank tm
@@ -102,17 +111,17 @@ git clone https://github.com/pylelab/USalign && cd USalign && g++ -O3 -o USalign
 A comment line naming the query and the database, then one row per hit. Under the default mode, hits are ranked by Smith-Waterman score:
 
 ```
-# query: chainA  (128 tokens)   database: my_db.pt
+# query: chainA  (128 tokens)   database: db.pt
 rank  target                    SW_score    bits    E-value    len
    1  4V9F_A                      412.00   118.3    2.1e-30    129
    2  6XU8_B                      287.50    83.1    5.4e-19    121
    3  7QR4_A                      231.00    67.4    8.8e-14    134
 ```
 
-Under `--rerank tm` the comment line names the backend and the score columns change:
+Under `--rerank tm` — RFoldseek-TM — the comment line names the mode and the score columns change:
 
 ```
-# query: PDB_00007O81_1_AJ  (74 tokens)   database: db.pt  (885 chains)   rerank: US-align TM
+# query: PDB_00007O81_1_AJ  (74 tokens)   database: db.pt   rerank: RFoldseek-TM
 rank  target                    TM_mean  TM_query  TM_target    len
    1  PDB_00008B2L_1_W2          0.7076    0.7143     0.7008     76
    2  PDB_00008KD9_1_M           0.6724    0.6674     0.6773     72
@@ -134,6 +143,36 @@ rank  target                    TM_mean  TM_query  TM_target    len
 
 ### Python API
 
+#### Tokenize a structure into 3Dr
+
+The **3Dr** alphabet is built on: `encode_entry` turns one chain into a token per nucleotide, each an integer in `0..79`. 
+There is no letter form — 80 states do not fit the Latin alphabet — so the tokens are an integer array, and a chain is a string over that alphabet.
+
+```python
+import torch
+from rfoldseek import structure_to_entry
+from rfoldseek.search import asset
+from rfoldseek.tokenizer import encode_entry, load_model
+
+model, ckpt, n_codes, _ = load_model(asset("desc_vqvae_best.pt"))   # or your own
+enc = encode_entry(model, structure_to_entry("query.cif"), torch.device("cpu"),
+                   ckpt.get("norm_mean"), ckpt.get("norm_std"))
+
+enc["tokens"]     # int16, one 3Dr state per resolved nucleotide, e.g. [22, 53, 53, 44, …]
+enc["n_valid"]    # how many nucleotides were resolved well enough to tokenize
+enc["coords"]     # (n_valid, 5, 3) backbone coordinates, kept for US-align
+```
+
+`encode_entry` returns `None` when a chain has no resolved nucleotides at all,
+or when its edge arrays disagree with its mask; there is no minimum length here,
+`--min_len` is applied by `rfoldseek build`. `structure_to_entry` reads both
+`.cif` and `.pdb`, and `load_model` puts the model on whatever device you pass,
+so `torch.device("cuda")` runs the tokenizer on a GPU.
+
+#### Search
+
+A query already in the database needs no tokenizer, since the database holds its tokens:
+
 ```python
 from rfoldseek import Searcher
 
@@ -142,47 +181,34 @@ hits = s.search_id("my_chain", top_k=10)
 # [{'rank': 1, 'target': …, 'sw_score': …, 'bits': …, 'evalue': …}, …]
 ```
 
-`search_id` forwards keyword arguments to `search`, so `top_n`, `min_diag` and
-`rerank` are available there too. `bits` and `evalue` are present when E-value
-parameters are loaded, which they are by default.
+Anything else is searched by handing `search` the tokens from above:
 
-## Main modules
+```python
+import numpy as np
 
-- `rfoldseek preprocess` — parse `.pdb` / `.cif` structures into a backbone JSONL
-- `rfoldseek build` — tokenize a JSONL into a searchable token database
-- `rfoldseek search` — prefilter + Smith-Waterman (or US-align TM) search against a database
-
-## Repository layout
-
+hits = s.search(np.asarray(enc["tokens"], np.int64), query_entry=enc, top_k=10)
 ```
-rfoldseek/
-  backbone.py, edges.py       structure -> backbone coords + pair/stack edges
-  descriptors/, vqvae.py      17-D descriptor and the VQ-VAE tokenizer
-  tokenizer.py, database.py   checkpoint loading, encoding, database build/load
-  prefilter.py                release prefilter (compiled O(n) kernel)
-  prefilter_reference.py      reference implementation (semantic ground truth)
-  smith_waterman.py           numba token Smith-Waterman
-  usalign.py                  US-align TM-score reranking (RFoldseek-TM)
-  evalue.py                   Karlin-Altschul bit score / E-value
-  search.py, cli.py           pipeline and command line
-  assets/                     deployed tokenizer, matrix, E-value params
-```
+
+`query_entry` is read only by `rerank="tm"`, which needs the query coordinates
+for US-align; plain Smith-Waterman search can leave it out. `search_id`
+forwards its keyword arguments to `search`, so `top_n`, `min_diag`, `rerank`
+and `tie_seed` are available from both. `bits` and `evalue` are present when
+E-value parameters are loaded, which they are by default.
+
+`Searcher` deliberately takes no tokenizer — searching happens on tokens, not
+structures. It does accept the two files that interpret those tokens,
+`Searcher(db, matrix_path=…, evalue_params_path=…)`, which is how to search
+under a different Structure-BLOSUM matrix or a calibration of your own. On the
+command line the same choices are `rfoldseek search --model / --matrix` and
+`rfoldseek build --checkpoint`; all default to the bundled files.
 
 ## Third-party components
 
-No third-party source is vendored. `backbone.py`, `tokenizer.py` and
-`prefilter_reference.py` are ported from the authors' own
-`RFoldseek-paper-code`, with imports adjusted; the ported files say so in their
-module docstrings.
-
-The prefilter's double-match rule — admitting a target only on two k-mer hits
-sharing a diagonal — follows Foldseek (van Kempen et al., *Nat. Biotechnol.*
-2024). Runtime dependencies are `numpy`, `torch`, `numba` and `biotite`, each
-under its own license.
-
-`--rerank tm` calls US-align (Zhang et al., *Nat. Methods* 2022) as an external
-program. Its source is not vendored and it is not installed by `pip`; users
-supply their own binary.
+No third-party source is vendored. Runtime dependencies are `numpy`, `torch`, `numba` and `biotite`, each
+under its own license. `--rerank tm` calls US-align (Zhang et al., *Nat. Methods* 2022) as an external
+program, and `--clusters` consumes the output of CD-HIT-EST (Fu et al.,
+*Bioinformatics* 2012). Neither source is vendored and neither is installed by
+`pip`; users supply their own binaries.
 
 ## License
 
