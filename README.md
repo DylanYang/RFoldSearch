@@ -14,8 +14,6 @@ RFoldseek enables fast RNA tertiary-structure search with **3Dr**, a learned dis
     + [Build a database](#build-a-database)
     + [Search](#search)
     + [Python API](#python-api)
-  * [Main modules](#main-modules)
-  * [Repository layout](#repository-layout)
   * [Third-party components](#third-party-components)
   * [License](#license)
 
@@ -29,10 +27,8 @@ Requires Python >= 3.9. Runtime dependencies: `numpy`, `torch`, `numba`, `biotit
 
 ## Hardware and memory requirements
 
-CPU-only; a single core is sufficient. Tokenization uses the bundled VQ-VAE
-checkpoint on CPU by default and moves to CUDA automatically if a GPU is
-visible to `torch`. Memory scales with database size — an 83,156-chain
-predicted-RNA database fits comfortably in a few GB of RAM.
+A single core CPU is sufficient. Tokenization uses the bundled VQ-VAE checkpoint on CPU by default 
+and moves to CUDA automatically if a GPU is available.
 
 ## Quick start
 
@@ -72,18 +68,6 @@ tar xzf cd-hit-v4.8.1-2019-0228.tar.gz && cd cd-hit-v4.8.1-2019-0228 && make ope
 | `--checkpoint` | VQ-VAE tokenizer to encode with (default: the bundled one)       |
 | `--clusters`   | CD-HIT `.clstr` (or id/cluster TSV) grouping near-duplicate chains |
 
-`--clusters` is what makes the E-value correct on a redundant database. The
-cluster labels are stored with the database, since the E-value needs the
-cluster count of whatever is being searched. Omit it — or search a database
-built before this option existed — and every chain counts as its own cluster:
-right for a non-redundant set, and too permissive for a redundant one. On a
-3717-chain database averaging 7.8 chains per cluster, chain counting reports
-E-values roughly two orders of magnitude too small at E = 0.1.
-
-The clustering thresholds above are the ones used in the paper. Any `.clstr`
-file works, as does a two-column `id<TAB>cluster` TSV, so an existing
-clustering can be reused instead of running CD-HIT again.
-
 ### Search
 
 Search a chain that is already in the database against it:
@@ -99,13 +83,13 @@ rfoldseek search --query queries_db.pt --query_id chainA --db my_db.pt
 ```
 
 Both commands run the same two-stage pipeline — a k-mer prefilter over the 3Dr tokens, 
-then a reranking of the surviving candidates. What differs is how the candidates are reranked, chosen with `--rerank`:
+then a reranking of the candidates. What differs is how the candidates are reranked, chosen with `--rerank`:
 
 - **`sw`** (default) — affine-gap token Smith-Waterman, with a Karlin-Altschul
-  E-value per hit. Fast, self-contained, and what the rest of this README
-  benchmarks.
+  E-value per hit. Fast, self-contained.
 - **`tm`** — RFoldseek-TM: the candidate pool is handed to
-  [US-align](https://github.com/pylelab/USalign) and ranked by the mean of its two length-normalised TM-scores. This measures structural similarity directly instead of scoring a token alignment, at a large cost in speed.
+  [US-align](https://github.com/pylelab/USalign) and ranked by the mean of its two length-normalised TM-scores. 
+  This measures structural similarity directly instead of scoring a token alignment, at a large cost in speed.
 
 ```
 rfoldseek search --query my_chain --db my_db.pt --rerank tm
@@ -132,14 +116,6 @@ rank  target                    SW_score    bits    E-value    len
    3  7QR4_A                      231.00    67.4    8.8e-14    134
 ```
 
-Values above are illustrative; the column layout is what `rfoldseek search`
-prints. `len` is the target's token length. `bits` and `E-value` appear when
-E-value parameters are loaded, which they are by default. The E-value is the
-expected number of database *clusters* reaching this score by chance, and the
-bit score is `(S - mu) / (beta ln 2)`, so `E = N_clusters * 2**(-bits)`. When
-nothing survives the prefilter, a single comment line says so and suggests
-lowering `--min_diag`.
-
 Under `--rerank tm` the comment line names the backend and the score columns change:
 
 ```
@@ -165,6 +141,8 @@ rank  target                    TM_mean  TM_query  TM_target    len
 
 ### Python API
 
+Search a chain that is already in the database:
+
 ```python
 from rfoldseek import Searcher
 
@@ -174,30 +152,36 @@ hits = s.search_id("my_chain", top_k=10)
 ```
 
 `search_id` forwards keyword arguments to `search`, so `top_n`, `min_diag` and
-`rerank` are available there too. `bits` and `evalue` are present when E-value
-parameters are loaded, which they are by default.
+`rerank` are available there too. `bits` and `evalue` are present when E-value parameters are loaded, which they are by default.
 
-## Main modules
+`Searcher` takes no tokenizer: searching happens on tokens, and the database
+already holds them. It does accept the two files that interpret those tokens —
+`Searcher(db, matrix_path=…, evalue_params_path=…)` — which is how you search
+under a different Structure-BLOSUM matrix or a calibration of your own.
 
-- `rfoldseek preprocess` — parse `.pdb` / `.cif` structures into a backbone JSONL
-- `rfoldseek build` — tokenize a JSONL into a searchable token database
-- `rfoldseek search` — prefilter + Smith-Waterman (or US-align TM) search against a database
+The VQ-VAE checkpoint is needed only to turn a structure *file* into tokens, so
+a query that is not in the database is encoded first and searched second:
 
-## Repository layout
+```python
+import numpy as np, torch
+from rfoldseek import Searcher, structure_to_entry
+from rfoldseek.search import asset
+from rfoldseek.tokenizer import encode_entry, load_model
 
+model, ckpt, _, _ = load_model(asset("desc_vqvae_best.pt"))   # or your own
+entry = structure_to_entry("query.cif")
+enc = encode_entry(model, entry, torch.device("cpu"),
+                   ckpt.get("norm_mean"), ckpt.get("norm_std"))
+
+s = Searcher("my_db.pt")
+hits = s.search(np.asarray(enc["tokens"], np.int64), query_entry=enc, top_k=10)
 ```
-rfoldseek/
-  backbone.py, edges.py       structure -> backbone coords + pair/stack edges
-  descriptors/, vqvae.py      17-D descriptor and the VQ-VAE tokenizer
-  tokenizer.py, database.py   checkpoint loading, encoding, database build/load
-  prefilter.py                release prefilter (compiled O(n) kernel)
-  prefilter_reference.py      reference implementation (semantic ground truth)
-  smith_waterman.py           numba token Smith-Waterman
-  usalign.py                  US-align TM-score reranking (RFoldseek-TM)
-  evalue.py                   cluster-max bit score / E-value
-  search.py, cli.py           pipeline and command line
-  assets/                     deployed tokenizer, matrix, E-value params
-```
+
+`encode_entry` returns `None` for a chain it cannot encode. `query_entry` is
+only read by `rerank="tm"`, which needs the query coordinates for US-align;
+plain Smith-Waterman search can leave it out. The equivalent on the command
+line is `rfoldseek search --model`, and `rfoldseek build --checkpoint` at build
+time; both default to the bundled checkpoint.
 
 ## Third-party components
 
