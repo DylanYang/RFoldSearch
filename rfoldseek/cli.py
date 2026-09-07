@@ -74,7 +74,7 @@ def cmd_search(a):
         size += f", {s.n_clusters} clusters"
     head = f"# query: {qname}  ({qlen} tokens)   database: {a.db}  ({size})"
     if a.rerank == "tm":
-        head += "   rerank: RFoldseek-TM (US-align)"
+        head += "   rerank: RFoldseek-TM"
     print(head)
     if not hits:
         print("# no candidates passed the prefilter (try lowering --min_diag)")
