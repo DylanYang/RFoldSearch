@@ -154,16 +154,11 @@ rank  target                    TM_mean  TM_query  TM_target    len
 
 RFoldseek reports E-values for token Smith--Waterman searches. The initial
 E-value is obtained from a length-dependent Gumbel distribution fitted to
-cluster-maximum background scores. The search space is the number of
-independent CD-HIT-EST clusters, not the number of chains, so adding redundant
-members to an existing cluster does not inflate the E-value.
-
+cluster-maximum background scores. The search space is the number of independent CD-HIT-EST clusters.
 Because the background score distribution also depends on database
 composition, an optional empirical calibration maps each initial cluster-max
 E-value to the observed mean number of background clusters per query. This
-mapping is fitted once for a database, stored in its E-value parameter file,
-and adds no alignment work at query time. It is monotone and therefore does
-not change hit ranking or the alignment bit score.
+mapping is fitted once for a database, stored in its E-value parameter.
 
 The files in the complete calibration pipeline are:
 
@@ -172,15 +167,42 @@ The files in the complete calibration pipeline are:
 | `target_structures.jsonl` | `rfoldseek preprocess` on the target structures |
 | `target_nr80.clstr` | CD-HIT-EST on `target_sequences.fasta` |
 | `target_db.pt` | `rfoldseek build` from the target JSONL and cluster file |
+| `labels.tsv` | Step 0 below |
 | `target_clustermax_params.json` | Step 1 below |
 | `calibration_queries.pt` | Step 2 below |
 | `target_background.tsv` | Step 3 below |
 | `target_evalue_params.json` | Step 4 below |
 
-`target_sequences.fasta` and `labels.tsv` are input metadata, not RFoldseek
-outputs. Their identifiers must match those in the structure JSONL. The labels
-table accepts `chain_id` (or `entry_id`/`id`) and optional `family`/`rfam_acc`
-and `clan`/`clan_acc` columns.
+`target_sequences.fasta` and `calibration_sequences.fasta` are maintained by
+the web-server ingestion pipeline and use the same chain identifiers as the
+corresponding structure JSONL files. End users of the web server do not create
+any of the calibration files below.
+
+0. Annotate the target and independent calibration sequences against the same
+Rfam release. The server obtains `Rfam.cm` and `Rfam.clanin` from Rfam, runs
+`cmpress Rfam.cm` once, and then runs Infernal with Rfam gathering thresholds:
+
+```bash
+cmscan --cut_ga --rfam --fmt 2 --clanin Rfam.clanin \
+  --tblout target_rfam.tbl Rfam.cm target_sequences.fasta
+
+cmscan --cut_ga --rfam --fmt 2 --clanin Rfam.clanin \
+  --tblout calibration_rfam.tbl Rfam.cm calibration_sequences.fasta
+
+python scripts/build_rfam_labels.py \
+  --fasta target_sequences.fasta \
+  --fasta calibration_sequences.fasta \
+  --tblout target_rfam.tbl \
+  --tblout calibration_rfam.tbl \
+  --output labels.tsv
+```
+
+`labels.tsv` is therefore required server-side calibration metadata, not a
+user-supplied search input. It contains `chain_id`, `family`, and `clan`; the
+last two fields are empty when Rfam reports no included hit. The conversion
+script keeps the best included hit for each chain. The calibration scripts
+also accept the synonymous columns `entry_id`/`id`, `rfam_acc`, and
+`clan_acc`.
 
 1. Fit the initial cluster-max Gumbel model for `target_db.pt`:
 
