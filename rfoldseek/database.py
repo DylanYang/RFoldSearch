@@ -76,7 +76,8 @@ def assign_clusters(ents, mapping) -> list:
 
 def build_database(checkpoint: str, data_paths: list[str], output: str,
                    min_len: int = 20, device: str = "cpu",
-                   progress: bool = True, clusters: str | None = None) -> dict:
+                   progress: bool = True, clusters: str | None = None,
+                   evalue_params: str | None = None) -> dict:
     """Encode every entry in the given JSONL files into one .pt database.
 
     ``clusters`` is the CD-HIT .clstr (or TSV) that groups near-duplicate
@@ -110,8 +111,23 @@ def build_database(checkpoint: str, data_paths: list[str], output: str,
               else [f"_singleton_{i}" for i in range(len(entries))])
     for e, lab in zip(entries, labels):
         e["cluster"] = lab
+    n_clusters = len(set(labels))
+    embedded_evalue_params = None
+    if evalue_params is not None:
+        with open(evalue_params) as handle:
+            embedded_evalue_params = json.load(handle)
+        empirical = embedded_evalue_params.get("empirical_calibration")
+        if empirical is not None and empirical.get("n_clusters") is not None:
+            fitted_n = int(empirical["n_clusters"])
+            if fitted_n != n_clusters:
+                raise ValueError(
+                    f"empirical E-value calibration has {fitted_n} clusters, "
+                    f"but the database has {n_clusters}"
+                )
     db = {"n_codes": int(n_codes), "entries": entries, "checkpoint": checkpoint,
-          "n_clusters": len(set(labels)), "clustered": bool(clusters)}
+          "n_clusters": n_clusters, "clustered": bool(clusters)}
+    if embedded_evalue_params is not None:
+        db["evalue_params"] = embedded_evalue_params
     os.makedirs(os.path.dirname(os.path.abspath(output)), exist_ok=True)
     torch.save(db, output)
     lens = np.array([len(e["tokens"]) for e in entries]) if entries else np.zeros(1)

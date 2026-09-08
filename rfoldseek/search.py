@@ -52,7 +52,19 @@ class Searcher:
         # held four hundred times poses one question of the database.
         self.n_clusters = len(set(self.clusters))
         ev_path = evalue_params_path or asset("evalue_params.json")
-        self.ev_par = json.load(open(ev_path)) if os.path.exists(ev_path) else None
+        if evalue_params_path is None and self.db.get("evalue_params") is not None:
+            self.ev_par = self.db["evalue_params"]
+        else:
+            self.ev_par = json.load(open(ev_path)) if os.path.exists(ev_path) else None
+        self.empirical_ev = (self.ev_par or {}).get("empirical_calibration")
+        if self.empirical_ev is not None:
+            fitted_n = self.empirical_ev.get("n_clusters")
+            if fitted_n is not None and int(fitted_n) != self.n_clusters:
+                raise ValueError(
+                    "empirical E-value calibration was fitted for "
+                    f"{int(fitted_n)} clusters, but the loaded database has "
+                    f"{self.n_clusters}; recalibrate for this database"
+                )
         self._tie_cache = {}
 
     def tie_keys(self, seed):
@@ -113,8 +125,14 @@ class Searcher:
                 mu, beta = _evalue.clustermax_params_for_length(self.ev_par,
                                                                 len(qtok))
                 hit["bits"] = float(_evalue.bit_score_clustermax(sc, mu, beta))
-                hit["evalue"] = float(_evalue.evalue_clustermax(
+                raw_evalue = float(_evalue.evalue_clustermax(
                     sc, mu, beta, self.n_clusters))
+                if self.empirical_ev is not None:
+                    hit["raw_evalue"] = raw_evalue
+                    hit["evalue"] = float(_evalue.apply_empirical_calibration(
+                        raw_evalue, self.empirical_ev))
+                else:
+                    hit["evalue"] = raw_evalue
             hits.append(hit)
         return hits
 

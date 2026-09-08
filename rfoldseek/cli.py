@@ -36,7 +36,8 @@ def cmd_build(a):
 
 
 def cmd_search(a):
-    s = Searcher(a.db, matrix_path=a.matrix)
+    s = Searcher(a.db, matrix_path=a.matrix,
+                 evalue_params_path=a.evalue_params)
     kw = dict(top_k=a.top_k, top_n=a.top_n, min_diag=a.min_diag,
               rerank=a.rerank, usalign=a.usalign, tie_seed=a.tie_seed)
     if a.query in s.id2i:
@@ -73,6 +74,8 @@ def cmd_search(a):
     if a.rerank != "tm" and s.ev_par is not None:
         size += f", {s.n_clusters} clusters"
     head = f"# query: {qname}  ({qlen} tokens)   database: {a.db}  ({size})"
+    if a.rerank != "tm" and s.empirical_ev is not None:
+        head += "   E-values: database-calibrated"
     if a.rerank == "tm":
         head += "   rerank: RFoldseek-TM"
     print(head)
@@ -132,6 +135,8 @@ def main(argv=None):
     p.add_argument("--db", required=True)
     p.add_argument("--model", default=asset("desc_vqvae_best.pt"))
     p.add_argument("--matrix", default=None)
+    p.add_argument("--evalue_params", default=None,
+                   help="database-specific E-value parameter JSON for this search")
     p.add_argument("--top_k", type=int, default=10)
     p.add_argument("--top_n", type=int, default=DEFAULT_TOP_N)
     p.add_argument("--min_diag", type=int, default=DEFAULT_MIN_DIAG)

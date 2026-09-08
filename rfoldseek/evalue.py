@@ -27,6 +27,12 @@ and inflating significance by orders of magnitude.
 Calibration runs at build time (scripts/rebuild_evalue_params.py) and is
 cached to assets/evalue_params.json; the search path only reads that file, so
 E-values add nothing to query time.
+
+A database-specific empirical mapping may optionally be stored alongside the
+cluster-max parameters. It maps the initial parametric E-value to the observed
+mean number of background clusters per query. The mapping is monotone, leaves
+the hit ranking unchanged, and is only valid for the cluster count on which it
+was fitted.
 """
 
 from __future__ import annotations
@@ -201,6 +207,80 @@ def evalue_clustermax(score, mu: float, beta: float, n_clusters: int):
     """
     s = np.asarray(score, dtype=np.float64)
     return float(n_clusters) * (1.0 - np.exp(-np.exp(-(s - mu) / beta)))
+
+
+def fit_empirical_calibration(raw_evalues, weights=None, n_clusters=None) -> dict:
+    """Fit a monotone empirical correction to background E-values.
+
+    ``raw_evalues`` contains initial cluster-max E-values from known background
+    hits. ``weights`` gives each observation's contribution to the expected
+    number of background clusters per query. Thus, at a threshold ``e``, the
+    cumulative weight of observations with ``raw_evalue <= e`` is the observed
+    background-cluster count to report as the calibrated E-value. Equal-query
+    or equal-family weighting should be performed by the caller when creating
+    these weights.
+
+    Repeated knots are collapsed so tied raw E-values receive the same
+    calibrated value. A half-observation finite-sample floor avoids unsupported
+    zero E-values below the smallest observed background value.
+    """
+    values = np.asarray(raw_evalues, dtype=np.float64).reshape(-1)
+    if weights is None:
+        weights = np.ones(values.size, dtype=np.float64)
+    else:
+        weights = np.asarray(weights, dtype=np.float64).reshape(-1)
+    if values.size == 0:
+        raise ValueError("need at least one background E-value")
+    if values.size != weights.size:
+        raise ValueError("raw_evalues and weights must have the same size")
+    if np.any(~np.isfinite(values)) or np.any(values < 0):
+        raise ValueError("raw_evalues must be finite and non-negative")
+    if np.any(~np.isfinite(weights)) or np.any(weights <= 0):
+        raise ValueError("weights must be finite and positive")
+    if n_clusters is not None and int(n_clusters) < 1:
+        raise ValueError("n_clusters must be positive")
+
+    order = np.argsort(values, kind="stable")
+    values, weights = values[order], weights[order]
+    knots, first = np.unique(values, return_index=True)
+    knot_weights = np.add.reduceat(weights, first)
+    cumulative = np.cumsum(knot_weights)
+    result = {
+        "scheme": "empirical-monotone",
+        "raw_evalue_knots": knots.tolist(),
+        "calibrated_evalues": cumulative.tolist(),
+        "finite_sample_floor": float(0.5 * weights.min()),
+        "n_observations": int(values.size),
+        "total_weight": float(cumulative[-1]),
+    }
+    if n_clusters is not None:
+        result["n_clusters"] = int(n_clusters)
+    return result
+
+
+def apply_empirical_calibration(raw_evalue, calibration: dict):
+    """Map initial E-values to observed background clusters per query.
+
+    The empirical CDF is a right-continuous step function: a raw E-value equal
+    to a stored knot includes that knot. Values below the first knot receive
+    the finite-sample floor and values above the final knot receive the total
+    fitted background weight.
+    """
+    values = np.asarray(raw_evalue, dtype=np.float64)
+    knots = np.asarray(calibration["raw_evalue_knots"], dtype=np.float64)
+    mapped = np.asarray(calibration["calibrated_evalues"], dtype=np.float64)
+    if knots.ndim != 1 or mapped.ndim != 1 or len(knots) != len(mapped) or not len(knots):
+        raise ValueError("invalid empirical E-value calibration table")
+    if np.any(np.diff(knots) <= 0) or np.any(np.diff(mapped) < 0):
+        raise ValueError("empirical E-value calibration must be monotone")
+    positions = np.searchsorted(knots, values, side="right")
+    floor = float(calibration.get("finite_sample_floor", 0.0))
+    output = np.full(values.shape, floor, dtype=np.float64)
+    present = positions > 0
+    output[present] = mapped[np.minimum(positions[present] - 1, len(mapped) - 1)]
+    if output.ndim == 0:
+        return float(output)
+    return output
 
 
 def bit_score_clustermax(score, mu: float, beta: float):

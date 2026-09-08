@@ -13,6 +13,7 @@ RFoldseek enables fast RNA tertiary-structure search with **3Dr**, a learned dis
     + [Preprocess structures](#preprocess-structures)
     + [Build a database](#build-a-database)
     + [Search](#search)
+    + [E-values](#e-values)
     + [Python API](#python-api)
       - [Tokenize a structure into 3Dr](#tokenize-a-structure-into-3dr)
       - [Search](#search) 
@@ -36,10 +37,12 @@ and moves to CUDA automatically if a GPU is available.
 
 ### Preprocess structures
 
-Convert a directory of `.pdb` / `.cif` files into a backbone-coordinate JSONL:
+Convert the target `.pdb` / `.cif` files into a backbone-coordinate JSONL:
 
 ```
-rfoldseek preprocess --pdb_dir my_structures/ --output my.jsonl
+rfoldseek preprocess \
+  --pdb_dir target_structures/ \
+  --output target_structures.jsonl
 ```
 
 | Option      | Description                                            |
@@ -52,8 +55,13 @@ Cluster the target sequences at 80% identity, then tokenize the JSONL and
 write a searchable token database:
 
 ```
-cd-hit-est -i targets.fa -o nr80 -c 0.8 -n 5 -aS 0.8 -aL 0.8 -g 1
-rfoldseek build --data my.jsonl --output my_db.pt --clusters nr80.clstr
+cd-hit-est -i target_sequences.fasta -o target_nr80 \
+  -c 0.8 -n 5 -aS 0.8 -aL 0.8 -g 1
+
+rfoldseek build \
+  --data target_structures.jsonl \
+  --clusters target_nr80.clstr \
+  --output target_db.pt
 ```
 
 `cd-hit-est` is an external program, neither bundled nor installed by `pip`.
@@ -75,13 +83,13 @@ tar xzf cd-hit-v4.8.1-2019-0228.tar.gz && cd cd-hit-v4.8.1-2019-0228 && make ope
 Search a chain that is already in the database against it:
 
 ```
-rfoldseek search --query my_chain --db my_db.pt --top_k 10
+rfoldseek search --query target_chain_id --db target_db.pt --top_k 10
 ```
 
 Or search a chain from a separate query database:
 
 ```
-rfoldseek search --query queries_db.pt --query_id chainA --db my_db.pt
+rfoldseek search --query query_db.pt --query_id query_chain_id --db target_db.pt
 ```
 
 Both commands run the same two-stage pipeline — a k-mer prefilter over the 3Dr tokens, 
@@ -94,7 +102,7 @@ then a reranking of the candidates. What differs is how the candidates are reran
   This measures structural similarity directly instead of scoring a token alignment, at a large cost in speed.
 
 ```
-rfoldseek search --query my_chain --db my_db.pt --rerank tm
+rfoldseek search --query target_chain_id --db target_db.pt --rerank tm
 ```
 
 TM mode is the one part of RFoldseek that does **not** work straight after
@@ -111,7 +119,7 @@ git clone https://github.com/pylelab/USalign && cd USalign && g++ -O3 -o USalign
 A comment line naming the query and the database, then one row per hit. Under the default mode, hits are ranked by Smith-Waterman score:
 
 ```
-# query: chainA  (128 tokens)   database: db.pt
+# query: query_chain_id  (128 tokens)   database: target_db.pt
 rank  target                    SW_score    bits    E-value    len
    1  4V9F_A                      412.00   118.3    2.1e-30    129
    2  6XU8_B                      287.50    83.1    5.4e-19    121
@@ -121,7 +129,7 @@ rank  target                    SW_score    bits    E-value    len
 Under `--rerank tm` — RFoldseek-TM — the comment line names the mode and the score columns change:
 
 ```
-# query: PDB_00007O81_1_AJ  (74 tokens)   database: db.pt   rerank: RFoldseek-TM
+# query: query_chain_id  (74 tokens)   database: target_db.pt   rerank: RFoldseek-TM
 rank  target                    TM_mean  TM_query  TM_target    len
    1  PDB_00008B2L_1_W2          0.7076    0.7143     0.7008     76
    2  PDB_00008KD9_1_M           0.6724    0.6674     0.6773     72
@@ -139,7 +147,135 @@ rank  target                    TM_mean  TM_query  TM_target    len
 | `--query_id` | Input       | Chain id to look up inside `--query` when it is a database file                    |
 | `--model`    | Input       | VQ-VAE tokenizer for the query (default: the bundled one)                          |
 | `--matrix`   | Scoring     | Substitution matrix (default: the bundled Structure-BLOSUM)                        |
+| `--evalue_params` | Scoring | Database-specific E-value parameter file for this search |
 | `--usalign`  | Scoring     | Path to the `USalign` binary, `--rerank tm` only (default: `$USALIGN`, then `PATH`) |
+
+### E-values
+
+RFoldseek reports E-values for token Smith--Waterman searches. The initial
+E-value is obtained from a length-dependent Gumbel distribution fitted to
+cluster-maximum background scores. The search space is the number of independent CD-HIT-EST clusters.
+Because the background score distribution also depends on database
+composition, an optional empirical calibration maps each initial cluster-max
+E-value to the observed mean number of background clusters per query. This
+mapping is fitted once for a database, stored in its E-value parameter.
+
+The files in the complete calibration pipeline are:
+
+| File | Produced by |
+| ---- | ----------- |
+| `target_structures.jsonl` | `rfoldseek preprocess` on the target structures |
+| `target_nr80.clstr` | CD-HIT-EST on `target_sequences.fasta` |
+| `target_db.pt` | `rfoldseek build` from the target JSONL and cluster file |
+| `labels.tsv` | Step 0 below |
+| `target_clustermax_params.json` | Step 1 below |
+| `calibration_queries.pt` | Step 2 below |
+| `target_background.tsv` | Step 3 below |
+| `target_evalue_params.json` | Step 4 below |
+
+`target_sequences.fasta` and `calibration_sequences.fasta` are maintained by
+the web-server ingestion pipeline and use the same chain identifiers as the
+corresponding structure JSONL files. End users of the web server do not create
+any of the calibration files below.
+
+0. Annotate the target and independent calibration sequences against the same
+Rfam release. The server obtains `Rfam.cm` and `Rfam.clanin` from Rfam, runs
+`cmpress Rfam.cm` once, and then runs Infernal with Rfam gathering thresholds:
+
+```bash
+cmscan --cut_ga --rfam --fmt 2 --clanin Rfam.clanin \
+  --tblout target_rfam.tbl Rfam.cm target_sequences.fasta
+
+cmscan --cut_ga --rfam --fmt 2 --clanin Rfam.clanin \
+  --tblout calibration_rfam.tbl Rfam.cm calibration_sequences.fasta
+
+python scripts/build_rfam_labels.py \
+  --fasta target_sequences.fasta \
+  --fasta calibration_sequences.fasta \
+  --tblout target_rfam.tbl \
+  --tblout calibration_rfam.tbl \
+  --output labels.tsv
+```
+
+`labels.tsv` is therefore required server-side calibration metadata, not a
+user-supplied search input. It contains `chain_id`, `family`, and `clan`; the
+last two fields are empty when Rfam reports no included hit. The conversion
+script keeps the best included hit for each chain. The calibration scripts
+also accept the synonymous columns `entry_id`/`id`, `rfam_acc`, and
+`clan_acc`.
+
+1. Fit the initial cluster-max Gumbel model for `target_db.pt`:
+
+```bash
+python scripts/rebuild_evalue_params.py \
+  --db target_db.pt \
+  --labels labels.tsv \
+  --output target_clustermax_params.json
+```
+
+2. Encode an independent calibration panel:
+
+```bash
+rfoldseek preprocess \
+  --pdb_dir calibration_structures/ \
+  --output calibration_queries.jsonl
+
+rfoldseek build \
+  --data calibration_queries.jsonl \
+  --output calibration_queries.pt
+```
+
+3. Generate one observation per eligible query--cluster pair:
+
+```bash
+python scripts/build_empirical_evalue_background.py \
+  --db target_db.pt \
+  --queries calibration_queries.pt \
+  --params target_clustermax_params.json \
+  --labels labels.tsv \
+  --output target_background.tsv
+```
+
+The generator performs a full token Smith--Waterman scan, excludes the query's
+own cluster and chains from the same annotated family or clan, applies the
+threefold length-ratio filter, and retains only the highest-scoring member of
+each CD-HIT cluster. An optional US-align audit can be supplied with
+`--related-pairs adjudication.tsv`; pairs marked as structurally related, or
+with a symmetric TM-score of at least 0.45, are marked for exclusion from the
+empirical null.
+
+4. Fit the empirical mapping. The script reads the CD-HIT cluster assignments
+stored in `target_db.pt`, so no cluster count is entered manually:
+
+```bash
+python scripts/fit_empirical_evalue_calibration.py \
+  --params target_clustermax_params.json \
+  --background target_background.tsv \
+  --db target_db.pt \
+  --output target_evalue_params.json
+```
+
+`target_background.tsv` contains the required `raw_evalue` and `query_id`
+columns. It may also contain an explicit
+`weight` column; otherwise `query_id` is required and equal-query weighting is
+used. If a `family` column is also present, families are weighted equally.
+Rows marked `structurally_related=true` are excluded from the empirical null.
+
+5. Search the target database with its matching calibrated parameters:
+
+```bash
+rfoldseek search \
+  --query query_db.pt \
+  --query_id query_chain_id \
+  --db target_db.pt \
+  --evalue_params target_evalue_params.json
+```
+
+With empirical calibration enabled, `evalue` is the calibrated value and
+`raw_evalue` retains the initial Gumbel cluster-max value in the Python API.
+The bit score remains derived from the initial Gumbel model. RFoldseek checks
+the recorded cluster count and refuses to apply an empirical mapping fitted
+for a different database clustering.
 
 ### Python API
 
@@ -176,8 +312,8 @@ A query already in the database needs no tokenizer, since the database holds its
 ```python
 from rfoldseek import Searcher
 
-s = Searcher("my_db.pt")
-hits = s.search_id("my_chain", top_k=10)
+s = Searcher("target_db.pt")
+hits = s.search_id("target_chain_id", top_k=10)
 # [{'rank': 1, 'target': …, 'sw_score': …, 'bits': …, 'evalue': …}, …]
 ```
 
@@ -199,8 +335,8 @@ E-value parameters are loaded, which they are by default.
 structures. It does accept the two files that interpret those tokens,
 `Searcher(db, matrix_path=…, evalue_params_path=…)`, which is how to search
 under a different Structure-BLOSUM matrix or a calibration of your own. On the
-command line the same choices are `rfoldseek search --model / --matrix` and
-`rfoldseek build --checkpoint`; all default to the bundled files.
+command line, the corresponding options are `--model`, `--matrix`,
+`--checkpoint`, and `--evalue_params`.
 
 ## Third-party components
 
