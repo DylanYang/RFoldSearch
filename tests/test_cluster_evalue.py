@@ -59,6 +59,25 @@ def test_bit_score_and_evalue_agree_in_the_tail():
                                                                  rel=1e-6)
 
 
+def test_empirical_calibration_is_a_monotone_weighted_background_count():
+    calibration = EV.fit_empirical_calibration(
+        [0.1, 0.1, 1.0, 10.0], weights=[0.2, 0.3, 0.5, 1.0], n_clusters=12)
+
+    assert calibration["raw_evalue_knots"] == [0.1, 1.0, 10.0]
+    assert calibration["calibrated_evalues"] == pytest.approx([0.5, 1.0, 2.0])
+    observed = EV.apply_empirical_calibration(
+        np.array([0.01, 0.1, 0.5, 1.0, 100.0]), calibration)
+    assert observed == pytest.approx([0.1, 0.5, 0.5, 1.0, 2.0])
+    assert np.all(np.diff(observed) >= 0)
+
+
+def test_invalid_empirical_calibration_is_rejected():
+    with pytest.raises(ValueError, match="monotone"):
+        EV.apply_empirical_calibration(
+            1.0, {"raw_evalue_knots": [1.0, 0.1],
+                  "calibrated_evalues": [0.1, 1.0]})
+
+
 def test_shipped_params_are_the_cluster_max_scheme():
     from rfoldseek.search import asset
     par = json.load(open(asset("evalue_params.json")))
@@ -107,6 +126,45 @@ def test_searcher_uses_the_cluster_count_of_the_loaded_database(tmp_path):
     assert h_many and h_few, "the synthetic query must retrieve something"
     assert "evalue" in h_many[0], "the packaged parameters were not applied"
     assert h_few[0]["evalue"] < h_many[0]["evalue"]
+
+
+def test_searcher_applies_matching_embedded_empirical_calibration(tmp_path):
+    from rfoldseek.search import Searcher
+
+    rng = np.random.default_rng(3)
+    entries = [{"id": f"chain{i}",
+                "tokens": rng.integers(0, 80, size=40).tolist(),
+                "cluster": f"c{i}"} for i in range(12)]
+    from rfoldseek.search import asset
+    params = json.load(open(asset("evalue_params.json")))
+    params["empirical_calibration"] = EV.fit_empirical_calibration(
+        [0.01, 0.1, 1.0, 10.0], [0.1, 0.2, 0.3, 0.4], n_clusters=12)
+    db = tmp_path / "calibrated.pt"
+    torch.save({"n_codes": 80, "entries": entries,
+                "evalue_params": params}, db)
+
+    searcher = Searcher(str(db))
+    hit = searcher.search(np.asarray(entries[0]["tokens"]), top_k=1)[0]
+    assert hit["evalue"] == EV.apply_empirical_calibration(
+        hit["raw_evalue"], params["empirical_calibration"])
+
+
+def test_searcher_rejects_empirical_mapping_for_another_database(tmp_path):
+    from rfoldseek.search import Searcher, asset
+
+    rng = np.random.default_rng(4)
+    entries = [{"id": f"chain{i}",
+                "tokens": rng.integers(0, 80, size=40).tolist(),
+                "cluster": f"c{i}"} for i in range(12)]
+    params = json.load(open(asset("evalue_params.json")))
+    params["empirical_calibration"] = EV.fit_empirical_calibration(
+        [0.1, 1.0], n_clusters=99)
+    db = tmp_path / "mismatch.pt"
+    torch.save({"n_codes": 80, "entries": entries,
+                "evalue_params": params}, db)
+
+    with pytest.raises(ValueError, match="recalibrate for this database"):
+        Searcher(str(db))
 
 
 def test_cli_header_reports_the_cluster_count_when_it_reports_an_evalue(tmp_path,

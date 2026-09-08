@@ -1,79 +1,107 @@
-"""Recalibrate the cluster-max null and refresh the packaged asset.
+#!/usr/bin/env python3
+"""Fit length-dependent cluster-max Gumbel parameters for a token database."""
 
-Clusters come from CD-HIT-EST at 80% identity, run beforehand:
+from __future__ import annotations
 
-    cd-hit-est -i targets.fa -o nr80 -c 0.8 -n 5 -aS 0.8 -aL 0.8 -g 1
-
-Chains of the same Rfam family or clan are excluded from the null, so what is
-fitted describes unrelated structures. The reference database is the 885-chain
-NR80 benchmark; a deployment over a different database should rerun this
-against that database and pass the result to Searcher as evalue_params_path.
-"""
-import csv, json, os, time
+import argparse
+import csv
+import json
+import sys
+import time
 from pathlib import Path
-import numpy as np, torch
+
+import numpy as np
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from rfoldseek import evalue as EV
-from rfoldseek.database import read_clusters, assign_clusters
-
-PC = Path.home() / "Desktop/RFoldseek-paper-code"
-DB = PC / "files/models/db.pt"
-SUB = PC / "files/models/sub_matrix.pt"
-LABELS = PC / "Splits/labels.tsv"
-CLSTR = os.environ.get("RFS_CLSTR")          # CD-HIT .clstr for the same chains
-OUT = Path(__file__).resolve().parent.parent / "rfoldseek/assets/evalue_params.json"
-
-db = torch.load(DB, map_location="cpu", weights_only=False)
-ents = db["entries"]
-toks = [np.asarray(e["tokens"], dtype=np.int64) for e in ents]
-sub = torch.load(SUB, map_location="cpu", weights_only=False)["matrix"].numpy().astype(np.float32)
-
-lab = {r["entry_id"]: r for r in csv.DictReader(open(LABELS), delimiter="\t")}
-key = [str(e["id"]) for e in ents]
-fam = np.array([lab.get(k, {}).get("rfam_acc", "") or "" for k in key], dtype=object)
-clan = np.array([lab.get(k, {}).get("clan_acc", "") or "" for k in key], dtype=object)
-known = np.array([f not in ("", "N/A", "None") for f in fam])
-hasc = np.array([c not in ("", "N/A", "None") for c in clan])
-
-if not CLSTR:
-    raise SystemExit("set RFS_CLSTR to the cd-hit-est .clstr file for these chains")
-clusters = assign_clusters(ents, read_clusters(CLSTR))
+from rfoldseek.database import load_database, short_id
+from rfoldseek.search import load_matrix
 
 
-def exclude(i, j):
-    if known[i] and known[j] and fam[i] == fam[j]:
-        return True
-    if hasc[i] and hasc[j] and clan[i] == clan[j]:
-        return True
-    return False
+UNKNOWN = {"", "N/A", "NA", "None", "none", ".", "-"}
 
 
-t0 = time.time()
-par = EV.calibrate_clustermax_length_dependent(sub, toks, clusters,
-                                               gap_open=-2.0, gap_extend=-0.5,
-                                               n_queries=24, seed=0,
-                                               exclude=exclude, len_ratio=3.0)
-print(f"calibrated {len(par['length_table'])} length points in {time.time()-t0:.0f}s "
-      f"({par['n_clusters']} clusters, {par['n_chains']} chains)", flush=True)
+def first_present(row, names):
+    for name in names:
+        value = row.get(name, "").strip()
+        if value:
+            return value
+    return ""
 
-out = {"scheme": "cluster-max",
-       "gap_open": -2.0, "gap_extend": -0.5, "seed": 0,
-       "len_ratio": 3.0,
-       "calibration_database": str(DB),
-       "n_clusters": par["n_clusters"], "n_chains": par["n_chains"],
-       "skipped_lengths": par["skipped_lengths"],
-       "length_table": par["length_table"],
-       "clusters": "cd-hit-est -c 0.8 -n 5 -aS 0.8 -aL 0.8 -g 1",
-       "null": "cluster maxima over real database chains, same Rfam family or "
-               "clan excluded; nothing censored",
-       "note": "Gumbel (mu, beta) of the cluster-max null on a grid of query "
-               "lengths, interpolated by evalue.clustermax_params_for_length. "
-               "E = N_clusters * (1 - exp(-exp(-(S - mu)/beta))); the bit "
-               "score is (S - mu)/(beta ln 2). Fitting maxima rather than "
-               "individual pairs removes the per-database censoring fraction "
-               "the earlier chain-level calibration needed, and keeps the "
-               "calibration stable across databases of different redundancy."}
-json.dump(out, open(OUT, "w"), indent=1)
-print("wrote", OUT)
-for r in par["length_table"]:
-    print("  L=%-5d mu=%7.2f beta=%6.2f lambda=%.3f n=%d"
-          % (r["length"], r["mu"], r["beta"], r["lambda"], r["n_maxima"]))
+
+def read_labels(path):
+    labels = {}
+    with open(path, newline="") as handle:
+        for row in csv.DictReader(handle, delimiter="\t"):
+            chain_id = first_present(row, ("chain_id", "entry_id", "id",
+                                           "query_id", "target_id"))
+            if not chain_id:
+                raise ValueError("labels TSV needs an id column")
+            annotation = {
+                "family": first_present(row, ("family", "rfam_acc", "rfam_family")),
+                "clan": first_present(row, ("clan", "clan_acc", "rfam_clan")),
+            }
+            labels[chain_id] = annotation
+            labels[short_id(chain_id, chain_id)] = annotation
+    return labels
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--db", required=True, help="clustered RFoldseek database")
+    parser.add_argument("--labels", required=True,
+                        help="TSV with chain ids and optional family/clan columns")
+    parser.add_argument("--output", required=True)
+    parser.add_argument("--matrix", default=None)
+    parser.add_argument("--lengths", default="20,30,40,60,80,120,160,220,300,500,1000,2000")
+    parser.add_argument("--n-queries", default=24, type=int)
+    parser.add_argument("--seed", default=0, type=int)
+    parser.add_argument("--len-ratio", default=3.0, type=float)
+    args = parser.parse_args()
+
+    _, _, tokens, chain_ids, _, clusters = load_database(args.db)
+    matrix = load_matrix(args.matrix)
+    labels = read_labels(args.labels)
+    family = np.asarray([labels.get(chain_id, {}).get("family", "")
+                         for chain_id in chain_ids], dtype=object)
+    clan = np.asarray([labels.get(chain_id, {}).get("clan", "")
+                       for chain_id in chain_ids], dtype=object)
+
+    def exclude(first, second):
+        same_family = (family[first] not in UNKNOWN and family[second] not in UNKNOWN
+                       and family[first] == family[second])
+        same_clan = (clan[first] not in UNKNOWN and clan[second] not in UNKNOWN
+                     and clan[first] == clan[second])
+        return same_family or same_clan
+
+    lengths = tuple(int(value) for value in args.lengths.split(",") if value)
+    started = time.time()
+    fitted = EV.calibrate_clustermax_length_dependent(
+        matrix, tokens, clusters, gap_open=-2.0, gap_extend=-0.5,
+        lengths=lengths, n_queries=args.n_queries, seed=args.seed,
+        exclude=exclude, len_ratio=args.len_ratio,
+    )
+    params = {
+        "scheme": "cluster-max",
+        "gap_open": -2.0,
+        "gap_extend": -0.5,
+        "seed": args.seed,
+        "len_ratio": args.len_ratio,
+        "calibration_database": str(Path(args.db).resolve()),
+        "n_clusters": fitted["n_clusters"],
+        "n_chains": fitted["n_chains"],
+        "skipped_lengths": fitted["skipped_lengths"],
+        "length_table": fitted["length_table"],
+        "clusters": "stored cluster labels in the RFoldseek database",
+        "null": "cluster maxima over real database chains; same annotated "
+                "family or clan excluded; nothing censored",
+    }
+    output = Path(args.output)
+    output.parent.mkdir(parents=True, exist_ok=True)
+    output.write_text(json.dumps(params, indent=2) + "\n")
+    print(f"wrote {output} in {time.time() - started:.0f}s "
+          f"({fitted['n_clusters']} clusters, {fitted['n_chains']} chains)")
+
+
+if __name__ == "__main__":
+    main()
