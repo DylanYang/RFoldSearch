@@ -75,7 +75,8 @@ class Searcher:
 
     def search(self, qtok, top_k=10, top_n=DEFAULT_TOP_N,
                min_diag=DEFAULT_MIN_DIAG, self_idx=-1, rerank="sw",
-               usalign=None, query_entry=None, tie_seed=None):
+               usalign=None, query_entry=None, tie_seed=None,
+               tm_fast=False):
         """-> list of hit dicts, ranked by the chosen backend's score.
 
         ``rerank="sw"`` ranks by Smith-Waterman score and reports bits and an
@@ -86,6 +87,9 @@ class Searcher:
         rather than by database index, at both the prefilter's ``top_n``
         cut and the reranking. ``None`` keeps the historical index-order
         behaviour.
+
+        ``tm_fast`` runs the ``tm`` backend's US-align pass in its fast
+        mode; see ``usalign.score_pool``.
         """
         if rerank not in ("sw", "tm"):
             raise ValueError(f"unknown rerank backend {rerank!r}; use 'sw' or 'tm'")
@@ -109,7 +113,8 @@ class Searcher:
                         "the database or pass query_entry"
                     )
                 query_entry = self.ents[self_idx]
-            return self._rerank_tm(query_entry, cand, top_k, usalign, tie_seed)
+            return self._rerank_tm(query_entry, cand, top_k, usalign,
+                                   tie_seed, tm_fast)
         sw = np.array([smith_waterman_numba(qtok, self.toks[t], self.sub,
                                             GAP_OPEN, GAP_EXTEND) for t in cand])
         if tie_seed is None:
@@ -136,13 +141,15 @@ class Searcher:
             hits.append(hit)
         return hits
 
-    def _rerank_tm(self, query_entry, cand, top_k, usalign, tie_seed=None):
+    def _rerank_tm(self, query_entry, cand, top_k, usalign, tie_seed=None,
+                   tm_fast=False):
         """Rank the candidate pool by US-align TM-score (RFoldseek-TM)."""
         binary = _usalign.find_usalign(usalign)
         pool = [(self.ids[int(t)], self.ents[int(t)]["coords"],
                  self.ents[int(t)]["mask"]) for t in cand]
         scores, skipped = _usalign.score_pool(
-            binary, query_entry["coords"], query_entry["mask"], pool)
+            binary, query_entry["coords"], query_entry["mask"], pool,
+            fast=tm_fast)
         self.last_tm_skipped = skipped
         keys = self.tie_keys(tie_seed) if tie_seed is not None else None
 

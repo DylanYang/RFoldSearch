@@ -39,7 +39,8 @@ def cmd_search(a):
     s = Searcher(a.db, matrix_path=a.matrix,
                  evalue_params_path=a.evalue_params)
     kw = dict(top_k=a.top_k, top_n=a.top_n, min_diag=a.min_diag,
-              rerank=a.rerank, usalign=a.usalign, tie_seed=a.tie_seed)
+              rerank=a.rerank, usalign=a.usalign, tie_seed=a.tie_seed,
+              tm_fast=a.tm_fast)
     if a.query in s.id2i:
         qname = a.query
         hits = s.search_id(a.query, **kw)
@@ -145,6 +146,11 @@ def main(argv=None):
                         "(default) or by US-align TM-score (RFoldseek-TM)")
     p.add_argument("--usalign", default=None,
                    help="path to the USalign binary (default: $USALIGN, then PATH)")
+    p.add_argument("--tm_fast", action="store_true",
+                   help="run the --rerank tm US-align pass in its fast mode "
+                        "(about 2x quicker, slightly lower TM-scores); worth "
+                        "it for long queries, whose rerank cost grows with "
+                        "the product of the two chain lengths")
     p.add_argument("--tie_seed", type=int, default=None,
                    help="break equal scores by a hash of the chain id seeded "
                         "with this integer, instead of by database order; "

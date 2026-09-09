@@ -110,3 +110,45 @@ def test_score_pool_against_the_real_binary():
     assert scores["self"][1] == pytest.approx(1.0, abs=1e-3)
     assert scores["other"][0] < scores["self"][0]
     assert all(0.0 <= v <= 1.0 for pair in scores.values() for v in pair)
+
+
+def _capture_cmd(monkeypatch):
+    """Record the argv score_pool builds, without running anything."""
+    seen = {}
+
+    class _Proc:
+        returncode = 0
+        stdout = ""
+        stderr = ""
+
+    def fake_run(cmd, **kw):
+        seen["cmd"] = cmd
+        return _Proc()
+
+    monkeypatch.setattr(usalign.subprocess, "run", fake_run)
+    return seen
+
+
+def _one_candidate(rng):
+    return [("t0", _coords(rng, 8), np.ones(8, dtype=bool))]
+
+
+def test_fast_is_off_by_default(monkeypatch):
+    rng = np.random.default_rng(1)
+    seen = _capture_cmd(monkeypatch)
+
+    usalign.score_pool("/fake/USalign", _coords(rng, 8),
+                       np.ones(8, dtype=bool), _one_candidate(rng))
+
+    assert "-fast" not in seen["cmd"]
+
+
+def test_fast_adds_the_flag(monkeypatch):
+    rng = np.random.default_rng(1)
+    seen = _capture_cmd(monkeypatch)
+
+    usalign.score_pool("/fake/USalign", _coords(rng, 8),
+                       np.ones(8, dtype=bool), _one_candidate(rng), fast=True)
+
+    assert seen["cmd"][-1] == "-fast"
+    assert seen["cmd"].count("-fast") == 1

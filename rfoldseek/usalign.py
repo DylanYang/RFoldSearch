@@ -92,12 +92,18 @@ def assemble_scores(index_to_id: dict, parsed: dict) -> dict:
 
 
 def score_pool(binary: str, query_coords, query_mask, candidates,
-               min_residues: int = MIN_RESIDUES):
+               min_residues: int = MIN_RESIDUES, fast: bool = False):
     """Score a whole candidate pool in one US-align call.
 
     ``candidates`` is a sequence of ``(id, coords, mask)``. Returns
     ``({id: (tm_query, tm_target)}, [skipped ids])``; a candidate is skipped
     when it has fewer than ``min_residues`` valid residues.
+
+    ``fast`` passes US-align's ``-fast`` flag, which shortens its heuristic
+    search for the superposition. Measured at roughly 2x on paired probes
+    over 10,000 targets; TM-scores are slightly lower and a few near-ties
+    can swap, so it is off by default and worth enabling for long queries,
+    whose cost grows with the product of the two chain lengths.
     """
     with tempfile.TemporaryDirectory(prefix="rfoldseek_tm_") as tmp:
         qpath = os.path.join(tmp, "query.pdb")
@@ -123,6 +129,8 @@ def score_pool(binary: str, query_coords, query_mask, candidates,
             fh.write("\n".join(names) + "\n")
         cmd = [binary, qpath, "-dir2", tdir + os.sep, listfile,
                "-mol", "RNA", "-outfmt", "2"]
+        if fast:
+            cmd.append("-fast")
         proc = subprocess.run(cmd, capture_output=True, text=True)
         if proc.returncode != 0:
             raise USalignFailed(

@@ -10,8 +10,6 @@ See `descriptors/__init__.py` for the descriptor layout, and
 """
 from __future__ import annotations
 
-from __future__ import annotations
-
 import torch
 import torch.nn as nn
 import torch.nn.functional as F

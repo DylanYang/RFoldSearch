@@ -149,6 +149,30 @@ rank  target                    TM_mean  TM_query  TM_target    len
 | `--matrix`   | Scoring     | Substitution matrix (default: the bundled Structure-BLOSUM)                        |
 | `--evalue_params` | Scoring | Database-specific E-value parameter file for this search |
 | `--usalign`  | Scoring     | Path to the `USalign` binary, `--rerank tm` only (default: `$USALIGN`, then `PATH`) |
+| `--tm_fast`  | Speed       | Run the `--rerank tm` US-align pass in fast mode, `--rerank tm` only (about 2x quicker, slightly lower TM-scores) |
+| `--tie_seed` | Determinism | Break equal scores by a hash of the chain id seeded with this integer, instead of by database order |
+
+#### Choosing the sensitivity settings
+
+The defaults (`--top_n 200 --min_diag 2`) were selected on the validation
+split, where retrieval is insensitive to depth beyond 200, and are the right
+starting point for everyday search.
+
+For remote homologues in a large predicted-structure database, a deeper and
+more permissive prefilter pays off. Admitting targets on a single k-mer
+diagonal and reranking a much larger pool
+
+```
+rfoldseek search --query my_chain --db big_db.pt --rerank tm \
+                 --min_diag 1 --top_n 2000
+```
+
+is the configuration behind the paper's sequence-blind result: on queries
+where BLASTN finds no same-family target at all, it places a true homologue
+at rank 1 for 76% of them, against 30% for the default depth with token
+reranking. It costs proportionally more — the prefilter traverses more
+postings and US-align sees ten times the candidates — so it is a deliberate
+accuracy-first setting rather than the default.
 
 ### E-values
 
