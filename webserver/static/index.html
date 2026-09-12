@@ -1,0 +1,171 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>RFoldseek search</title>
+<style>
+  :root {
+    --ink: #1a1a1a; --muted: #6b6b6b; --line: #e3e3e3;
+    --accent: #0072b2; --bg: #fcfcfc; --card: #fff;
+  }
+  * { box-sizing: border-box }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font: 15px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  }
+  .wrap { max-width: 940px; margin: 0 auto; padding: 34px 22px 70px }
+  h1 { font-size: 22px; margin: 0 0 4px; letter-spacing: -.01em }
+  .sub { color: var(--muted); font-size: 13.5px; margin: 0 0 26px }
+  .card {
+    background: var(--card); border: 1px solid var(--line); border-radius: 10px;
+    padding: 20px 22px; margin-bottom: 18px;
+  }
+  label { display: block; font-size: 12px; font-weight: 600; letter-spacing: .02em;
+          text-transform: uppercase; color: var(--muted); margin-bottom: 6px }
+  .row { display: flex; gap: 16px; flex-wrap: wrap; align-items: flex-end }
+  .row > div { flex: 1 1 150px }
+  select, input[type=number], input[type=file] {
+    width: 100%; padding: 8px 10px; font: inherit; font-size: 14px;
+    border: 1px solid var(--line); border-radius: 6px; background: #fff;
+    color: var(--ink);
+  }
+  input[type=file] { padding: 6px 8px }
+  button {
+    padding: 9px 20px; font: inherit; font-weight: 600; font-size: 14px;
+    background: var(--accent); color: #fff; border: 0; border-radius: 6px;
+    cursor: pointer;
+  }
+  button:disabled { opacity: .5; cursor: default }
+  details { margin-top: 14px }
+  summary { cursor: pointer; font-size: 13px; color: var(--accent) }
+  table { width: 100%; border-collapse: collapse; font-size: 13.5px;
+          font-variant-numeric: tabular-nums }
+  th { text-align: right; font-weight: 600; font-size: 11.5px; color: var(--muted);
+       text-transform: uppercase; letter-spacing: .03em;
+       border-bottom: 1px solid var(--line); padding: 0 8px 7px }
+  th:nth-child(2), td:nth-child(2) { text-align: left }
+  td { padding: 6px 8px; text-align: right; border-bottom: 1px solid #f2f2f2 }
+  tr:last-child td { border-bottom: 0 }
+  .meta { color: var(--muted); font-size: 13px; margin: 0 0 14px }
+  .err { color: #b23b00; font-size: 14px; white-space: pre-wrap }
+  .hint { color: var(--muted); font-size: 12px; margin-top: 5px }
+  code { font-size: 12.5px; background: #f4f4f4; padding: 1px 5px; border-radius: 4px }
+  .scroll { overflow-x: auto }
+  @media (prefers-color-scheme: dark) {
+    :root { --ink: #eee; --muted: #9a9a9a; --line: #333;
+            --bg: #161616; --card: #1e1e1e; --accent: #3d9ad6 }
+    select, input { background: #262626 }
+    td { border-bottom-color: #2a2a2a }
+    code { background: #2a2a2a }
+  }
+</style>
+
+<div class="wrap">
+  <h1>RFoldseek search</h1>
+  <p class="sub">RNA tertiary-structure search over a learned discrete
+    structural alphabet. Upload a single-chain PDB or mmCIF structure.</p>
+
+  <form class="card" id="f">
+    <div class="row">
+      <div style="flex:2 1 260px">
+        <label for="structure">Structure</label>
+        <input id="structure" name="structure" type="file"
+               accept=".pdb,.cif,.mmcif,.ent" required>
+        <p class="hint">One RNA chain. Needs C3′, C4′ and O4′ backbone atoms.</p>
+      </div>
+      <div>
+        <label for="database">Database</label>
+        <select id="database" name="database"></select>
+      </div>
+      <div style="flex:0 0 auto"><button id="go" type="submit">Search</button></div>
+    </div>
+
+    <details>
+      <summary>Search parameters</summary>
+      <div class="row" style="margin-top:12px">
+        <div>
+          <label for="top_k">Hits returned</label>
+          <input id="top_k" name="top_k" type="number" value="10" min="1" max="1000">
+        </div>
+        <div>
+          <label for="top_n">Candidate depth</label>
+          <input id="top_n" name="top_n" type="number" value="200" min="1">
+          <p class="hint">200 is the deployed default.</p>
+        </div>
+        <div>
+          <label for="min_diag">Min. diagonal hits</label>
+          <input id="min_diag" name="min_diag" type="number" value="2" min="1" max="8">
+          <p class="hint">1 is more sensitive, and slower.</p>
+        </div>
+        <div>
+          <label for="rerank">Reranking</label>
+          <select id="rerank" name="rerank">
+            <option value="sw">Token Smith–Waterman</option>
+            <option value="tm">US-align TM-score (RFoldseek-TM)</option>
+          </select>
+        </div>
+      </div>
+    </details>
+  </form>
+
+  <div class="card" id="out" hidden></div>
+</div>
+
+<script>
+const $ = s => document.querySelector(s);
+const out = $("#out"), go = $("#go");
+
+function show(html) { out.hidden = false; out.innerHTML = html; }
+const esc = s => String(s).replace(/[&<>"]/g,
+  c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+
+fetch("api/health").then(r => r.json()).then(h => {
+  if (!h.ready) { show(`<p class="err">Server not ready: ${esc(h.error || "loading")}</p>`); return; }
+  $("#database").innerHTML = h.databases.map(d =>
+    `<option value="${esc(d.key)}">${esc(d.label)} — ${d.n_chains.toLocaleString()} chains</option>`
+  ).join("");
+  $("#top_n").max = h.top_n_cap;
+}).catch(e => show(`<p class="err">Cannot reach the server: ${esc(e)}</p>`));
+
+$("#f").addEventListener("submit", async ev => {
+  ev.preventDefault();
+  go.disabled = true;
+  show('<p class="meta">Searching…</p>');
+  try {
+    const r = await fetch("api/search", { method: "POST", body: new FormData($("#f")) });
+    const j = await r.json();
+    if (!r.ok) { show(`<p class="err">${esc(j.detail || r.statusText)}</p>`); return; }
+    render(j);
+  } catch (e) {
+    show(`<p class="err">${esc(e)}</p>`);
+  } finally { go.disabled = false; }
+});
+
+function render(j) {
+  const tm = j.rerank === "tm";
+  const cols = tm
+    ? ["Rank", "Target", "TM mean", "TM query", "TM target", "Length"]
+    : ["Rank", "Target", "SW score", "Bits", "E-value", "Length"];
+  const cell = h => tm
+    ? [h.rank, esc(h.target), h.tm_mean.toFixed(4), h.tm_query.toFixed(4),
+       h.tm_target.toFixed(4), h.length]
+    : [h.rank, esc(h.target), h.sw_score.toFixed(2),
+       h.bits === undefined ? "—" : h.bits.toFixed(1),
+       h.evalue === undefined ? "—" : h.evalue.toExponential(2), h.length];
+
+  if (!j.hits.length) {
+    show(`<p class="meta">No candidate passed the prefilter. Try
+          <code>min_diag = 1</code>.</p>`);
+    return;
+  }
+  show(`
+    <p class="meta">${esc(j.filename || "query")} — ${j.query.n_tokens} tokens,
+      searched against ${esc(j.database.label)}
+      (${j.database.n_chains.toLocaleString()} chains) in ${j.seconds.toFixed(3)} s
+      ${tm ? "· TM reranking" : ""}</p>
+    <div class="scroll"><table>
+      <thead><tr>${cols.map(c => `<th>${c}</th>`).join("")}</tr></thead>
+      <tbody>${j.hits.map(h =>
+        `<tr>${cell(h).map(v => `<td>${v}</td>`).join("")}</tr>`).join("")}</tbody>
+    </table></div>`);
+}
+</script>
