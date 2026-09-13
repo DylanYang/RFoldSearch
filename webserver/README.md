@@ -26,6 +26,21 @@ export RFOLDSEEK_DBS="rnasolo=RNAsolo experimental (885):/path/to/db.pt"
 uvicorn app.main:app --port 8000
 ```
 
+That binds to `127.0.0.1`, reachable only from the same machine. To let
+other machines on the network reach it, bind to every interface and use
+the host's own address:
+
+```
+uvicorn app.main:app --host 0.0.0.0 --port 8000     # http://<host-ip>:8000
+```
+
+On macOS the firewall may prompt the first time, or silently refuse
+connections; allow incoming connections for the Python binary. Note that
+there is no authentication: anyone who can route to the port can upload
+a structure and start a search, and a search holds a core for its
+duration. That is fine on a lab network and is not enough for the open
+internet, which would want at least a rate limit and a proxy in front.
+
 Or with the bundled compose file, which mounts `./databases` read-only:
 
 ```
