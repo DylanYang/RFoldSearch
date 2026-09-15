@@ -48,7 +48,8 @@ def cmd_search(a):
         model, ckpt, _, _ = load_model(a.model)
         entry = json.loads(open(a.query).read().splitlines()[0])
         enc = encode_entry(model, entry, torch.device("cpu"),
-                           ckpt.get("norm_mean"), ckpt.get("norm_std"))
+                           ckpt.get("norm_mean"), ckpt.get("norm_std"),
+                           active_blocks=ckpt.get("active_blocks"))
         if enc is None:
             raise SystemExit("query structure could not be encoded")
         qname, qtok = short_id(a.query, 0), np.asarray(enc["tokens"], np.int64)

@@ -89,6 +89,7 @@ def build_database(checkpoint: str, data_paths: list[str], output: str,
     model, ckpt, n_codes, _ = load_model(checkpoint, dev)
     norm_mean = ckpt.get("norm_mean", None)
     norm_std = ckpt.get("norm_std", None)
+    active_blocks = ckpt.get("active_blocks", None)
 
     entries, seen = [], set()
     for data_path in data_paths:
@@ -101,7 +102,8 @@ def build_database(checkpoint: str, data_paths: list[str], output: str,
                 seen.add(eid)
                 if sum(e["mask"]) < min_len:
                     continue
-                enc = encode_entry(model, e, dev, norm_mean, norm_std)
+                enc = encode_entry(model, e, dev, norm_mean, norm_std,
+                                   active_blocks=active_blocks)
                 if enc is not None:
                     entries.append(enc)
                 if progress and len(entries) % 100 == 0 and entries:
