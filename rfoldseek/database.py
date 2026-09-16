@@ -8,6 +8,7 @@ import torch
 
 from .backbone import extract_backbone_coords
 from .edges import find_base_pair_and_stack_idx
+from .prefilter import KMER_K
 from .tokenizer import encode_entry, load_model
 
 
@@ -75,10 +76,22 @@ def assign_clusters(ents, mapping) -> list:
 
 
 def build_database(checkpoint: str, data_paths: list[str], output: str,
-                   min_len: int = 20, device: str = "cpu",
+                   min_len: int | None = None, device: str = "cpu",
                    progress: bool = True, clusters: str | None = None,
                    evalue_params: str | None = None) -> dict:
     """Encode every entry in the given JSONL files into one .pt database.
+
+    ``min_len`` drops chains with fewer than that many valid residues.
+    The default is ``None``, which keeps every chain the tokeniser can
+    encode. The paper's 885-chain corpus used ``min_len=20``; pass it
+    explicitly to reproduce that set.
+
+    Chains shorter than the prefilter's k-mer length contribute no k-mers
+    to the inverted index, so they can never be returned as a hit and
+    cannot be used as a query. They are still encoded and stored when no
+    ``min_len`` is given — the count is reported so the choice is visible
+    — but note that each one adds a cluster to the E-value search space
+    while being unreachable, which makes every E-value slightly larger.
 
     ``clusters`` is the CD-HIT .clstr (or TSV) that groups near-duplicate
     chains. E-values are counted in clusters, so the mapping is stored with
@@ -100,7 +113,7 @@ def build_database(checkpoint: str, data_paths: list[str], output: str,
                 if eid in seen:
                     continue
                 seen.add(eid)
-                if sum(e["mask"]) < min_len:
+                if min_len is not None and sum(e["mask"]) < min_len:
                     continue
                 enc = encode_entry(model, e, dev, norm_mean, norm_std,
                                    active_blocks=active_blocks)
@@ -135,8 +148,17 @@ def build_database(checkpoint: str, data_paths: list[str], output: str,
     lens = np.array([len(e["tokens"]) for e in entries]) if entries else np.zeros(1)
     print(f"Saved: {output}\n  Entries: {len(entries)}  "
           f"(length: mean={lens.mean():.0f}, median={np.median(lens):.0f}, "
-          f"max={lens.max():.0f})\n  Clusters: {len(set(labels))}"
+          f"min={lens.min():.0f}, max={lens.max():.0f})"
+          f"{'' if min_len is None else f'  [min_len={min_len}]'}"
+          f"\n  Clusters: {len(set(labels))}"
           f"{'' if clusters else ' (unclustered: every chain its own cluster)'}")
+    n_unindexable = int((lens < KMER_K).sum())
+    if n_unindexable:
+        print(f"  Note: {n_unindexable} chain(s) shorter than the {KMER_K}-mer "
+              f"prefilter length. They contribute no k-mers, so they can never "
+              f"be returned as a hit or used as a query, yet each still counts "
+              f"as a cluster in the E-value search space. Pass "
+              f"--min_len {KMER_K} to drop them.")
     return db
 
 

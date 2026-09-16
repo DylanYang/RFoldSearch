@@ -121,7 +121,11 @@ def main(argv=None):
     p.add_argument("--data", nargs="+", required=True)
     p.add_argument("--output", required=True)
     p.add_argument("--checkpoint", default=asset("desc_vqvae_best.pt"))
-    p.add_argument("--min_len", type=int, default=20)
+    p.add_argument("--min_len", type=int, default=None,
+                   help="drop chains with fewer than this many valid "
+                        "residues; the default keeps every chain the "
+                        "tokeniser can encode. The paper's 885-chain "
+                        "corpus used --min_len 20")
     p.add_argument("--clusters", default=None,
                    help="CD-HIT .clstr (or id/cluster TSV) grouping "
                         "near-duplicate chains; E-values are counted in "
