@@ -29,7 +29,16 @@ def find_base_pair_and_stack_idx(
         stack_idx    — sequence-nearest stacking partner per residue
     """
 
-    arr = strucio.load_structure(path, model=model)
+    # Match backbone.py's loader (label_asym_id, not author) so residue
+    # counts stay in sync — an auth-only mismatch would leave edges
+    # indexed 0..17 while coords run 0..19, and the encoder would drop
+    # the entry as a shape mismatch.
+    if path.lower().endswith((".cif", ".mmcif", ".cif.gz")):
+        import biotite.structure.io.pdbx as pdbx
+        cif_file = pdbx.CIFFile.read(path)
+        arr = pdbx.get_structure(cif_file, model=model, use_author_fields=False)
+    else:
+        arr = strucio.load_structure(path, model=model)
     if arr.array_length() == 0:
         raise ValueError("No atoms found in the structure.")
 

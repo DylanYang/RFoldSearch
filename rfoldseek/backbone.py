@@ -90,10 +90,20 @@ def extract_backbone_coords(path, chain_id=None, max_len=None):
             C1'/base-anchor are optional and filled with zeros if absent.
         mask (np.ndarray): (L,) — 1 = valid backbone, 0 = missing C3'/C4'/O4'
     """
-    # Load without `extra_fields` / `altloc` — those options can fail on
-    # older or non-standard CIFs and silently drop entries. Keep the call
-    # minimal and defer field selection to our own logic below.
-    arr = strucio.load_structure(path, model=1)
+    # Load using the label (`_atom_site.label_asym_id`) chain grouping rather
+    # than the author (`auth_asym_id`) grouping. Some depositions split what
+    # is really one polymer chain across two author chain letters with a
+    # residue-id gap in between; the author view then reports the polymer
+    # short by the gapped residues (e.g. 4X4N chain G reads as 18 residues
+    # under auth, 20 under label). The paper corpus was built under the label
+    # view. `strucio.load_structure` uses author labels by default, so open
+    # CIFs through the pdbx parser explicitly with `use_author_fields=False`.
+    if path.lower().endswith((".cif", ".mmcif", ".cif.gz")):
+        import biotite.structure.io.pdbx as pdbx
+        cif_file = pdbx.CIFFile.read(path)
+        arr = pdbx.get_structure(cif_file, model=1, use_author_fields=False)
+    else:
+        arr = strucio.load_structure(path, model=1)
 
     if arr.array_length() == 0:
         raise ValueError("No atoms found in the structure.")

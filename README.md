@@ -74,7 +74,7 @@ tar xzf cd-hit-v4.8.1-2019-0228.tar.gz && cd cd-hit-v4.8.1-2019-0228 && make ope
 
 | Option         | Description                                                     |
 | -------------- | --------------------------------------------------------------- |
-| `--min_len`    | Skip chains shorter than this (default: 20, as used in the paper) |
+| `--min_len`    | Skip chains shorter than this many valid residues. No limit by default; the paper's 885-chain corpus used `--min_len 20` |
 | `--checkpoint` | VQ-VAE tokenizer to encode with (default: the bundled one)       |
 | `--clusters`   | CD-HIT `.clstr` (or id/cluster TSV) grouping near-duplicate chains |
 

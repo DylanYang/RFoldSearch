@@ -15,6 +15,39 @@ from .vqvae import (
     infer_n_enc_layers,
 )
 
+# Byte layout of the 49-D descriptor produced by compute_descriptor.
+# See rfoldseek/descriptors/compose.py for the docstring / diagram.
+_DESCRIPTOR_BLOCK_SPAN = {
+    "g_nn1": (0, 10),
+    "g_nn2": (10, 20),
+    "g_bp":  (20, 30),
+    "m_bp":  (30, 31),
+    "g_st":  (31, 41),
+    "m_st":  (41, 42),
+    "g_ctx": (42, 49),
+}
+
+
+def active_block_mask(active_blocks, d_descriptor=49, dtype=torch.float32):
+    """Return a (d_descriptor,) tensor with 1s on active-block dims, 0 elsewhere.
+
+    The paper's tokenizer was trained with a subset of descriptor blocks
+    contributing to the reconstruction loss (recorded on the checkpoint as
+    `active_blocks`), and the same subset was fed to the encoder at inference:
+    inactive dims were zeroed after the (mean, std) normalisation so the
+    encoder saw a consistent input. Reproducing the shipped token database
+    requires the same zeroing at inference. When `active_blocks` is empty or
+    None, every block is treated as active (backward compatible).
+    """
+    if not active_blocks:
+        return torch.ones(d_descriptor, dtype=dtype)
+    keep = set(active_blocks)
+    m = torch.zeros(d_descriptor, dtype=dtype)
+    for block, (start, end) in _DESCRIPTOR_BLOCK_SPAN.items():
+        if block in keep:
+            m[start:end] = 1.0
+    return m
+
 
 def load_model(checkpoint_path: str, device: torch.device = torch.device("cpu")):
     ckpt = torch.load(checkpoint_path, map_location=device, weights_only=False)
@@ -64,7 +97,7 @@ def prepare_sample(entry, device="cpu"):
 
 
 @torch.no_grad()
-def encode_entry(model, entry, device, norm_mean, norm_std):
+def encode_entry(model, entry, device, norm_mean, norm_std, active_blocks=None):
     sample = prepare_sample(entry, device)
     if sample is None:
         return None
@@ -73,6 +106,10 @@ def encode_entry(model, entry, device, norm_mean, norm_std):
         coords, mask, pair_edges, stack_edges, pair_orient=pair_orient)
     if norm_mean is not None and norm_std is not None:
         descriptor = (descriptor - norm_mean.to(device)) / norm_std.to(device)
+    if active_blocks:
+        keep = active_block_mask(active_blocks, descriptor.shape[-1],
+                                 dtype=descriptor.dtype).to(device)
+        descriptor = descriptor * keep
     output = model(descriptor)
     valid_mask = mask[0].cpu()
     tokens = output["indices"][0].cpu()[valid_mask].numpy().astype(np.int16)

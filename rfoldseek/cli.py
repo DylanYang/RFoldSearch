@@ -48,7 +48,8 @@ def cmd_search(a):
         model, ckpt, _, _ = load_model(a.model)
         entry = json.loads(open(a.query).read().splitlines()[0])
         enc = encode_entry(model, entry, torch.device("cpu"),
-                           ckpt.get("norm_mean"), ckpt.get("norm_std"))
+                           ckpt.get("norm_mean"), ckpt.get("norm_std"),
+                           active_blocks=ckpt.get("active_blocks"))
         if enc is None:
             raise SystemExit("query structure could not be encoded")
         qname, qtok = short_id(a.query, 0), np.asarray(enc["tokens"], np.int64)
@@ -120,7 +121,11 @@ def main(argv=None):
     p.add_argument("--data", nargs="+", required=True)
     p.add_argument("--output", required=True)
     p.add_argument("--checkpoint", default=asset("desc_vqvae_best.pt"))
-    p.add_argument("--min_len", type=int, default=20)
+    p.add_argument("--min_len", type=int, default=None,
+                   help="drop chains with fewer than this many valid "
+                        "residues; the default keeps every chain the "
+                        "tokeniser can encode. The paper's 885-chain "
+                        "corpus used --min_len 20")
     p.add_argument("--clusters", default=None,
                    help="CD-HIT .clstr (or id/cluster TSV) grouping "
                         "near-duplicate chains; E-values are counted in "
