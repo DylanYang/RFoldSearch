@@ -1,13 +1,13 @@
 """The search pipeline: encode -> prefilter -> rerank.
 
 Two reranking backends share the token prefilter. ``sw`` scores candidates by
-affine-gap token Smith-Waterman and reports a Karlin-Altschul E-value. ``tm``
-(RFoldseek-TM) hands the candidate pool to US-align and ranks by the mean of
-its two length-normalised TM-scores; TM-scores have no Karlin-Altschul
-statistics, so that backend reports no E-value.
+affine-gap token Smith-Waterman and reports a cluster-maximum Gumbel E-value.
+``tm`` (RFoldseek-TM) hands the candidate pool to US-align and ranks by the
+mean of its two length-normalised TM-scores; that backend reports no E-value.
 """
 import json
 import os
+import warnings
 
 import numpy as np
 import torch
@@ -56,14 +56,40 @@ class Searcher:
             self.ev_par = self.db["evalue_params"]
         else:
             self.ev_par = json.load(open(ev_path)) if os.path.exists(ev_path) else None
+        if (self.ev_par is not None
+                and self.ev_par.get("query_parameter_model") is not None
+                and "training_domain" not in self.ev_par["query_parameter_model"]):
+            raise ValueError("query-conditional E-value model needs a training_domain")
         self.empirical_ev = (self.ev_par or {}).get("empirical_calibration")
         if self.empirical_ev is not None:
-            fitted_n = self.empirical_ev.get("n_clusters")
+            fitted_n = self.empirical_ev.get(
+                "n_clusters", self.ev_par.get("n_clusters"))
+            if fitted_n is None:
+                raise ValueError("empirical E-value calibration needs a cluster count")
             if fitted_n is not None and int(fitted_n) != self.n_clusters:
                 raise ValueError(
                     "empirical E-value calibration was fitted for "
                     f"{int(fitted_n)} clusters, but the loaded database has "
                     f"{self.n_clusters}; recalibrate for this database"
+                )
+        elif self.ev_par is not None:
+            # Parametric-only params: the cluster-max null was fitted on one
+            # database. Reused on a database of a different size or structural
+            # makeup (e.g. predicted structures, which are more homogeneous and
+            # drive unrelated scores up) the raw E-value can be badly
+            # anticonservative. Warn if the calibration database differs.
+            fitted_n = self.ev_par.get("n_clusters")
+            if (fitted_n and self.n_clusters
+                    and not 0.5 < int(fitted_n) / self.n_clusters < 2.0):
+                warnings.warn(
+                    f"E-value parameters were calibrated on {int(fitted_n)} "
+                    f"clusters but this database has {self.n_clusters} "
+                    "(>2x different); the parametric E-value may be "
+                    "miscalibrated on a database of this size or structural "
+                    "makeup. Fit a database-specific empirical_calibration "
+                    "(scripts/build_empirical_evalue_background.py + "
+                    "scripts/fit_empirical_evalue_calibration.py).",
+                    stacklevel=2,
                 )
         self._tie_cache = {}
 
@@ -117,13 +143,13 @@ class Searcher:
         else:
             order = np.lexsort((self.tie_keys(tie_seed)[cand], -sw))
         hits = []
+        if self.ev_par is not None:
+            mu, beta = _evalue.clustermax_params_for_query(self.ev_par, qtok)
         for rank, oi in enumerate(order[:top_k], 1):
             t, sc = int(cand[oi]), float(sw[oi])
             hit = {"rank": rank, "target": self.ids[t], "sw_score": sc,
                    "length": len(self.toks[t])}
             if self.ev_par is not None:
-                mu, beta = _evalue.clustermax_params_for_length(self.ev_par,
-                                                                len(qtok))
                 hit["bits"] = float(_evalue.bit_score_clustermax(sc, mu, beta))
                 raw_evalue = float(_evalue.evalue_clustermax(
                     sc, mu, beta, self.n_clusters))

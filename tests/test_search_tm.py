@@ -6,6 +6,9 @@ import torch
 from rfoldseek import usalign
 from rfoldseek.search import Searcher
 
+pytestmark = pytest.mark.filterwarnings(
+    "ignore:E-value parameters were calibrated on .* clusters:UserWarning")
+
 
 @pytest.fixture
 def db_path(tmp_path):

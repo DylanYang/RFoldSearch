@@ -31,6 +31,11 @@ def main():
     parser.add_argument("--background", required=True,
                         help="TSV with raw_evalue and optional weight columns")
     parser.add_argument("--output", required=True)
+    parser.add_argument("--query-panel", default=None,
+                        help="TSV of all calibration query_id/family pairs, including "
+                             "queries with no background hit in the fitted range")
+    parser.add_argument("--raw-evalue-ceiling", type=float, default=None,
+                        help="largest initial E-value included in a bounded fit")
     source = parser.add_mutually_exclusive_group(required=True)
     source.add_argument("--db", help="target database; cluster count is read from it")
     source.add_argument("--n-clusters", type=int,
@@ -42,11 +47,39 @@ def main():
         n_clusters = len(set(clusters))
     else:
         n_clusters = args.n_clusters
+    with open(args.params) as handle:
+        params = json.load(handle)
+    fitted_n = params.get("n_clusters")
+    if fitted_n is not None and int(fitted_n) != n_clusters:
+        raise ValueError(
+            f"parametric E-value model has {fitted_n} clusters, "
+            f"but the target database has {n_clusters}")
+
+    panel = None
+    if args.query_panel:
+        panel = {}
+        with open(args.query_panel, newline="") as handle:
+            for row in csv.DictReader(handle, delimiter="\t"):
+                query_id, family = row["query_id"].strip(), row["family"].strip()
+                if not query_id or not family:
+                    raise ValueError("query panel needs nonempty query_id and family")
+                if query_id in panel:
+                    raise ValueError(f"duplicate calibration query: {query_id}")
+                panel[query_id] = family
+        if not panel:
+            raise ValueError("query panel is empty")
 
     rows = []
     with open(args.background, newline="") as handle:
-        for row in csv.DictReader(handle, delimiter="\t"):
+        reader = csv.DictReader(handle, delimiter="\t")
+        if args.query_panel and "weight" in (reader.fieldnames or []):
+            parser.error("--query-panel cannot be combined with a weight column; "
+                         "remove the column to derive panel-balanced weights")
+        for row in reader:
             if truthy(row.get("structurally_related", "")):
+                continue
+            if (args.raw_evalue_ceiling is not None
+                    and float(row["raw_evalue"]) > args.raw_evalue_ceiling):
                 continue
             rows.append(row)
     if not rows:
@@ -62,22 +95,39 @@ def main():
     else:
         if any(not row.get("query_id", "").strip() for row in rows):
             raise SystemExit("background TSV needs weight or query_id on every row")
-        queries = sorted({row["query_id"] for row in rows})
-        have_family = all(row.get("family", "").strip() for row in rows)
+        queries = sorted(panel) if panel is not None else sorted(
+            {row["query_id"] for row in rows})
+        if panel is not None:
+            unknown = {row["query_id"] for row in rows} - set(panel)
+            if unknown:
+                raise ValueError(f"background queries missing from panel: {sorted(unknown)[:3]}")
+        have_family = panel is not None or all(
+            row.get("family", "").strip() for row in rows)
         if have_family:
             family_queries = defaultdict(set)
-            for row in rows:
-                family_queries[row["family"]].add(row["query_id"])
-            weights = [1.0 / (len(family_queries) *
-                              len(family_queries[row["family"]])) for row in rows]
+            if panel is not None:
+                for query_id, family in panel.items():
+                    family_queries[family].add(query_id)
+                for row in rows:
+                    if row.get("family", "").strip() not in ("", panel[row["query_id"]]):
+                        raise ValueError(f"family mismatch for {row['query_id']}")
+            else:
+                for row in rows:
+                    family_queries[row["family"]].add(row["query_id"])
+            weights = [1.0 / (len(family_queries) * len(family_queries[
+                panel[row["query_id"]] if panel is not None else row["family"]]))
+                for row in rows]
             weighting = "equal-family, equal-query-within-family"
         else:
             weights = [1.0 / len(queries)] * len(rows)
             weighting = "equal-query"
     calibration = fit_empirical_calibration(values, weights, n_clusters)
     calibration["weighting"] = weighting
-    with open(args.params) as handle:
-        params = json.load(handle)
+    if panel is not None:
+        calibration["n_calibration_queries"] = len(panel)
+        calibration["n_families"] = len({family for family in panel.values()})
+    if args.raw_evalue_ceiling is not None:
+        calibration["candidate_raw_evalue_ceiling"] = args.raw_evalue_ceiling
     params["empirical_calibration"] = calibration
     with open(args.output, "w") as handle:
         json.dump(params, handle, indent=2)

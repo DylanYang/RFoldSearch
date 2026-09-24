@@ -55,10 +55,19 @@ def read_related(path, tm_threshold):
             query = first_present(row, ("query_id", "query"))
             target = first_present(row, ("target_id", "target"))
             marked = first_present(row, ("structurally_related",)).lower()
-            tm = first_present(row, ("tm_symmetric", "tm_symmetric_min", "tm_sym"))
+            tm_query = first_present(row, ("tm_query_normalized", "tm_query"))
+            tm_target = first_present(row, ("tm_target_normalized", "tm_target"))
+            tm = first_present(row, ("tm_mean", "tm_symmetric", "tm_sym"))
             is_related = marked in {"1", "true", "yes", "y"}
-            if tm:
+            if tm_query and tm_target:
+                is_related = is_related or 0.5 * (
+                    float(tm_query) + float(tm_target)) >= tm_threshold
+            elif tm:
                 is_related = is_related or float(tm) >= tm_threshold
+            elif first_present(row, ("tm_symmetric_min",)):
+                raise ValueError(
+                    "tm_symmetric_min is not the mean TM-score; provide both "
+                    "normalized scores or a tm_mean column")
             if query and target and is_related:
                 related.add((query, target))
                 related.add((target, query))
@@ -112,7 +121,7 @@ def main():
             self_cluster = None
             if query_id in target_index:
                 self_cluster = str(clusters[target_index[query_id]])
-            mu, beta = EV.clustermax_params_for_length(params, len(query))
+            mu, beta = EV.clustermax_params_for_query(params, query)
             for cluster, indices in members.items():
                 if cluster == self_cluster:
                     continue

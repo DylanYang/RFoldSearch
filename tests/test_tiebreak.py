@@ -6,6 +6,9 @@ import torch
 from rfoldseek import tiebreak
 from rfoldseek.search import Searcher
 
+pytestmark = pytest.mark.filterwarnings(
+    "ignore:E-value parameters were calibrated on .* clusters:UserWarning")
+
 
 def test_keys_depend_on_id_not_position():
     a = tiebreak.tie_keys(["chainA", "chainB", "chainC"], seed=0)

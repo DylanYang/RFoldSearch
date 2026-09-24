@@ -1,8 +1,12 @@
 """End-to-end search over a synthetic token database."""
 import numpy as np
+import pytest
 import torch
 
 from rfoldseek.search import Searcher
+
+pytestmark = pytest.mark.filterwarnings(
+    "ignore:E-value parameters were calibrated on .* clusters:UserWarning")
 
 
 def test_search_pipeline(tmp_path):

@@ -1,6 +1,6 @@
 <h1><a name="rfoldseek"></a><img src=".github/header.PNG" alt="RFoldseek" height="88" /></h1>
 
-RFoldseek enables fast RNA tertiary-structure search with **3Dr**, a learned discrete structural alphabet. Each nucleotide's local geometry is quantised into one of 80 states by a VQ-VAE, converting RNA chains into token strings that are searched with an inverted-index k-mer prefilter. The standard RFoldseek mode reranks prefilter hits by affine-gap token Smith-Waterman alignment and assigns a Karlin-Altschul database E-value to each hit, counting the search space in CD-HIT-EST sequence clusters rather than in chains so that a family stored many times poses one question of the database. We also provide RFoldseek-TM, an accuracy-oriented mode in which the same prefilter candidates are reranked by coordinate alignment with US-align using the mean of the two length-normalised TM-scores.
+RFoldseek enables fast RNA tertiary-structure search with **3Dr**, a learned discrete structural alphabet. Each nucleotide's local geometry is quantised into one of 80 states by a VQ-VAE, converting RNA chains into token strings that are searched with an inverted-index k-mer prefilter. The standard RFoldseek mode reranks prefilter hits by affine-gap token Smith-Waterman alignment and assigns a Karlin-Altschul database E-value to each hit. We also provide RFoldseek-TM, an accuracy-oriented mode in which the same prefilter candidates are reranked by coordinate alignment with US-align using the mean of the two length-normalised TM-scores.
 
 <p align="center"><img src=".github/fig1.jpeg" width="720" /></p>
 
@@ -153,14 +153,24 @@ rank  target                    TM_mean  TM_query  TM_target    len
 ### E-values
 
 RFoldseek reports E-values for token Smith--Waterman searches. The initial
-E-value is obtained from a length-dependent Gumbel distribution fitted to
-cluster-maximum background scores. The search space is the number of independent CD-HIT-EST clusters.
-Because the background score distribution also depends on database
-composition, an optional empirical calibration maps each initial cluster-max
-E-value to the observed mean number of background clusters per query. This
-mapping is fitted once for a database, stored in its E-value parameter.
+E-value uses a Gumbel distribution fitted to cluster-maximum background
+scores; the search space is the number of CD-HIT-EST clusters. Experimental
+database parameters interpolate Gumbel location and scale by query length.
+Predicted database parameters can instead predict them from log query length
+and 3Dr-token entropy. These predictors are clipped to the fitted training
+range before evaluation; queries outside that range emit a warning because
+the boundary estimate is not independently validated there. Each database
+also has its own empirical mapping from
+the initial E-value to the family-weighted mean number of unrelated
+background clusters per query. Hits remain ranked by raw Smith--Waterman
+score.
 
-The files in the complete calibration pipeline are:
+The numbered fitting workflow below covers a length-grid Gumbel model. An
+already fitted query-composition model for a predicted database can be used
+through the same search API and attached to its clustered index as described
+after step 5.
+
+The files in the length-grid calibration pipeline are:
 
 | File | Produced by |
 | ---- | ----------- |
@@ -241,8 +251,10 @@ own cluster and chains from the same annotated family or clan, applies the
 threefold length-ratio filter, and retains only the highest-scoring member of
 each CD-HIT cluster. An optional US-align audit can be supplied with
 `--related-pairs adjudication.tsv`; pairs marked as structurally related, or
-with a symmetric TM-score of at least 0.45, are marked for exclusion from the
-empirical null.
+with a mean of the query- and target-normalized TM-scores of at least 0.45,
+are marked for exclusion from the empirical null. The adjudication TSV may
+provide `tm_query_normalized` and `tm_target_normalized` or their mean as
+`tm_mean`.
 
 4. Fit the empirical mapping. The script reads the CD-HIT cluster assignments
 stored in `target_db.pt`, so no cluster count is entered manually:
@@ -260,6 +272,12 @@ columns. It may also contain an explicit
 `weight` column; otherwise `query_id` is required and equal-query weighting is
 used. If a `family` column is also present, families are weighted equally.
 Rows marked `structurally_related=true` are excluded from the empirical null.
+For a bounded predicted-database fit, supply `--query-panel panel.tsv` with
+every calibration `query_id` and `family`, including queries with no candidate
+below the fitted threshold, together with `--raw-evalue-ceiling 100`. This
+retains the correct family and query denominators. Experimental calibrations
+that require the annotated-background factor $N_D/B_q$ should provide that
+factor through the explicit `weight` column.
 
 5. Search the target database with its matching calibrated parameters:
 
@@ -273,9 +291,31 @@ rfoldseek search \
 
 With empirical calibration enabled, `evalue` is the calibrated value and
 `raw_evalue` retains the initial Gumbel cluster-max value in the Python API.
-The bit score remains derived from the initial Gumbel model. RFoldseek checks
+Below the smallest observed calibration background E-value, calibrated values
+share a finite-sample floor; raw E-values, bit scores, and alignment scores
+still distinguish these strong hits, but a smaller calibrated E-value is not
+claimed without supporting background observations. The bit score remains
+derived from the initial Gumbel model. RFoldseek checks
 the recorded cluster count and refuses to apply an empirical mapping fitted
-for a different database clustering.
+for a different database clustering. A predicted-database mapping fitted only
+for initial E-values up to a recorded ceiling reports the raw E-value beyond
+that range.
+
+To deploy an already encoded database with matching calibration parameters,
+assign its CD-HIT clusters and attach the parameter JSON without re-encoding:
+
+```bash
+rfoldseek attach-calibration \
+  --db existing_db.pt \
+  --clusters target_nr80.clstr \
+  --evalue_params target_evalue_params.json \
+  --output calibrated_db.pt
+```
+
+When CD-HIT used positional FASTA identifiers such as `t0`, `t1`, ... for
+database entries in their original order, add `--index-prefix t`. Every entry
+must have a cluster assignment, and the cluster count must match the parameter
+file. `rfoldseek build` also accepts `--evalue_params` alongside `--clusters`.
 
 ### Python API
 
@@ -343,8 +383,7 @@ command line, the corresponding options are `--model`, `--matrix`,
 No third-party source is vendored. Runtime dependencies are `numpy`, `torch`, `numba` and `biotite`, each
 under its own license. `--rerank tm` calls US-align (Zhang et al., *Nat. Methods* 2022) as an external
 program, and `--clusters` consumes the output of CD-HIT-EST (Fu et al.,
-*Bioinformatics* 2012). Neither source is vendored and neither is installed by
-`pip`; users supply their own binaries.
+*Bioinformatics* 2012).
 
 ## License
 

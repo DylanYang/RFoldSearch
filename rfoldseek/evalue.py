@@ -1,43 +1,10 @@
 # Ported from RFoldseek-paper-code src/search/evalue.py; only imports adjusted.
-"""Karlin-Altschul E-values for RFoldseek token Smith-Waterman scores.
-
-RFoldseek ranks candidates by a raw local Smith-Waterman score under the
-Structure-BLOSUM matrix. A raw score is not on its own interpretable: the user
-cannot tell whether SW=30 is significant. As in BLAST/Foldseek it is converted
-to an E-value, the expected number of chance hits at least this good:
-
-    E = N_clusters * (1 - exp(-exp(-(S - mu) / beta)))
-
-The null is fitted to *cluster maxima*. A Gumbel is the limit law of a
-maximum, so the sample it is fitted to should be maxima; taking the best score
-a query reaches against each sequence cluster makes that true. It also makes
-redundancy harmless, which is the property a structure database needs: a
-family present four hundred times contributes one draw to the null and counts
-as one question of the database, not four hundred. The alternative -- fitting
-individual chain pairs and censoring the top fraction where near-duplicates
-land -- needs a censoring fraction retuned per database, and on a redundant
-database is anti-conservative by two orders of magnitude at small E.
-
-Clusters come from ``cd-hit-est -c 0.8 -n 5 -aS 0.8 -aL 0.8 -g 1`` upstream;
-nothing here clusters anything itself. Randomised strings must not be used for
-the null: shuffling or resampling tokens destroys the generic helical grammar
-shared by all RNA structures, putting the null far below real unrelated chains
-and inflating significance by orders of magnitude.
-
-Calibration runs at build time (scripts/rebuild_evalue_params.py) and is
-cached to assets/evalue_params.json; the search path only reads that file, so
-E-values add nothing to query time.
-
-A database-specific empirical mapping may optionally be stored alongside the
-cluster-max parameters. It maps the initial parametric E-value to the observed
-mean number of background clusters per query. The mapping is monotone, leaves
-the hit ranking unchanged, and is only valid for the cluster count on which it
-was fitted.
-"""
+"""Cluster-maximum Gumbel E-values for RFoldseek token Smith-Waterman scores."""
 
 from __future__ import annotations
 
 import math
+import warnings
 import numpy as np
 
 from .smith_waterman import smith_waterman_numba
@@ -198,6 +165,57 @@ def clustermax_params_for_length(params: dict, m: float):
     return float(np.interp(mm, Ls, mus)), float(np.interp(mm, Ls, betas))
 
 
+def clustermax_params_for_query(params: dict, tokens):
+    """Return Gumbel parameters for a query under the database's fitted model.
+
+    Experimental databases use the length grid. Predicted databases may store
+    a ridge model of per-query ``mu`` and ``log(beta)`` fitted from query length
+    and the Shannon entropy (in bits) of its 3Dr token composition.
+    """
+    query = np.asarray(tokens, dtype=np.int64)
+    if query.ndim != 1 or not len(query) or np.any(query < 0):
+        raise ValueError("query tokens must be a nonempty 1D array of nonnegative IDs")
+    model = params.get("query_parameter_model")
+    if model is None:
+        return clustermax_params_for_length(params, len(query))
+    if model.get("distribution") != "Gumbel":
+        raise ValueError("unsupported query-conditional E-value distribution")
+    centre = model["centre"]
+    domain = model.get("training_domain")
+    if domain is None:
+        raise ValueError("query-conditional E-value model needs a training_domain")
+    log_min, log_max = (float(domain["log_length_min"]),
+                        float(domain["log_length_max"]))
+    entropy_min, entropy_max = (float(domain["entropy_min"]),
+                                float(domain["entropy_max"]))
+    if (not all(map(math.isfinite, (log_min, log_max, entropy_min, entropy_max)))
+            or log_min > log_max or entropy_min > entropy_max):
+        raise ValueError("invalid query-conditional E-value training_domain")
+    counts = np.bincount(query)
+    probabilities = counts[counts > 0] / len(query)
+    entropy = float(-(probabilities * np.log2(probabilities)).sum())
+    log_length = math.log(len(query))
+    bounded_log_length = float(np.clip(log_length, log_min, log_max))
+    bounded_entropy = float(np.clip(entropy, entropy_min, entropy_max))
+    if bounded_log_length != log_length or bounded_entropy != entropy:
+        warnings.warn(
+            "query length or token entropy is outside the E-value model's "
+            "training domain; boundary Gumbel parameters are used",
+            RuntimeWarning, stacklevel=2)
+    x = ((bounded_log_length - float(centre["log_length_mean"]))
+         / float(centre["log_length_scale"]))
+    h = ((bounded_entropy - float(centre["entropy_mean"]))
+         / float(centre["entropy_scale"]))
+    coefficients = np.asarray(model["coefficients_mu_logbeta"], dtype=np.float64)
+    if coefficients.shape != (6, 2) or not np.all(np.isfinite(coefficients)):
+        raise ValueError("query-conditional E-value coefficients must be finite 6x2")
+    mu, log_beta = np.asarray([1.0, x, x * x, h, h * h, x * h]) @ coefficients
+    beta = math.exp(float(log_beta))
+    if not math.isfinite(mu) or not math.isfinite(beta) or beta <= 0:
+        raise ValueError("query-conditional Gumbel parameters must be finite and positive")
+    return float(mu), beta
+
+
 def evalue_clustermax(score, mu: float, beta: float, n_clusters: int):
     """Expected number of clusters reaching ``score`` by chance.
 
@@ -206,23 +224,34 @@ def evalue_clustermax(score, mu: float, beta: float, n_clusters: int):
     times still poses one question about it.
     """
     s = np.asarray(score, dtype=np.float64)
-    return float(n_clusters) * (1.0 - np.exp(-np.exp(-(s - mu) / beta)))
+    # ``1 - exp(-x)`` loses all precision for very small ``x`` and used to
+    # collapse the most significant hits to an exact zero.  ``-expm1(-x)`` is
+    # algebraically identical but remains accurate throughout the tail.
+    tail = -np.expm1(-np.exp(-(s - mu) / beta))
+    return float(n_clusters) * tail
 
 
 def fit_empirical_calibration(raw_evalues, weights=None, n_clusters=None) -> dict:
     """Fit a monotone empirical correction to background E-values.
 
     ``raw_evalues`` contains initial cluster-max E-values from known background
-    hits. ``weights`` gives each observation's contribution to the expected
-    number of background clusters per query. Thus, at a threshold ``e``, the
-    cumulative weight of observations with ``raw_evalue <= e`` is the observed
+    (structurally unrelated) hits; the caller must first remove genuine
+    structural homologues from the background -- same annotated family or clan,
+    and cross-family candidates with a high symmetric US-align TM-score -- or
+    the calibration is inflated by real matches and turns over-strict.
+    ``weights`` gives each observation's contribution to the expected number of
+    background clusters per query. Thus, at a threshold ``e``, the cumulative
+    weight of observations with ``raw_evalue <= e`` is the observed
     background-cluster count to report as the calibrated E-value. Equal-query
     or equal-family weighting should be performed by the caller when creating
-    these weights.
+    these weights; equal-family weighting keeps large, redundant families from
+    dominating the fit.
 
     Repeated knots are collapsed so tied raw E-values receive the same
     calibrated value. A half-observation finite-sample floor avoids unsupported
-    zero E-values below the smallest observed background value.
+    zero E-values below the smallest observed background value. Values below
+    the first knot are deliberately not extrapolated: the calibration data do
+    not establish the shape of that unobserved tail.
     """
     values = np.asarray(raw_evalues, dtype=np.float64).reshape(-1)
     if weights is None:
@@ -263,8 +292,10 @@ def apply_empirical_calibration(raw_evalue, calibration: dict):
 
     The empirical CDF is a right-continuous step function: a raw E-value equal
     to a stored knot includes that knot. Values below the first knot receive
-    the finite-sample floor and values above the final knot receive the total
-    fitted background weight.
+    the finite-sample floor rather than an unvalidated tail extrapolation.
+    A calibration fitted only up to an explicit raw
+    E-value ceiling reports the uncalibrated (conservative) raw E-value beyond
+    that ceiling instead of saturating at the last empirical count.
     """
     values = np.asarray(raw_evalue, dtype=np.float64)
     knots = np.asarray(calibration["raw_evalue_knots"], dtype=np.float64)
@@ -278,6 +309,12 @@ def apply_empirical_calibration(raw_evalue, calibration: dict):
     output = np.full(values.shape, floor, dtype=np.float64)
     present = positions > 0
     output[present] = mapped[np.minimum(positions[present] - 1, len(mapped) - 1)]
+    ceiling = calibration.get("candidate_raw_evalue_ceiling")
+    if ceiling is not None:
+        if float(ceiling) < float(knots[-1]):
+            raise ValueError("empirical E-value ceiling is below the final knot")
+        output = np.where(values > float(ceiling),
+                          np.maximum(values, float(mapped[-1])), output)
     if output.ndim == 0:
         return float(output)
     return output

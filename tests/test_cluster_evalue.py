@@ -5,7 +5,8 @@ import pytest
 import torch
 
 from rfoldseek import evalue as EV
-from rfoldseek.database import assign_clusters, read_clusters
+from rfoldseek.database import (assign_clusters, attach_evalue_calibration,
+                                read_clusters)
 
 
 def test_read_clusters_parses_a_cdhit_clstr(tmp_path):
@@ -59,6 +60,14 @@ def test_bit_score_and_evalue_agree_in_the_tail():
                                                                  rel=1e-6)
 
 
+def test_evalue_extreme_tail_does_not_collapse_to_zero():
+    """The Gumbel survival function must retain precision for tiny E-values."""
+    value = EV.evalue_clustermax(120.0, mu=8.0, beta=3.0, n_clusters=882)
+    expected = 882.0 * np.exp(-(120.0 - 8.0) / 3.0)
+    assert value > 0.0
+    assert value == pytest.approx(expected, rel=1e-12)
+
+
 def test_empirical_calibration_is_a_monotone_weighted_background_count():
     calibration = EV.fit_empirical_calibration(
         [0.1, 0.1, 1.0, 10.0], weights=[0.2, 0.3, 0.5, 1.0], n_clusters=12)
@@ -78,6 +87,18 @@ def test_invalid_empirical_calibration_is_rejected():
                   "calibrated_evalues": [0.1, 1.0]})
 
 
+def test_bounded_empirical_calibration_does_not_saturate_weak_hits():
+    calibration = {
+        "raw_evalue_knots": [1.0, 10.0, 99.0],
+        "calibrated_evalues": [0.1, 1.0, 18.0],
+        "finite_sample_floor": 0.01,
+        "candidate_raw_evalue_ceiling": 100.0,
+    }
+    assert EV.apply_empirical_calibration(
+        [0.1, 99.5, 100.1, 1000.0], calibration) == pytest.approx(
+            [0.01, 18.0, 100.1, 1000.0])
+
+
 def test_shipped_params_are_the_cluster_max_scheme():
     from rfoldseek.search import asset
     par = json.load(open(asset("evalue_params.json")))
@@ -89,6 +110,100 @@ def test_shipped_params_are_the_cluster_max_scheme():
     assert beta > 0
 
 
+def test_query_conditional_gumbel_uses_token_entropy():
+    params = {"query_parameter_model": {
+        "distribution": "Gumbel",
+        "training_domain": {"log_length_min": np.log(4),
+                            "log_length_max": np.log(8),
+                            "entropy_min": 0.0, "entropy_max": 1.0},
+        "centre": {"log_length_mean": 0.0, "log_length_scale": 1.0,
+                   "entropy_mean": 0.0, "entropy_scale": 1.0},
+        "coefficients_mu_logbeta": [
+            [10.0, 0.0], [1.0, 0.0], [0.0, 0.0],
+            [2.0, 0.0], [0.0, 0.0], [0.0, 0.0],
+        ],
+    }}
+    one_token = EV.clustermax_params_for_query(params, [0, 0, 0, 0])
+    two_tokens = EV.clustermax_params_for_query(params, [0, 0, 1, 1])
+    assert one_token == pytest.approx((10.0 + np.log(4), 1.0))
+    assert two_tokens == pytest.approx((12.0 + np.log(4), 1.0))
+    with pytest.warns(RuntimeWarning, match="outside"):
+        long_query = EV.clustermax_params_for_query(params, [0, 1] * 8)
+    with pytest.warns(RuntimeWarning, match="outside"):
+        high_entropy = EV.clustermax_params_for_query(params, list(range(8)))
+    assert long_query == pytest.approx((12.0 + np.log(8), 1.0))
+    assert high_entropy == pytest.approx((12.0 + np.log(8), 1.0))
+    # A polynomial log-beta term must also use the bounded predictors.
+    params["query_parameter_model"]["coefficients_mu_logbeta"][2][1] = -1.0
+    params["query_parameter_model"]["coefficients_mu_logbeta"][4][1] = -1.0
+    at_boundary = EV.clustermax_params_for_query(params, [0, 1] * 4)
+    with pytest.warns(RuntimeWarning, match="outside"):
+        long_and_diverse = EV.clustermax_params_for_query(params, list(range(16)))
+    assert long_and_diverse == pytest.approx(at_boundary)
+    with pytest.warns(RuntimeWarning, match="outside"):
+        short_query = EV.clustermax_params_for_query(params, [0, 0])
+    assert short_query == pytest.approx(
+        EV.clustermax_params_for_query(params, [0, 0, 0, 0]))
+    del params["query_parameter_model"]["training_domain"]
+    with pytest.raises(ValueError, match="training_domain"):
+        EV.clustermax_params_for_query(params, [0, 1, 0, 1])
+
+
+def test_predicted_calibration_requires_matching_clustered_database(tmp_path):
+    from rfoldseek.search import Searcher
+
+    rng = np.random.default_rng(91)
+    entries = [{"id": f"chain{i}",
+                "tokens": rng.integers(0, 80, size=40).tolist()}
+               for i in range(12)]
+    source = tmp_path / "unclustered.pt"
+    torch.save({"n_codes": 80, "entries": entries}, source)
+    clusters = tmp_path / "nr80.clstr"
+    clusters.write_text("".join(
+        f">Cluster {i // 2}\n0\t40nt, >t{i}... *\n"
+        if i % 2 == 0 else f"1\t40nt, >t{i}... at +/90.00%\n"
+        for i in range(12)))
+    params = {
+        "scheme": "predicted-query-conditional-clustermax-empirical",
+        "n_clusters": 6,
+        "query_parameter_model": {
+            "distribution": "Gumbel",
+            "training_domain": {"log_length_min": np.log(20),
+                                "log_length_max": np.log(80),
+                                "entropy_min": 0.0, "entropy_max": 6.0},
+            "centre": {"log_length_mean": 0.0, "log_length_scale": 1.0,
+                       "entropy_mean": 0.0, "entropy_scale": 1.0},
+            "coefficients_mu_logbeta": [[8.0, np.log(3.0)]]
+                                      + [[0.0, 0.0]] * 5,
+        },
+        "empirical_calibration": {
+            "raw_evalue_knots": [0.1, 1.0, 10.0],
+            "calibrated_evalues": [0.01, 0.1, 1.0],
+            "finite_sample_floor": 0.005,
+        },
+    }
+    path = tmp_path / "predicted.json"
+    path.write_text(json.dumps(params))
+    with pytest.raises(ValueError, match="recalibrate for this database"):
+        Searcher(str(source), evalue_params_path=str(path))
+
+    target = tmp_path / "calibrated.pt"
+    attached = attach_evalue_calibration(
+        str(source), str(clusters), str(path), str(target), index_prefix="t")
+    assert attached["n_clusters"] == 6
+    searcher = Searcher(str(target))
+    hits = searcher.search(np.asarray(entries[0]["tokens"]), top_k=2)
+    assert hits
+    for hit in hits:
+        expected = EV.apply_empirical_calibration(hit["raw_evalue"],
+                                                   params["empirical_calibration"])
+        assert hit["evalue"] == expected
+    assert [hit["sw_score"] for hit in hits] == sorted(
+        [hit["sw_score"] for hit in hits], reverse=True)
+
+
+@pytest.mark.filterwarnings(
+    "ignore:E-value parameters were calibrated on .* clusters:UserWarning")
 def test_searcher_uses_the_cluster_count_of_the_loaded_database(tmp_path):
     """Two databases with the same chains but different clustering.
 
@@ -167,6 +282,8 @@ def test_searcher_rejects_empirical_mapping_for_another_database(tmp_path):
         Searcher(str(db))
 
 
+@pytest.mark.filterwarnings(
+    "ignore:E-value parameters were calibrated on .* clusters:UserWarning")
 def test_cli_header_reports_the_cluster_count_when_it_reports_an_evalue(tmp_path,
                                                                         capsys):
     """The E-value's search space is clusters, so the header must name them.

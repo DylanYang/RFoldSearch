@@ -131,9 +131,15 @@ def build_database(checkpoint: str, data_paths: list[str], output: str,
     if evalue_params is not None:
         with open(evalue_params) as handle:
             embedded_evalue_params = json.load(handle)
+        query_model = embedded_evalue_params.get("query_parameter_model")
+        if query_model is not None and "training_domain" not in query_model:
+            raise ValueError("query-conditional E-value model needs a training_domain")
         empirical = embedded_evalue_params.get("empirical_calibration")
-        if empirical is not None and empirical.get("n_clusters") is not None:
-            fitted_n = int(empirical["n_clusters"])
+        if empirical is not None:
+            fitted_n = empirical.get("n_clusters", embedded_evalue_params.get("n_clusters"))
+            if fitted_n is None:
+                raise ValueError("empirical E-value calibration needs a cluster count")
+            fitted_n = int(fitted_n)
             if fitted_n != n_clusters:
                 raise ValueError(
                     f"empirical E-value calibration has {fitted_n} clusters, "
@@ -160,6 +166,58 @@ def build_database(checkpoint: str, data_paths: list[str], output: str,
               f"as a cluster in the E-value search space. Pass "
               f"--min_len {KMER_K} to drop them.")
     return db
+
+
+def attach_evalue_calibration(database: str, clusters: str,
+                              evalue_params: str, output: str,
+                              index_prefix: str | None = None) -> dict:
+    """Add cluster labels and matching E-value parameters to an encoded DB.
+
+    ``index_prefix`` explicitly selects CD-HIT names such as ``t0``, ``t1``,
+    ... when the FASTA used positional IDs instead of structure IDs. Missing
+    assignments are errors: calibration must cover the whole target database.
+    The input database is never overwritten.
+    """
+    if os.path.abspath(database) == os.path.abspath(output):
+        raise ValueError("output must differ from the input database")
+    if os.path.exists(output):
+        raise FileExistsError(f"output database already exists: {output}")
+    db = torch.load(database, map_location="cpu", weights_only=False)
+    entries = db["entries"]
+    mapping = read_clusters(clusters)
+    labels = []
+    for index, entry in enumerate(entries):
+        raw = str(entry.get("id", ""))
+        key = f"{index_prefix}{index}" if index_prefix is not None else raw
+        if key not in mapping and index_prefix is None:
+            key = short_id(raw, index)
+        if key not in mapping:
+            raise ValueError(f"no cluster assignment for entry {index}: {raw}")
+        labels.append(mapping[key])
+    n_clusters = len(set(labels))
+    with open(evalue_params) as handle:
+        params = json.load(handle)
+    query_model = params.get("query_parameter_model")
+    if query_model is not None and "training_domain" not in query_model:
+        raise ValueError("query-conditional E-value model needs a training_domain")
+    fitted_n = params.get("n_clusters")
+    empirical = params.get("empirical_calibration")
+    if empirical is not None:
+        fitted_n = empirical.get("n_clusters", fitted_n)
+    if fitted_n is None or int(fitted_n) != n_clusters:
+        raise ValueError(
+            f"E-value parameters have {fitted_n} clusters, "
+            f"but the cluster file assigns {n_clusters}"
+        )
+    for entry, label in zip(entries, labels):
+        entry["cluster"] = label
+    db["n_clusters"] = n_clusters
+    db["clustered"] = True
+    db["evalue_params"] = params
+    os.makedirs(os.path.dirname(os.path.abspath(output)), exist_ok=True)
+    torch.save(db, output)
+    return {"n_chains": len(entries), "n_clusters": n_clusters,
+            "output": output}
 
 
 def short_id(raw, fallback):
