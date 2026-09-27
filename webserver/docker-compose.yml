@@ -6,7 +6,7 @@ services:
       - ./databases:/data:ro
     environment:
       # key=label:path, comma-separated
-      RFOLDSEEK_DBS: "rnasolo=RNAsolo experimental (885):/data/db.pt"
+      RFOLDSEEK_DBS: "rnasolo=RNAsolo experimental (885 chains):/data/db.pt"
       RFOLDSEEK_MAX_CONCURRENT: "2"
     restart: unless-stopped
     healthcheck:

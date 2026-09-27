@@ -60,14 +60,25 @@ class Engine:
         print(f"[engine] tokeniser {Path(path).name} in {time.time()-t0:.1f}s",
               flush=True)
 
-        for item in self._spec.split(","):
+        # Entries are separated by "|" and fields by "=" and the LAST ":",
+        # because labels carry commas ("83,156 chains") and paths carry
+        # colons on some hosts; splitting on either of those loses entries.
+        for item in self._spec.split("|"):
             item = item.strip()
             if not item:
                 continue
             key, _, rest = item.partition("=")
-            label, _, dbpath = rest.partition(":")
-            if not dbpath:                      # key=path, no label given
+            key = key.strip()
+            label, sep, dbpath = rest.rpartition(":")
+            if not sep:                         # key=path, no label given
                 label, dbpath = key, rest
+            label, dbpath = label.strip(), dbpath.strip()
+            if not dbpath:
+                raise ValueError(f"database entry {item!r} has no path; "
+                                 f'expected key=Label:/path/to/db.pt')
+            if not os.path.exists(dbpath):
+                raise FileNotFoundError(f"database {key!r}: no such file "
+                                        f"{dbpath!r}")
             h = DatabaseHandle(key=key, label=label, path=dbpath)
             t0 = time.time()
             h.searcher = Searcher(dbpath)
@@ -94,7 +105,8 @@ class Engine:
             entry = structure_to_entry(tmp)
             enc = encode_entry(self._model, entry, torch.device("cpu"),
                                self._ckpt.get("norm_mean"),
-                               self._ckpt.get("norm_std"))
+                               self._ckpt.get("norm_std"),
+                               active_blocks=self._ckpt.get("active_blocks"))
         finally:
             os.unlink(tmp)
         if enc is None:

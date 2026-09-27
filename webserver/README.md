@@ -22,7 +22,7 @@ worker behind it; the whole of this server is smaller than that adapter.
 
 ```
 pip install -r requirements.txt
-export RFOLDSEEK_DBS="rnasolo=RNAsolo experimental (885):/path/to/db.pt"
+export RFOLDSEEK_DBS="rnasolo=RNAsolo experimental (885 chains):/path/to/db.pt"
 uvicorn app.main:app --port 8000
 ```
 
@@ -55,7 +55,7 @@ one takes minutes, which is why the healthcheck has a long start period.
 
 | Variable | Meaning |
 |---|---|
-| `RFOLDSEEK_DBS` | Comma-separated `key=label:path`. Every entry is loaded at startup and appears in the database menu. |
+| `RFOLDSEEK_DBS` | Pipe-separated `key=Label:path` entries. The separator is `|`, not a comma, because labels carry commas; the path is taken from the last colon, so paths may contain colons too. Every entry is loaded at startup and appears in the database menu. |
 | `RFOLDSEEK_MODEL` | Tokeniser checkpoint. Defaults to the one bundled with the package. |
 | `RFOLDSEEK_MAX_CONCURRENT` | Searches allowed to run at once (default: cores − 1). Over the limit the API returns 503 rather than queueing. |
 | `RFOLDSEEK_TOP_N_CAP` | Largest candidate depth a request may ask for (default 2000). |

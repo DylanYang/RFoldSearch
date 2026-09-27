@@ -116,6 +116,8 @@ async def search(
         except FileNotFoundError as exc:          # US-align absent
             raise HTTPException(501, f"TM reranking unavailable on this "
                                      f"server: {exc}")
+        except ValueError as exc:                 # e.g. query too short for k-mer
+            raise HTTPException(422, str(exc))
     result["filename"] = structure.filename
     return JSONResponse(result)
 
