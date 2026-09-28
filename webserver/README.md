@@ -1,7 +1,11 @@
 # RFoldseek search server
 
-Upload an RNA structure, get the ranked hits from a resident RFoldseek
-database. FastAPI backend, one static page, no build step.
+Upload or paste an RNA structure, get the ranked hits from one or more
+resident RFoldseek databases, with a per-hit alignment (sequence and 3Dr
+lines) and a 3D superposition. Every search is stored under a short id, so
+`/result/<id>` is a shareable page that survives a restart;
+`/result/<id>#<db>/<rank>` opens one hit. FastAPI backend, one static page
+(`static/index.html` + `app.js`, 3Dmol.js from a CDN), no build step.
 
 ## Why not the Foldseek server's stack
 
@@ -61,6 +65,20 @@ one takes minutes, which is why the healthcheck has a long start period.
 | `RFOLDSEEK_TOP_N_CAP` | Largest candidate depth a request may ask for (default 2000). |
 | `RFOLDSEEK_MAX_UPLOAD_MB` | Upload size limit (default 32). |
 | `USALIGN` | Path to the `USalign` binary. Without it `rerank=tm` returns 501 and the rest of the server works normally. |
+| `RFOLDSEEK_JOBS_DIR` | Where search records are stored as JSON (default `./jobs`). Nothing expires them yet. |
+| `RFOLDSEEK_ALIGN_MAX` | Hits per database that get an alignment and superposition up front (default 100); later hits are aligned on demand. |
+
+### Display sidecar
+
+The result page shows sequences and PDB annotation, which a database `.pt`
+does not store. `scripts/build_metadata.py` writes `<db>.meta.json` beside
+the database: the token-aligned sequence of every chain (from the
+preprocessed JSONL the database was built from) and, with `--rcsb`, the
+RCSB description, organism, method and resolution, plus the date the
+database was built. Chains are matched to RCSB RNA entities by label chain
+id or author chain id, whichever names an RNA whose sequence matches. A
+database without a sidecar still works: hits show their ids and the
+target line of the alignment shows placeholders.
 
 Run **one** worker process. Each would load its own copy of every
 database; concurrency is meant to come from `RFOLDSEEK_MAX_CONCURRENT`
@@ -71,23 +89,34 @@ threads inside a single process.
 ```
 GET  /api/health
 POST /api/search      multipart form
-       structure   file        .pdb / .cif, one RNA chain
-       database    string      a key from /api/health
-       top_k       int = 10    hits returned
+       structure   file        .pdb / .cif, one RNA chain   } one of
+       text        string      pasted PDB or mmCIF          }
+       databases   string      comma-separated keys from /api/health
+       top_k       int = 50    hits returned per database
        top_n       int = 200   candidate depth; 200 is the deployed default
        min_diag    int = 2     k-mer hits on a common diagonal; 1 is more sensitive
        rerank      sw | tm     token Smith-Waterman, or US-align TM-score
        tie_seed    int         break score ties by a hash of the chain id
+GET  /api/result/{id}                          the stored record
+GET  /api/result/{id}/{db}/{rank}/alignment    alignment of one hit
+GET  /api/result/{id}/{db}/{rank}/structure    PDB: query (A) + superposed hit (B)
+GET  /api/result/{id}/download?format=tsv|json
+GET  /api/examples
 ```
 
 ```
-curl -sF structure=@query.cif -F database=rnasolo -F top_k=5 \
+curl -sF structure=@query.cif -F databases=pdb-rna,rnasolo -F top_k=5 \
      localhost:8000/api/search | python -m json.tool
 ```
 
 `sw` hits carry `sw_score`, `bits` and `evalue`; `tm` hits carry
 `tm_mean`, `tm_query` and `tm_target` and no E-value, because TM-scores
-have no Karlin-Altschul statistics. Interactive docs at `/api/docs`.
+have no Karlin-Altschul statistics. Hits within `RFOLDSEEK_ALIGN_MAX` carry
+`aln`: aligned ranges, sequence and 3Dr alignment lines, sequence and 3Dr
+identity, and the C4' RMSD and TM-score of the superposition over the
+aligned pairs. The alignment is recomputed with a full traceback
+(`app/align.py`) and its score equals `sw_score` exactly. Interactive docs
+at `/api/docs`.
 
 ## Sizing
 
@@ -105,9 +134,11 @@ set deliberately low, or not at all.
 
 ## Status
 
-Not deployed anywhere yet. Open questions before it can be: which host
-(the search process is long-lived and holds the database resident, so a
-per-hour GPU box is the wrong shape), and which databases to expose.
+Demo running on the lab 2080 (LAN only) with PDB-RNA, RNAsolo 2.0 and
+NuFold. Before a public deployment: E-values are not yet calibrated for
+these databases (the page says so), the NuFold database predates the
+PR #13 tokeniser and has no sequence sidecar, and the server has no
+authentication or rate limit.
 
 ## Verified
 

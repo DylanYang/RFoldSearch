@@ -4,413 +4,276 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>RFoldseek Search</title>
+<link rel="icon" href="/static/logo.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
 <style>
-:root{
-  --ground:#f4f7f7; --surface:#ffffff; --surface-2:#eaf0f0; --surface-3:#f0f4f4;
-  --ink:#0f2129; --ink-2:#48606a; --ink-3:#7d949c; --line:#d7e0e1; --line-2:#e5ecec;
-  --accent:#0a6b6b; --accent-2:#08514f; --accent-soft:#dcefed; --accent-line:#a9d4d0;
-  --sig:#137a4b; --sig-soft:#dcefe3; --mid:#a4690a; --mid-soft:#f5e9d4; --insig:#8194a0;
-  --err:#b23b3b; --err-soft:#f6e2e0;
-  --shadow:0 1px 2px rgba(15,33,41,.05),0 6px 20px -8px rgba(15,33,41,.12);
-  --radius:10px;
-  --mono:"IBM Plex Mono",ui-monospace,Menlo,monospace;
-  --sans:"Inter",system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
-}
-@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
-  --ground:#0c1417; --surface:#121d21; --surface-2:#1a282e; --surface-3:#16232800;
-  --ink:#e9eff0; --ink-2:#a3b6bc; --ink-3:#6f858c; --line:#26383e; --line-2:#1e2e34;
-  --accent:#43bdb3; --accent-2:#66d2c8; --accent-soft:#10302e; --accent-line:#1d4a47;
-  --sig:#4bbd82; --sig-soft:#123527; --mid:#d69a3c; --mid-soft:#3a2c12; --insig:#7d939b;
-  --err:#e78a86; --err-soft:#3a1f1e;
-  --shadow:0 1px 2px rgba(0,0,0,.3),0 8px 24px -10px rgba(0,0,0,.5);
-}}
-:root[data-theme="dark"]{
-  --ground:#0c1417; --surface:#121d21; --surface-2:#1a282e; --surface-3:#16232800;
-  --ink:#e9eff0; --ink-2:#a3b6bc; --ink-3:#6f858c; --line:#26383e; --line-2:#1e2e34;
-  --accent:#43bdb3; --accent-2:#66d2c8; --accent-soft:#10302e; --accent-line:#1d4a47;
-  --sig:#4bbd82; --sig-soft:#123527; --mid:#d69a3c; --mid-soft:#3a2c12; --insig:#7d939b;
-  --err:#e78a86; --err-soft:#3a1f1e;
-  --shadow:0 1px 2px rgba(0,0,0,.3),0 8px 24px -10px rgba(0,0,0,.5);
-}
-*{box-sizing:border-box}
-html{-webkit-text-size-adjust:100%}
-body{margin:0;background:var(--ground);color:var(--ink);font-family:var(--sans);
-  font-size:15px;line-height:1.5;-webkit-font-smoothing:antialiased}
-a{color:var(--accent-2);text-decoration:none}
-a:hover{text-decoration:underline}
-h1,h2,h3{margin:0;text-wrap:balance;letter-spacing:-.01em}
-.mono{font-family:var(--mono)}
-.wrap{max-width:1080px;margin:0 auto;padding:0 24px}
-[hidden]{display:none!important}
-header{position:sticky;top:0;z-index:20;background:color-mix(in srgb,var(--ground) 88%,transparent);
-  backdrop-filter:blur(8px);border-bottom:1px solid var(--line)}
-.bar{display:flex;align-items:center;gap:16px;height:60px}
-.brand{display:flex;align-items:center;gap:11px;font-weight:600;font-size:18px;letter-spacing:-.02em;color:var(--ink)}
-.brand svg{display:block;flex:0 0 auto}
-.brand b{font-weight:700}
-.brand .r{color:var(--accent)}
-nav{margin-left:auto;display:flex;gap:4px;align-items:center}
-nav a{color:var(--ink-2);font-size:13.5px;font-weight:500;padding:7px 11px;border-radius:7px}
-nav a:hover{color:var(--ink);background:var(--surface-2);text-decoration:none}
-nav a.ghlink{color:var(--ink);border:1px solid var(--line);margin-left:6px}
-.theme-btn{margin-left:6px;width:34px;height:34px;border:1px solid var(--line);background:var(--surface);
-  border-radius:8px;color:var(--ink-2);cursor:pointer;display:grid;place-items:center;padding:0}
-.theme-btn:hover{color:var(--ink);border-color:var(--accent-line)}
-.intro{padding:30px 0 8px}
-.eyebrow{font-family:var(--mono);font-size:11.5px;font-weight:500;letter-spacing:.14em;
-  text-transform:uppercase;color:var(--accent);margin-bottom:10px}
-.intro h1{font-size:29px;font-weight:600;line-height:1.15;max-width:20ch}
-.intro p{color:var(--ink-2);margin:12px 0 0;max-width:62ch;font-size:15.5px}
-.panel{background:var(--surface);border:1px solid var(--line);border-radius:14px;
-  box-shadow:var(--shadow);margin-top:22px;overflow:hidden}
-.panel-body{padding:22px}
-.section-label{font-family:var(--mono);font-size:11px;letter-spacing:.12em;text-transform:uppercase;
-  color:var(--ink-3);font-weight:600;margin-bottom:11px;display:flex;align-items:center;gap:8px}
-.section-label .step{width:18px;height:18px;border-radius:5px;background:var(--accent-soft);
-  color:var(--accent-2);display:grid;place-items:center;font-size:11px;font-weight:700}
-.drop{border:1.5px dashed var(--accent-line);border-radius:var(--radius);background:var(--surface-3);
-  padding:26px 22px;display:flex;align-items:center;gap:20px;transition:.15s;cursor:pointer}
-.drop:hover,.drop.over{border-color:var(--accent);background:var(--accent-soft)}
-.drop .ic{flex:0 0 auto;width:46px;height:46px;border-radius:10px;background:var(--surface);
-  border:1px solid var(--line);display:grid;place-items:center;color:var(--accent)}
-.drop .t{font-weight:600;font-size:15px}
-.drop .t b{color:var(--accent-2)}
-.drop .s{color:var(--ink-2);font-size:13px;margin-top:2px}
-.orline{display:flex;align-items:center;gap:12px;margin:16px 0;color:var(--ink-3);font-size:12px;
-  font-family:var(--mono);letter-spacing:.1em;text-transform:uppercase}
-.orline::before,.orline::after{content:"";height:1px;background:var(--line-2);flex:1}
-.idrow{display:flex;gap:10px;flex-wrap:wrap}
-.idrow input{flex:1;min-width:200px;font-family:var(--mono);font-size:14px;padding:10px 13px;
-  border:1px solid var(--line);border-radius:8px;background:var(--surface);color:var(--ink)}
-.idrow input:focus{outline:2px solid var(--accent-soft);border-color:var(--accent)}
-.chip{font-family:var(--mono);font-size:12.5px;padding:9px 12px;border:1px solid var(--line);border-radius:8px;
-  background:var(--surface-3);color:var(--ink-2);cursor:pointer}
-.chip:hover{border-color:var(--accent-line);color:var(--accent-2)}
-.dbgrid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
-.db{position:relative;border:1px solid var(--line);border-radius:var(--radius);padding:14px 15px;
-  background:var(--surface);cursor:pointer;transition:.12s}
-.db:hover{border-color:var(--accent-line)}
-.db.sel{border-color:var(--accent);background:var(--accent-soft);box-shadow:inset 0 0 0 1px var(--accent)}
-.db .nm{font-weight:600;font-size:14.5px;display:flex;align-items:center;gap:7px}
-.db .badge{font-family:var(--mono);font-size:9.5px;letter-spacing:.08em;text-transform:uppercase;
-  padding:2px 6px;border-radius:4px;background:var(--accent);color:#fff;font-weight:600}
-.db .desc{color:var(--ink-2);font-size:12.5px;margin-top:5px;line-height:1.45}
-.db .meta{font-family:var(--mono);font-size:11px;color:var(--ink-3);margin-top:8px;
-  display:flex;justify-content:space-between;gap:8px}
-.db .meta b{color:var(--ink-2);font-weight:600}
-details.adv{margin-top:18px;border-top:1px solid var(--line-2);padding-top:4px}
-details.adv summary{list-style:none;cursor:pointer;display:flex;align-items:center;gap:8px;
-  padding:12px 2px;font-weight:600;font-size:13.5px;color:var(--ink-2)}
-details.adv summary::-webkit-details-marker{display:none}
-details.adv summary .caret{transition:.15s;color:var(--ink-3)}
-details.adv[open] summary .caret{transform:rotate(90deg)}
-details.adv summary:hover{color:var(--ink)}
-.params{display:grid;grid-template-columns:repeat(2,1fr);gap:14px 22px;padding:6px 2px 8px}
-.field label{display:block;font-size:12.5px;font-weight:600;color:var(--ink-2);margin-bottom:6px}
-.field .hint{font-weight:400;color:var(--ink-3);font-family:var(--mono);font-size:11px}
-.field input{width:100%;font-family:var(--mono);font-size:13.5px;padding:8px 11px;
-  border:1px solid var(--line);border-radius:7px;background:var(--surface);color:var(--ink)}
-.field input:focus{outline:2px solid var(--accent-soft);border-color:var(--accent)}
-.seg{display:flex;border:1px solid var(--line);border-radius:7px;overflow:hidden}
-.seg button{flex:1;border:0;background:var(--surface);color:var(--ink-2);font-family:var(--mono);
-  font-size:12.5px;padding:8px 6px;cursor:pointer;font-weight:500}
-.seg button.on{background:var(--accent);color:#fff}
-.seg button+button{border-left:1px solid var(--line)}
-.run{display:flex;align-items:center;gap:16px;padding:16px 22px;border-top:1px solid var(--line);
-  background:var(--surface-3);flex-wrap:wrap}
-.run .q{font-family:var(--mono);font-size:12.5px;color:var(--ink-2)}
-.run .q b{color:var(--ink)}
-.go{margin-left:auto;display:inline-flex;align-items:center;gap:9px;background:var(--accent);color:#fff;
-  border:0;font-family:var(--sans);font-weight:600;font-size:14.5px;padding:11px 22px;border-radius:9px;cursor:pointer;transition:.12s}
-.go:hover{background:var(--accent-2)}
-.go:disabled{opacity:.55;cursor:not-allowed}
-.go .spin{width:15px;height:15px;border:2px solid rgba(255,255,255,.4);border-top-color:#fff;border-radius:50%;animation:sp .7s linear infinite}
-@keyframes sp{to{transform:rotate(360deg)}}
-@media(prefers-reduced-motion:reduce){.go .spin{animation:none}}
-.results{margin:34px 0 60px}
-.rhead{display:flex;align-items:baseline;gap:12px;margin-bottom:4px;flex-wrap:wrap}
-.rhead h2{font-size:19px;font-weight:600}
-.rsub{color:var(--ink-2);font-size:13.5px;font-family:var(--mono);margin-bottom:16px}
-.rsub b{color:var(--ink)}
-.notice{border:1px solid var(--line);border-radius:12px;background:var(--surface);padding:26px 22px;
-  color:var(--ink-2);font-size:14px;box-shadow:var(--shadow)}
-.notice.err{border-color:var(--err);background:var(--err-soft);color:var(--err)}
-.notice code{font-family:var(--mono);font-size:12.5px;background:var(--surface-2);padding:1px 6px;border-radius:4px;color:var(--ink)}
-.tablewrap{border:1px solid var(--line);border-radius:12px;overflow:hidden;background:var(--surface);box-shadow:var(--shadow)}
-.tablescroll{overflow-x:auto}
-table{width:100%;border-collapse:collapse;font-size:13.5px;min-width:640px}
-thead th{text-align:left;font-family:var(--mono);font-size:10.5px;letter-spacing:.09em;text-transform:uppercase;
-  color:var(--ink-3);font-weight:600;padding:11px 14px;background:var(--surface-2);border-bottom:1px solid var(--line);white-space:nowrap}
-thead th.num{text-align:right}
-tbody td{padding:12px 14px;border-bottom:1px solid var(--line-2);vertical-align:middle}
-tbody tr:last-child td{border-bottom:0}
-tbody tr:hover{background:var(--surface-3)}
-td.rank{font-family:var(--mono);color:var(--ink-3);font-weight:600;width:44px}
-td.tgt{font-family:var(--mono);font-weight:600}
-td.tgt a{color:var(--ink)}
-td.num{text-align:right;font-family:var(--mono);font-variant-numeric:tabular-nums;white-space:nowrap}
-.ev{display:inline-flex;align-items:center;gap:6px;font-family:var(--mono);font-variant-numeric:tabular-nums;
-  padding:2px 8px;border-radius:5px;font-size:12.5px;font-weight:500}
-.ev.sig{color:var(--sig);background:var(--sig-soft)}
-.ev.mid{color:var(--mid);background:var(--mid-soft)}
-.ev.no{color:var(--insig)}
-.ev .dot{width:6px;height:6px;border-radius:50%;background:currentColor}
-.albar{width:120px;height:8px;border-radius:4px;background:var(--surface-2);overflow:hidden;position:relative}
-.albar i{position:absolute;top:0;bottom:0;background:var(--accent);opacity:.85;border-radius:4px}
-footer{border-top:1px solid var(--line);padding:22px 0 40px;color:var(--ink-3);font-size:12.5px}
-.foot{display:flex;gap:22px;flex-wrap:wrap;align-items:center}
-.foot a{color:var(--ink-2)}
-@media (max-width:760px){
-  .dbgrid{grid-template-columns:1fr}
-  .params{grid-template-columns:1fr}
-  .intro h1{font-size:24px}
-  nav a:not(.ghlink){display:none}
-}
+  :root {
+    --ink: #1d1b19; --ink-2: #4a4642; --muted: #8a847e; --line: #ebe7e2;
+    --line-2: #f3f0ec; --bg: #fbfaf8; --card: #ffffff;
+    --accent: #d9703a; --accent-ink: #b4541f; --accent-soft: #fbeee5;
+    --target: #3f6fb5; --target-soft: #e3ebf6;
+    --good: #2f8a57; --warn: #a86b12; --warn-soft: #fbf1df; --bad: #b3372f;
+    --mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+    --sans: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    --radius: 12px;
+  }
+  * { box-sizing: border-box }
+  html, body { margin: 0 }
+  body { background: var(--bg); color: var(--ink); font: 14.5px/1.55 var(--sans);
+         -webkit-font-smoothing: antialiased }
+  a { color: var(--accent-ink); text-decoration: none }
+  a:hover { text-decoration: underline }
+  button { font: inherit; cursor: pointer }
+  [hidden] { display: none !important }
+
+  /* header */
+  header.top { background: var(--card); border-bottom: 1px solid var(--line);
+               position: sticky; top: 0; z-index: 20 }
+  .bar { max-width: 1180px; margin: 0 auto; padding: 10px 24px;
+         display: flex; align-items: center; gap: 18px }
+  .brand { display: flex; align-items: center; gap: 10px; color: var(--ink) }
+  .brand:hover { text-decoration: none }
+  .brand img { width: 34px; height: 34px }
+  .brand b { font-size: 19px; font-weight: 700; letter-spacing: -.01em }
+  .brand span { color: var(--muted); font-size: 13px; margin-left: 2px }
+  nav.links { margin-left: auto; display: flex; gap: 20px; font-size: 13.5px }
+  nav.links a { color: var(--ink-2) }
+
+  main { max-width: 1180px; margin: 0 auto; padding: 28px 24px 80px }
+  .card { background: var(--card); border: 1px solid var(--line);
+          border-radius: var(--radius); padding: 22px 24px }
+  h1 { font-size: 22px; letter-spacing: -.015em; margin: 0 0 4px }
+  .lead { color: var(--muted); margin: 0 0 20px; font-size: 13.5px }
+  .label { font-size: 11.5px; font-weight: 600; letter-spacing: .06em;
+           text-transform: uppercase; color: var(--muted); margin: 0 0 8px }
+
+  /* search form */
+  .search-grid { display: grid; grid-template-columns: minmax(0, 1.55fr) minmax(0, 1fr);
+                 gap: 22px }
+  @media (max-width: 860px) { .search-grid { grid-template-columns: 1fr } }
+  .drop { position: relative; border: 1.5px dashed #d8d2cb; border-radius: 10px;
+          background: #fdfcfb; transition: border-color .15s, background .15s }
+  .drop.over { border-color: var(--accent); background: var(--accent-soft) }
+  .drop textarea { display: block; width: 100%; height: 250px; resize: vertical;
+                   border: 0; background: transparent; padding: 14px 16px;
+                   font: 12px/1.5 var(--mono); color: var(--ink-2); outline: none }
+  .drop textarea::placeholder { color: #aaa39c; font-family: var(--sans); font-size: 14px;
+                                line-height: 1.6 }
+  .file-chip { position: absolute; left: 12px; bottom: 12px; display: flex; gap: 8px;
+               align-items: center; background: var(--card); border: 1px solid var(--line);
+               border-radius: 999px; padding: 4px 6px 4px 12px; font-size: 12.5px }
+  .file-chip button { border: 0; background: var(--line-2); border-radius: 999px;
+                      width: 20px; height: 20px; line-height: 20px; padding: 0; color: var(--muted) }
+  .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-top: 12px }
+  .btn { border: 1px solid var(--line); background: var(--card); color: var(--ink);
+         border-radius: 8px; padding: 7px 13px; font-size: 13.5px; font-weight: 500 }
+  .btn:hover { border-color: #d6cfc8; background: #fdfcfb }
+  .btn.primary { background: var(--accent); border-color: var(--accent); color: #fff;
+                 padding: 10px 22px; font-size: 14.5px; font-weight: 600 }
+  .btn.primary:hover { background: var(--accent-ink); border-color: var(--accent-ink) }
+  .btn.primary:disabled { opacity: .55; cursor: default }
+  .btn.small { padding: 5px 10px; font-size: 12.5px }
+  .menu { position: relative }
+  .menu-list { position: absolute; top: calc(100% + 6px); left: 0; z-index: 10; min-width: 300px;
+               background: var(--card); border: 1px solid var(--line); border-radius: 10px;
+               box-shadow: 0 10px 30px rgba(40, 30, 20, .10); padding: 6px }
+  .menu-list button { display: block; width: 100%; text-align: left; border: 0;
+                      background: none; padding: 8px 10px; border-radius: 7px }
+  .menu-list button:hover { background: var(--line-2) }
+  .menu-list small { display: block; color: var(--muted); font-size: 12px }
+  .hint { color: var(--muted); font-size: 12.5px }
+
+  .dbs { display: flex; flex-direction: column; gap: 8px }
+  .db { display: flex; gap: 11px; align-items: flex-start; border: 1px solid var(--line);
+        border-radius: 10px; padding: 11px 13px; cursor: pointer; transition: border-color .15s }
+  .db:hover { border-color: #d6cfc8 }
+  .db.on { border-color: var(--accent); background: #fffaf6 }
+  .db input { margin-top: 3px; accent-color: var(--accent) }
+  .db .name { font-weight: 600 }
+  .db .meta { color: var(--muted); font-size: 12.5px }
+  .badge { display: inline-block; font-size: 11px; font-weight: 600; border-radius: 999px;
+           padding: 1px 8px; margin-left: 6px; vertical-align: 1px }
+  .badge.warn { background: var(--warn-soft); color: var(--warn) }
+  .badge.soft { background: var(--line-2); color: var(--ink-2) }
+  .seg { display: flex; border: 1px solid var(--line); border-radius: 9px; padding: 3px; gap: 3px }
+  .seg label { flex: 1; text-align: center; padding: 7px 8px; border-radius: 7px; cursor: pointer;
+               font-size: 13px; color: var(--ink-2) }
+  .seg input { display: none }
+  .seg label.on { background: var(--accent-soft); color: var(--accent-ink); font-weight: 600 }
+  .seg label.off { opacity: .45; cursor: not-allowed }
+  details.adv { margin-top: 16px; border-top: 1px solid var(--line-2); padding-top: 12px }
+  details.adv summary { cursor: pointer; color: var(--ink-2); font-size: 13px }
+  .adv-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-top: 12px }
+  .adv-grid input { width: 100%; padding: 7px 9px; border: 1px solid var(--line);
+                    border-radius: 7px; font: inherit; font-size: 13.5px }
+  .adv-grid .hint { display: block; margin-top: 3px; font-size: 11.5px }
+  .submit-row { display: flex; align-items: center; gap: 14px; margin-top: 20px }
+
+  .about { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-top: 22px }
+  @media (max-width: 860px) { .about { grid-template-columns: 1fr } }
+  .about .card { padding: 16px 18px }
+  .about h3 { margin: 0 0 4px; font-size: 14px }
+  .about p { margin: 0; color: var(--ink-2); font-size: 13px }
+
+  /* status */
+  .banner { border-radius: 10px; padding: 11px 14px; font-size: 13.5px; margin-bottom: 16px }
+  .banner.err { background: #fbeceb; color: var(--bad) }
+  .banner.info { background: var(--line-2); color: var(--ink-2) }
+  .spinner { width: 16px; height: 16px; border: 2px solid #f0d9ca; border-top-color: var(--accent);
+             border-radius: 50%; animation: spin .8s linear infinite; display: inline-block;
+             vertical-align: -3px; margin-right: 8px }
+  @keyframes spin { to { transform: rotate(360deg) } }
+
+  /* results */
+  .res-head { display: flex; align-items: flex-start; gap: 16px; flex-wrap: wrap; margin-bottom: 16px }
+  .res-head h1 { font-size: 19px }
+  .res-head .sub { color: var(--muted); font-size: 13px }
+  .res-head .actions { margin-left: auto; display: flex; gap: 8px; flex-wrap: wrap }
+  .tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--line); margin-bottom: 0 }
+  .tab { border: 0; background: none; padding: 10px 14px; color: var(--ink-2);
+         border-bottom: 2px solid transparent; margin-bottom: -1px; font-size: 13.5px }
+  .tab.on { color: var(--ink); border-bottom-color: var(--accent); font-weight: 600 }
+  .tab .n { color: var(--muted); font-weight: 400; margin-left: 4px }
+  .tab-meta { color: var(--muted); font-size: 12.5px; padding: 10px 2px 12px }
+  .tablewrap { overflow-x: auto; background: var(--card); border: 1px solid var(--line);
+               border-radius: var(--radius) }
+  table.hits { width: 100%; border-collapse: collapse; font-size: 13px }
+  table.hits th { text-align: left; font-size: 11.5px; font-weight: 600; letter-spacing: .04em;
+                  text-transform: uppercase; color: var(--muted); padding: 10px 12px;
+                  border-bottom: 1px solid var(--line); white-space: nowrap; background: #fdfcfb }
+  table.hits td { padding: 9px 12px; border-bottom: 1px solid var(--line-2); vertical-align: middle }
+  table.hits tr.hit { cursor: pointer }
+  table.hits tr.hit:hover td { background: #fdfaf7 }
+  table.hits tr.hit.open td { background: #fff7f1 }
+  td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap }
+  td.rank { color: var(--muted); width: 36px }
+  .tgt { font-family: var(--mono); font-size: 12.5px; white-space: nowrap }
+  .desc { max-width: 330px }
+  .desc .t { overflow: hidden; text-overflow: ellipsis; white-space: nowrap }
+  .desc .o { color: var(--muted); font-size: 12px; font-style: italic; overflow: hidden;
+             text-overflow: ellipsis; white-space: nowrap }
+  .cov { width: 150px }
+  .cov svg { display: block }
+  td.detail { background: #fffcf9 !important; padding: 0 !important }
+  .detail-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.25fr); gap: 0 }
+  @media (max-width: 960px) { .detail-grid { grid-template-columns: 1fr } }
+  .viewer-wrap { position: relative; border-right: 1px solid var(--line-2); min-height: 380px }
+  .viewer { position: absolute; inset: 0 }
+  .viewer-legend { position: absolute; left: 12px; bottom: 10px; font-size: 12px; color: var(--ink-2);
+                   background: rgba(255, 255, 255, .85); border-radius: 7px; padding: 4px 9px;
+                   display: flex; gap: 12px }
+  .sw { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 5px;
+        vertical-align: -1px }
+  .detail-body { padding: 16px 18px 18px }
+  .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 14px }
+  .stat { background: var(--card); border: 1px solid var(--line-2); border-radius: 9px; padding: 8px 10px }
+  .stat .k { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .05em }
+  .stat .v { font-size: 15px; font-weight: 600; font-variant-numeric: tabular-nums }
+  .aln { font: 12px/1.45 var(--mono); background: var(--card); border: 1px solid var(--line-2);
+         border-radius: 9px; padding: 10px 12px; overflow-x: auto; white-space: pre; margin: 0 }
+  .aln .q { color: var(--accent-ink) } .aln .t { color: var(--target) }
+  .aln .m { color: var(--muted) } .aln .pos { color: #b9b2ab }
+  .aln-note { color: var(--muted); font-size: 11.5px; margin-top: 6px }
+  .foot { color: var(--muted); font-size: 12px; margin-top: 12px }
+  footer { max-width: 1180px; margin: 0 auto; padding: 0 24px 40px; color: var(--muted); font-size: 12.5px }
 </style>
 </head>
 <body>
-<header>
-  <div class="wrap bar">
-    <div class="brand">
-      <svg width="30" height="30" viewBox="0 0 32 32" fill="none" aria-hidden="true">
-        <rect width="32" height="32" rx="8" fill="var(--accent)"/>
-        <g stroke="#fff" stroke-width="1.7" stroke-linecap="round" opacity=".95">
-          <path d="M10 6 C22 11, 10 21, 22 26"/>
-          <path d="M22 6 C10 11, 22 21, 10 26"/>
-          <path d="M11.3 9h9.4M10.2 13h11.6M10.2 19h11.6M11.3 23h9.4"/>
-        </g>
-      </svg>
-      <span><b class="r">R</b>Foldseek</span>
-    </div>
-    <nav>
-      <a href="/api/docs">API</a>
-      <a href="https://github.com/DylanYang/RFoldseek" class="ghlink">GitHub</a>
-      <button class="theme-btn" id="themeBtn" title="Toggle theme" aria-label="Toggle theme">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4.2"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M5 5l1.4 1.4M17.6 17.6L19 19M19 5l-1.4 1.4M6.4 17.6L5 19"/></svg>
-      </button>
+<header class="top">
+  <div class="bar">
+    <a class="brand" href="/"><img src="/static/logo.png" alt=""><b>RFoldseek</b><span>RNA structure search</span></a>
+    <nav class="links">
+      <a href="/">Search</a>
+      <a href="/api/docs" target="_blank">API</a>
+      <a href="https://github.com/DylanYang/RFoldseek" target="_blank">GitHub</a>
     </nav>
   </div>
 </header>
 
-<main class="wrap">
-  <section class="intro">
-    <div class="eyebrow">RNA tertiary-structure search</div>
-    <h1>Find structural homologues of an RNA chain in seconds</h1>
-    <p>Upload an RNA structure and RFoldseek searches it against experimental and
-      predicted databases with a learned discrete structural alphabet — the sensitivity
-      of coordinate alignment at a fraction of the cost.</p>
-  </section>
+<main>
+  <div id="error" class="banner err" hidden></div>
 
-  <form class="panel" id="f" onsubmit="return false">
-    <div class="panel-body">
-      <div class="section-label"><span class="step">1</span> Query structure</div>
-      <label class="drop" id="drop" for="structure">
-        <span class="ic"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4M12 4l-4 4M12 4l4 4"/><path d="M4 15v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3"/></svg></span>
-        <span>
-          <span class="t" id="dropT">Drop a structure file, or <b>browse</b></span>
-          <span class="s" id="dropS">mmCIF or PDB · one RNA chain · up to <span id="maxmb">32</span> MB</span>
-        </span>
-        <input type="file" id="structure" name="structure" accept=".cif,.pdb,.mmcif,.ent" hidden>
-      </label>
-      <div class="orline">or</div>
-      <div class="idrow">
-        <input type="text" id="pdbid" placeholder="Fetch by PDB ID — e.g. 1FFZ" spellcheck="false">
-        <button type="button" class="chip" id="fetchBtn">Fetch</button>
-        <button type="button" class="chip" id="example">Try an example</button>
-      </div>
-
-      <div class="section-label" style="margin-top:24px"><span class="step">2</span> Target database</div>
-      <div class="dbgrid" id="dbgrid"><div class="db"><div class="nm">Loading…</div></div></div>
-
-      <details class="adv">
-        <summary><span class="caret"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M9 6l6 6-6 6"/></svg></span> Search parameters</summary>
-        <div class="params">
-          <div class="field">
-            <label>Reranking</label>
-            <div class="seg" id="rerank">
-              <button type="button" class="on" data-v="sw">Token Smith–Waterman</button>
-              <button type="button" data-v="tm">US-align TM-score</button>
+  <!-- search view -->
+  <section id="view-search">
+    <div class="card">
+      <h1>Search RNA structures</h1>
+      <p class="lead">Upload or paste one RNA chain (PDB or mmCIF). It is encoded in the learned 3Dr
+        structural alphabet and searched against the selected databases in seconds.</p>
+      <form id="form" class="search-grid" autocomplete="off">
+        <div>
+          <div class="label">Query structure</div>
+          <div class="drop" id="drop">
+            <textarea id="text" spellcheck="false"
+              placeholder="Paste a PDB or mmCIF structure here, or drop a file onto this box.&#10;&#10;The first RNA chain is used; nucleotides need C3′, C4′ and O4′ atoms."></textarea>
+            <div class="file-chip" id="chip" hidden><span id="chip-name"></span><button type="button" id="chip-x" title="Remove">×</button></div>
+          </div>
+          <div class="row">
+            <label class="btn">Upload file<input type="file" id="file" accept=".pdb,.cif,.mmcif,.ent" hidden></label>
+            <div class="menu">
+              <button type="button" class="btn" id="ex-btn">Load example ▾</button>
+              <div class="menu-list" id="ex-list" hidden></div>
             </div>
-          </div>
-          <div class="field">
-            <label>Results returned <span class="hint">top_k</span></label>
-            <input type="number" id="top_k" value="10" min="1" max="1000">
-          </div>
-          <div class="field">
-            <label>Candidate depth <span class="hint">top_n</span></label>
-            <input type="number" id="top_n" value="200" min="1">
-          </div>
-          <div class="field">
-            <label>Min. diagonal hits <span class="hint">min_diag</span></label>
-            <input type="number" id="min_diag" value="2" min="1" max="8">
-          </div>
-          <div class="field">
-            <label>Tie-break seed <span class="hint">tie_seed · optional</span></label>
-            <input type="text" id="tie_seed" placeholder="auto" spellcheck="false">
+            <span class="hint" id="max-upload"></span>
           </div>
         </div>
-      </details>
+        <div>
+          <div class="label">Databases</div>
+          <div class="dbs" id="dbs"><div class="hint"><span class="spinner"></span>Connecting to the server…</div></div>
+          <div class="label" style="margin-top:18px">Mode</div>
+          <div class="seg" id="mode">
+            <label class="on"><input type="radio" name="rerank" value="sw" checked>RFoldseek <span class="hint">3Dr + SW</span></label>
+            <label id="mode-tm"><input type="radio" name="rerank" value="tm">RFoldseek-TM <span class="hint">US-align</span></label>
+          </div>
+          <details class="adv">
+            <summary>Advanced options</summary>
+            <div class="adv-grid">
+              <label><span class="hint">Hits shown</span><input type="number" id="top_k" value="50" min="1" max="1000"></label>
+              <label><span class="hint">Candidate depth</span><input type="number" id="top_n" value="200" min="1" max="2000"></label>
+              <label><span class="hint">Min. diagonal k-mers</span><input type="number" id="min_diag" value="2" min="1" max="8"></label>
+            </div>
+          </details>
+          <div class="submit-row">
+            <button class="btn primary" id="go" type="submit" disabled>Search</button>
+            <span class="hint" id="go-hint"></span>
+          </div>
+        </div>
+      </form>
     </div>
-    <div class="run">
-      <span class="q">Query <b id="qname">—</b> · vs <b id="qdb">—</b></span>
-      <button class="go" id="go" type="submit" disabled>
-        <svg id="goIc" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
-        <span id="goTxt">Search</span>
-      </button>
+    <div class="about">
+      <div class="card"><h3>3Dr alphabet</h3><p>Each nucleotide's local geometry is quantised into one of 80 learned states, turning an RNA chain into a token string.</p></div>
+      <div class="card"><h3>Fast search</h3><p>A k-mer prefilter over an inverted index, then affine-gap Smith–Waterman with the Structure-BLOSUM matrix.</p></div>
+      <div class="card"><h3>RFoldseek-TM</h3><p>Optionally reranks the same candidates by US-align TM-score for higher sensitivity at a higher cost.</p></div>
     </div>
-  </form>
+  </section>
 
-  <section class="results">
-    <div class="rhead"><h2>Ranked hits</h2></div>
-    <div id="resultArea">
-      <div class="notice" id="hint">Upload a structure (or fetch by PDB ID) and run a search to see ranked structural homologues.</div>
+  <!-- result view -->
+  <section id="view-result" hidden>
+    <div id="res-loading" class="banner info" hidden><span class="spinner"></span><span id="res-loading-text">Searching…</span></div>
+    <div id="res" hidden>
+      <div class="res-head">
+        <div>
+          <h1 id="res-title"></h1>
+          <div class="sub" id="res-sub"></div>
+        </div>
+        <div class="actions">
+          <button class="btn small" id="copy-link">Copy link</button>
+          <a class="btn small" id="dl-tsv">Download TSV</a>
+          <a class="btn small" id="dl-json">JSON</a>
+          <a class="btn small" href="/">New search</a>
+        </div>
+      </div>
+      <div class="tabs" id="tabs"></div>
+      <div class="tab-meta" id="tab-meta"></div>
+      <div class="tablewrap"><table class="hits" id="hits"></table></div>
+      <div class="foot" id="foot"></div>
     </div>
   </section>
 </main>
+<footer>RFoldseek · learned 3Dr structural alphabet for fast RNA tertiary-structure search</footer>
 
-<footer>
-  <div class="wrap foot">
-    <span class="mono" id="ver">RFoldseek</span>
-    <a href="/api/docs">REST API</a>
-    <a href="https://github.com/DylanYang/RFoldseek">Source</a>
-    <span style="margin-left:auto" class="mono">single-core CPU · resident index</span>
-  </div>
-</footer>
-
-<script>
-const $=s=>document.querySelector(s);
-// theme
-(function(){const b=$("#themeBtn");
-  try{const s=localStorage.getItem('rfs-theme');if(s)document.documentElement.setAttribute('data-theme',s);}catch(e){}
-  b.addEventListener('click',()=>{const cur=document.documentElement.getAttribute('data-theme');
-    const mql=matchMedia('(prefers-color-scheme:dark)').matches;
-    const nx=cur?(cur==='dark'?'light':'dark'):(mql?'light':'dark');
-    document.documentElement.setAttribute('data-theme',nx);
-    try{localStorage.setItem('rfs-theme',nx);}catch(e){}});
-})();
-
-const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
-// per-key presentation for known databases; unknown keys fall back to the server label
-const DBMETA={
-  'pdb-rna':{desc:'All experimental RNA chains in the PDB.',meta:'PDB experimental',def:true},
-  'rnasolo':{desc:'Cleaned, non-redundant representative set.',meta:'RNAsolo 2.0'},
-  'nufold':{desc:'Predicted RNA structure database.',meta:'predicted'},
-};
-let selectedDB=null, queryFile=null, busy=false;
-
-function pickDB(key){selectedDB=key;
-  document.querySelectorAll('.db').forEach(d=>d.classList.toggle('sel',d.dataset.db===key));
-  const lab=(DBMETA[key]&&DBMETA[key].meta)|| key;
-  $("#qdb").textContent=(document.querySelector('.db.sel .nm')?.textContent||key).trim();
-  refreshRun();}
-
-function refreshRun(){const ok=!!queryFile&&!!selectedDB&&!busy;$("#go").disabled=!ok;}
-
-function setQuery(name){queryFile&&($("#qname").textContent=name);}
-
-// load databases + limits from the live server
-fetch("api/health").then(r=>r.json()).then(h=>{
-  if(h.max_upload_mb)$("#maxmb").textContent=h.max_upload_mb;
-  if(h.top_n_cap)$("#top_n").max=h.top_n_cap;
-  const dbs=h.databases||[];
-  if(!dbs.length){$("#dbgrid").innerHTML='<div class="db"><div class="nm">No database loaded</div></div>';return;}
-  $("#dbgrid").innerHTML=dbs.map((d,i)=>{
-    const m=DBMETA[d.key]||{};
-    const badge=(m.def||i===0)?'<span class="badge">Default</span>':'';
-    return `<div class="db${i===0?' sel':''}" data-db="${esc(d.key)}">
-      <div class="nm">${esc(d.label.replace(/\\s*\\(.*\\)\\s*$/,''))} ${badge}</div>
-      <div class="desc">${esc(m.desc||d.label)}</div>
-      <div class="meta"><span><b>${d.n_chains.toLocaleString()}</b> chains</span><span>${esc(m.meta||'')}</span></div>
-    </div>`;}).join('');
-  $("#dbgrid").addEventListener('click',e=>{const c=e.target.closest('.db');if(c&&c.dataset.db)pickDB(c.dataset.db);});
-  pickDB(dbs[0].key);
-}).catch(()=>{$("#dbgrid").innerHTML='<div class="db"><div class="nm">Server unavailable</div></div>';});
-
-// rerank segmented
-$("#rerank").addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;
-  b.parentNode.querySelectorAll('button').forEach(x=>x.classList.remove('on'));b.classList.add('on');});
-
-// file input + drag/drop
-const drop=$("#drop");
-['dragenter','dragover'].forEach(ev=>drop.addEventListener(ev,e=>{e.preventDefault();drop.classList.add('over');}));
-['dragleave','drop'].forEach(ev=>drop.addEventListener(ev,e=>{e.preventDefault();drop.classList.remove('over');}));
-drop.addEventListener('drop',e=>{const f=e.dataTransfer.files[0];if(f)useFile(f);});
-$("#structure").addEventListener('change',e=>{const f=e.target.files[0];if(f)useFile(f);});
-function useFile(f){queryFile=f;const nm=f.name.replace(/\.(cif|pdb|mmcif|ent)$/i,'');
-  $("#dropT").innerHTML='<b>'+esc(f.name)+'</b> ready';$("#qname").textContent=nm;refreshRun();}
-
-// fetch by PDB id from RCSB (client-side), then treat as upload
-async function fetchPDB(id){
-  id=id.trim().toLowerCase().replace(/[^a-z0-9]/g,'');
-  if(id.length<4)return alert('Enter a 4-character PDB ID (e.g. 1FFZ).');
-  $("#dropT").textContent='Fetching '+id.toUpperCase()+' from RCSB…';
-  try{const r=await fetch('https://files.rcsb.org/download/'+id+'.cif');
-    if(!r.ok)throw 0;const blob=await r.blob();
-    useFile(new File([blob],id.toUpperCase()+'.cif',{type:'chemical/x-cif'}));
-  }catch(e){$("#dropT").innerHTML='Drop a structure file, or <b>browse</b>';alert('Could not fetch '+id.toUpperCase()+' from RCSB.');}
-}
-$("#fetchBtn").addEventListener('click',()=>fetchPDB($("#pdbid").value));
-$("#pdbid").addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();fetchPDB($("#pdbid").value);}});
-$("#example").addEventListener('click',()=>fetchPDB('1FFZ'));
-
-// evalue formatting + significance colour
-const evClass=v=>v<1e-3?'sig':(v<1?'mid':'no');
-const evFmt=v=>v===0?'0':(v<0.001?v.toExponential(1):(v>=1?v.toFixed(2):v.toPrecision(2)));
-
-// search
-$("#f").addEventListener('submit',async()=>{
-  if(!queryFile||!selectedDB||busy)return;
-  busy=true;refreshRun();
-  $("#goTxt").textContent='Searching';$("#goIc").outerHTML='<span class="spin" id="goIc"></span>';
-  const fd=new FormData();
-  fd.append('structure',queryFile);
-  fd.append('database',selectedDB);
-  fd.append('top_k',$("#top_k").value||10);
-  fd.append('top_n',$("#top_n").value||200);
-  fd.append('min_diag',$("#min_diag").value||2);
-  fd.append('rerank',$("#rerank .on").dataset.v);
-  const ts=$("#tie_seed").value.trim();if(ts)fd.append('tie_seed',ts);
-  const area=$("#resultArea");
-  try{
-    const r=await fetch('api/search',{method:'POST',body:fd});
-    const j=await r.json();
-    if(!r.ok){area.innerHTML=`<div class="notice err">${esc(j.detail||('Search failed ('+r.status+')'))}</div>`;}
-    else renderResults(j);
-  }catch(e){area.innerHTML='<div class="notice err">Could not reach the search server.</div>';}
-  finally{busy=false;
-    $("#goTxt").textContent='Search';
-    $("#goIc").outerHTML='<svg id="goIc" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>';
-    refreshRun();}
-});
-
-function renderResults(j){
-  const tm=j.rerank==='tm';
-  const scoreCol=tm?'TM-score':'SW score';
-  const maxLen=Math.max(1,...j.hits.map(h=>h.length||0));
-  if(!j.hits.length){
-    $("#resultArea").innerHTML=`<div class="notice">No hits above the prefilter threshold. Try widening the search with <code>min_diag = 1</code> and a larger <code>top_n</code>.</div>`;
-    return;}
-  const rows=j.hits.map(h=>{
-    const score=tm?(h.tm_score!=null?h.tm_score.toFixed(4):'—'):(h.sw_score!=null?h.sw_score.toFixed(2):'—');
-    const bits=h.bits!=null?h.bits.toFixed(1):'—';
-    const ev=h.evalue==null?'<span class="ev no">—</span>':`<span class="ev ${evClass(h.evalue)}"><span class="dot"></span>${evFmt(h.evalue)}</span>`;
-    const pdb=String(h.target).match(/([0-9][A-Za-z0-9]{3})/);
-    const tgt=pdb?`<a href="https://www.rcsb.org/structure/${pdb[1]}" target="_blank" rel="noopener">${esc(h.target)}</a>`:esc(h.target);
-    const cov=Math.round((h.length||0)/maxLen*88);
-    return `<tr><td class="rank">${h.rank}</td><td class="tgt">${tgt}</td>
-      <td class="num">${score}</td><td class="num">${bits}</td>
-      <td class="num">${ev}</td><td class="num">${(h.length||0).toLocaleString()}</td>
-      <td><span class="albar"><i style="left:6%;width:${cov}%"></i></span></td></tr>`;}).join('');
-  $("#resultArea").innerHTML=`
-    <div class="rsub">Query <b>${esc(j.query?.id||$("#qname").textContent)}</b>${j.query?.n_tokens?` (${j.query.n_tokens} tokens)`:''} against <b>${esc(j.database.label)}</b> · ${j.database.n_chains.toLocaleString()} chains in <b>${j.seconds.toFixed(2)}&nbsp;s</b>${tm?' · TM reranking':' · token Smith–Waterman'}</div>
-    <div class="tablewrap"><div class="tablescroll"><table>
-      <thead><tr><th>#</th><th>Target chain</th><th class="num">${scoreCol}</th><th class="num">Bits</th><th class="num">E-value</th><th class="num">Length</th><th>Rel. length</th></tr></thead>
-      <tbody>${rows}</tbody>
-    </table></div></div>`;
-}
-</script>
+<script src="https://cdn.jsdelivr.net/npm/3dmol@2.4.2/build/3Dmol-min.js"></script>
+<script src="/static/app.js"></script>
 </body>
 </html>
