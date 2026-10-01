@@ -288,6 +288,11 @@ def index():
     return FileResponse(STATIC / "index.html")
 
 
+@app.get("/tutorial")
+def tutorial_page():
+    return FileResponse(STATIC / "index.html")
+
+
 @app.get("/result/{job_id}")
 def result_page(job_id: str):
     return FileResponse(STATIC / "index.html")

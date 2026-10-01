@@ -21,7 +21,7 @@
   }
   * { box-sizing: border-box }
   html, body { margin: 0 }
-  body { background: var(--bg); color: var(--ink); font: 14.5px/1.55 var(--sans);
+  body { background: var(--bg); color: var(--ink); font: 15.5px/1.6 var(--sans);
          -webkit-font-smoothing: antialiased }
   a { color: var(--accent-ink); text-decoration: none }
   a:hover { text-decoration: underline }
@@ -29,23 +29,24 @@
   [hidden] { display: none !important }
 
   /* header */
-  header.top { background: var(--card); border-bottom: 1px solid var(--line);
+  header.top { background: #26211d; border-bottom: 3px solid var(--accent);
                position: sticky; top: 0; z-index: 20 }
-  .bar { max-width: 1180px; margin: 0 auto; padding: 10px 24px;
-         display: flex; align-items: center; gap: 18px }
-  .brand { display: flex; align-items: center; gap: 10px; color: var(--ink) }
+  .bar { max-width: 1320px; margin: 0 auto; padding: 18px 32px;
+         display: flex; align-items: center; gap: 22px }
+  .brand { display: flex; align-items: center; gap: 14px; color: #fff }
   .brand:hover { text-decoration: none }
-  .brand img { width: 34px; height: 34px }
-  .brand b { font-size: 19px; font-weight: 700; letter-spacing: -.01em }
-  .brand span { color: var(--muted); font-size: 13px; margin-left: 2px }
-  nav.links { margin-left: auto; display: flex; gap: 20px; font-size: 13.5px }
-  nav.links a { color: var(--ink-2) }
+  .brand img { width: 52px; height: 52px }
+  .brand b { font-size: 26px; font-weight: 700; letter-spacing: -.01em; color: #fff }
+  .brand span { color: #c9bfb6; font-size: 15px; margin-left: 4px }
+  nav.links { margin-left: auto; display: flex; gap: 28px; font-size: 16px; font-weight: 500 }
+  nav.links a { color: #f1ebe5 }
+  nav.links a:hover { color: #fff; text-decoration: none; border-bottom: 2px solid var(--accent) }
 
-  main { max-width: 1180px; margin: 0 auto; padding: 28px 24px 80px }
+  main { max-width: 1320px; margin: 0 auto; padding: 28px 24px 80px }
   .card { background: var(--card); border: 1px solid var(--line);
           border-radius: var(--radius); padding: 22px 24px }
-  h1 { font-size: 22px; letter-spacing: -.015em; margin: 0 0 4px }
-  .lead { color: var(--muted); margin: 0 0 20px; font-size: 13.5px }
+  h1 { font-size: 26px; letter-spacing: -.015em; margin: 0 0 4px }
+  .lead { color: var(--muted); margin: 0 0 20px; font-size: 15px }
   .label { font-size: 11.5px; font-weight: 600; letter-spacing: .06em;
            text-transform: uppercase; color: var(--muted); margin: 0 0 8px }
 
@@ -106,7 +107,7 @@
   details.adv { margin-top: 16px; border-top: 1px solid var(--line-2); padding-top: 12px }
   details.adv summary { cursor: pointer; color: var(--ink-2); font-size: 13px }
   .adv-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-top: 12px }
-  .adv-grid input { width: 100%; padding: 7px 9px; border: 1px solid var(--line);
+  .adv-grid input { flex: 1; min-width: 0; width: 100%; padding: 7px 9px; border: 1px solid var(--line);
                     border-radius: 7px; font: inherit; font-size: 13.5px }
   .adv-grid .hint { display: block; margin-top: 3px; font-size: 11.5px }
   .submit-row { display: flex; align-items: center; gap: 14px; margin-top: 20px }
@@ -126,6 +127,58 @@
              vertical-align: -3px; margin-right: 8px }
   @keyframes spin { to { transform: rotate(360deg) } }
 
+  .loader { display: flex; flex-direction: column; align-items: center; gap: 14px;
+            padding: 56px 20px; background: var(--card); border: 1px solid var(--line);
+            border-radius: var(--radius); color: var(--ink-2) }
+  .loader img { width: 96px; height: 96px; animation: sniff 1.8s ease-in-out infinite;
+                transform-origin: 50% 80% }
+  @keyframes sniff { 0%, 100% { transform: translateX(-26px) rotate(-8deg) }
+                     50% { transform: translateX(26px) rotate(8deg) } }
+  .loader .dots span { display: inline-block; width: 8px; height: 8px; margin: 0 3px; border-radius: 50%;
+                       background: var(--accent); animation: bounce 1.2s infinite ease-in-out }
+  .loader .dots span:nth-child(2) { animation-delay: .15s }
+  .loader .dots span:nth-child(3) { animation-delay: .3s }
+  @keyframes bounce { 0%, 80%, 100% { transform: scale(.4); opacity: .4 } 40% { transform: scale(1); opacity: 1 } }
+  .loader .msg { font-size: 15px }
+
+  .modes label { text-align: left !important; padding: 9px 12px !important }
+  .modes .m-name { display: block; font-weight: 600; font-size: 14.5px }
+  .modes .m-sub { display: block; font-size: 12.5px; color: var(--muted); font-weight: 400 }
+  .modes .m-speed { display: block; font-size: 12px; color: var(--accent-ink); font-weight: 500; margin-top: 2px }
+  .seg.modes { flex-direction: column }
+  .num-step { display: flex; gap: 4px }
+  .num-step button { border: 1px solid var(--line); background: var(--card); border-radius: 7px;
+                     padding: 0 9px; font-size: 12.5px; color: var(--ink-2); white-space: nowrap }
+  .num-step button:hover { background: var(--line-2) }
+
+  .best { display: flex; gap: 20px; align-items: center; flex-wrap: wrap; background: var(--accent-soft);
+          border: 1px solid #f0d3bf; border-radius: var(--radius); padding: 14px 18px; margin-bottom: 14px }
+  .best .tag { font-size: 11.5px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase;
+               color: var(--accent-ink) }
+  .best .main { font-weight: 600; font-size: 16px }
+  .best .sub { color: var(--ink-2); font-size: 13.5px }
+  .best .kv { display: flex; gap: 18px; margin-left: auto; flex-wrap: wrap }
+  .best .kv div { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em }
+  .best .kv b { display: block; font-size: 17px; color: var(--ink); text-transform: none; letter-spacing: 0 }
+
+  .summary { margin-bottom: 12px; font-size: 14px }
+  .summary .r { display: flex; gap: 12px; padding: 2px 0 }
+  .summary .r > span:first-child { width: 78px; flex: none; color: var(--muted); font-size: 12px;
+                                   text-transform: uppercase; letter-spacing: .05em; padding-top: 2px }
+  .stat.hero { grid-column: span 2; background: var(--accent-soft); border-color: #f0d3bf }
+  .stat.hero .v { font-size: 20px; color: var(--accent-ink) }
+  .picked { position: absolute; left: 0; right: 0; bottom: 0; z-index: 2; color: var(--ink-2); font-size: 13px; padding: 8px 12px; border-top: 1px solid var(--line-2);
+            background: #fffcf9; min-height: 36px }
+
+  .doc { max-width: 860px }
+  .doc h2 { font-size: 20px; margin: 28px 0 8px }
+  .doc h3 { font-size: 16px; margin: 20px 0 6px }
+  .doc p, .doc li { color: var(--ink-2) }
+  .doc code, .doc .kbd { font-family: var(--mono); font-size: 13px; background: var(--line-2);
+                         padding: 1px 6px; border-radius: 5px }
+  .doc table { border-collapse: collapse; margin: 8px 0 }
+  .doc td, .doc th { border: 1px solid var(--line); padding: 6px 12px; text-align: left; font-size: 14px }
+
   /* results */
   .res-head { display: flex; align-items: flex-start; gap: 16px; flex-wrap: wrap; margin-bottom: 16px }
   .res-head h1 { font-size: 19px }
@@ -139,7 +192,7 @@
   .tab-meta { color: var(--muted); font-size: 12.5px; padding: 10px 2px 12px }
   .tablewrap { overflow-x: auto; background: var(--card); border: 1px solid var(--line);
                border-radius: var(--radius) }
-  table.hits { width: 100%; border-collapse: collapse; font-size: 13px }
+  table.hits { width: 100%; border-collapse: collapse; font-size: 14.5px }
   table.hits th { text-align: left; font-size: 11.5px; font-weight: 600; letter-spacing: .04em;
                   text-transform: uppercase; color: var(--muted); padding: 10px 12px;
                   border-bottom: 1px solid var(--line); white-space: nowrap; background: #fdfcfb }
@@ -149,7 +202,7 @@
   table.hits tr.hit.open td { background: #fff7f1 }
   td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap }
   td.rank { color: var(--muted); width: 36px }
-  .tgt { font-family: var(--mono); font-size: 12.5px; white-space: nowrap }
+  .tgt { font-family: var(--mono); font-size: 13.5px; white-space: nowrap }
   .desc { max-width: 330px }
   .desc .t { overflow: hidden; text-overflow: ellipsis; white-space: nowrap }
   .desc .o { color: var(--muted); font-size: 12px; font-style: italic; overflow: hidden;
@@ -159,9 +212,9 @@
   td.detail { background: #fffcf9 !important; padding: 0 !important }
   .detail-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.25fr); gap: 0 }
   @media (max-width: 960px) { .detail-grid { grid-template-columns: 1fr } }
-  .viewer-wrap { position: relative; border-right: 1px solid var(--line-2); min-height: 380px }
+  .viewer-wrap { position: relative; border-right: 1px solid var(--line-2); min-height: 420px }
   .viewer { position: absolute; inset: 0 }
-  .viewer-legend { position: absolute; left: 12px; bottom: 10px; font-size: 12px; color: var(--ink-2);
+  .viewer-legend { position: absolute; left: 12px; bottom: 48px; z-index: 2; font-size: 12px; color: var(--ink-2);
                    background: rgba(255, 255, 255, .85); border-radius: 7px; padding: 4px 9px;
                    display: flex; gap: 12px }
   .sw { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 5px;
@@ -177,7 +230,7 @@
   .aln .m { color: var(--muted) } .aln .pos { color: #b9b2ab }
   .aln-note { color: var(--muted); font-size: 11.5px; margin-top: 6px }
   .foot { color: var(--muted); font-size: 12px; margin-top: 12px }
-  footer { max-width: 1180px; margin: 0 auto; padding: 0 24px 40px; color: var(--muted); font-size: 12.5px }
+  footer { max-width: 1320px; margin: 0 auto; padding: 0 24px 40px; color: var(--muted); font-size: 12.5px }
 </style>
 </head>
 <body>
@@ -186,6 +239,7 @@
     <a class="brand" href="/"><img src="/static/logo.png" alt=""><b>RFoldseek</b><span>RNA structure search</span></a>
     <nav class="links">
       <a href="/">Search</a>
+      <a href="/tutorial">Tutorial</a>
       <a href="/api/docs" target="_blank">API</a>
       <a href="https://github.com/DylanYang/RFoldseek" target="_blank">GitHub</a>
     </nav>
@@ -222,15 +276,21 @@
           <div class="label">Databases</div>
           <div class="dbs" id="dbs"><div class="hint"><span class="spinner"></span>Connecting to the server…</div></div>
           <div class="label" style="margin-top:18px">Mode</div>
-          <div class="seg" id="mode">
-            <label class="on"><input type="radio" name="rerank" value="sw" checked>RFoldseek <span class="hint">3Dr + SW</span></label>
-            <label id="mode-tm"><input type="radio" name="rerank" value="tm">RFoldseek-TM <span class="hint">US-align</span></label>
+          <div class="seg modes" id="mode">
+            <label class="on"><input type="radio" name="rerank" value="sw" checked>
+              <span class="m-name">Fast search</span>
+              <span class="m-sub">RFoldseek · structural-token alignment</span>
+              <span class="m-speed">Fastest, recommended for routine search</span></label>
+            <label id="mode-tm"><input type="radio" name="rerank" value="tm">
+              <span class="m-name">Accurate reranking</span>
+              <span class="m-sub">RFoldseek-TM · coordinate refinement</span>
+              <span class="m-speed">Slower, improved structural ranking</span></label>
           </div>
           <details class="adv">
             <summary>Advanced options</summary>
             <div class="adv-grid">
-              <label><span class="hint">Hits shown</span><input type="number" id="top_k" value="50" min="1" max="1000"></label>
-              <label><span class="hint">Candidate depth</span><input type="number" id="top_n" value="200" min="1" max="2000"></label>
+              <label><span class="hint">Hits shown</span><span class="num-step"><input type="number" id="top_k" value="50" min="1" max="1000"><button type="button" data-for="top_k" data-step="50" title="Add 50">+50</button></span></label>
+              <label><span class="hint">Candidate depth</span><span class="num-step"><input type="number" id="top_n" value="200" min="1" max="2000"><button type="button" data-for="top_n" data-step="100" title="Add 100">+100</button></span></label>
               <label><span class="hint">Min. diagonal k-mers</span><input type="number" id="min_diag" value="2" min="1" max="8"></label>
             </div>
           </details>
@@ -248,9 +308,43 @@
     </div>
   </section>
 
+  <!-- tutorial view -->
+  <section id="view-tutorial" hidden>
+    <div class="card doc">
+      <h1>How to read the results</h1>
+      <p class="lead">RFoldseek encodes every nucleotide as one of 80 learned 3Dr structural states, aligns the resulting token strings, and reports the closest structures in each database.</p>
+
+      <h2>1. Choose a mode</h2>
+      <p><b>Fast search</b> (RFoldseek) prefilters with a k-mer index and aligns structural tokens with an affine-gap Smith–Waterman and the Structure-BLOSUM matrix. It is the recommended mode for routine searches.
+         <b>Accurate reranking</b> (RFoldseek-TM) re-scores the same candidates with US-align on the coordinates; it is slower and can improve the structural ranking.</p>
+
+      <h2>2. The hit table</h2>
+      <table>
+        <tr><th>Column</th><th>Meaning</th></tr>
+        <tr><td>Target</td><td>The matched chain: PDB id and chain, or a predicted-model id.</td></tr>
+        <tr><td>Seq. id.</td><td>Nucleotide identity over the aligned positions. Hidden for databases without sequences.</td></tr>
+        <tr><td>Aligned nt / 3Dr id.</td><td>Number of aligned nucleotides and the fraction of aligned pairs with the same structural token. Shown for databases without sequences.</td></tr>
+        <tr><td>RMSD</td><td>Root-mean-square deviation of the superposed aligned nucleotides, in Å.</td></tr>
+        <tr><td>E-value, Bits</td><td>Expected number of chance hits at least this good, and the normalised alignment score. Databases marked <i>uncalibrated</i> have no empirical E-value calibration yet: use them to rank hits, not as significance.</td></tr>
+        <tr><td>Symmetric TM-score</td><td>Accurate reranking only. The mean of the query-normalised and target-normalised US-align TM-scores over the whole chains.</td></tr>
+        <tr><td>Query coverage</td><td>The part of your query that is aligned; darker means higher identity.</td></tr>
+      </table>
+
+      <h2>3. Inside a hit</h2>
+      <p>Click a row to open it. The summary line gives the alignment length, the query and target ranges, and the 3Dr identity. <b>Aligned-region TM-score</b> is the TM-score computed over the aligned nucleotides only, so it can differ from the symmetric whole-chain TM-score in the table.</p>
+      <h3>The 3Dr line</h3>
+      <p>Between the query and target sequences, <code>|</code> marks the same structural token, <code>+</code> a positive Structure-BLOSUM substitution and <code>.</code> any other aligned pair. Positions count nucleotides with a complete C3′, C4′, O4′ backbone. Databases without sequences show the target residues as <code>·</code>.</p>
+      <h3>The 3D view</h3>
+      <p>The query is orange and the hit is blue after superposition on the aligned nucleotides; pale colours are unaligned. Rotate and zoom with the mouse, and click a nucleotide to see which nucleotide of the other structure it is aligned to.</p>
+
+      <h2>4. Databases</h2>
+      <p>PDB-RNA (all RCSB RNA chains) and RNAsolo (a non-redundant representative set) hold experimental structures. NuFold holds predicted structures, which carry no sequence, so 3Dr identity is the main measure of agreement there.</p>
+    </div>
+  </section>
+
   <!-- result view -->
   <section id="view-result" hidden>
-    <div id="res-loading" class="banner info" hidden><span class="spinner"></span><span id="res-loading-text">Searching…</span></div>
+    <div id="res-loading" class="loader" hidden><img src="/static/logo.png" alt=""><div class="dots"><span></span><span></span><span></span></div><div class="msg" id="res-loading-text">Searching…</div></div>
     <div id="res" hidden>
       <div class="res-head">
         <div>
@@ -264,6 +358,7 @@
           <a class="btn small" href="/">New search</a>
         </div>
       </div>
+      <div id="best"></div>
       <div class="tabs" id="tabs"></div>
       <div class="tab-meta" id="tab-meta"></div>
       <div class="tablewrap"><table class="hits" id="hits"></table></div>

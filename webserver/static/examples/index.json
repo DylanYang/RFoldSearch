@@ -1,6 +1,8 @@
 [
-  {"file": "1EHZ_A.cif", "name": "tRNA-Phe", "detail": "Yeast tRNA-Phe, 76 nt (PDB 1EHZ, chain A)"},
-  {"file": "1Y26_A.cif", "name": "Adenine riboswitch", "detail": "add riboswitch aptamer, 71 nt (PDB 1Y26, chain A)"},
-  {"file": "2GIS_A.cif", "name": "SAM-I riboswitch", "detail": "T. tengcongensis SAM-I aptamer, 94 nt (PDB 2GIS, chain A)"},
-  {"file": "3D0U_A.cif", "name": "Lysine riboswitch", "detail": "T. maritima lysine riboswitch, 161 nt (PDB 3D0U, chain A)"}
+  {"file": "1EHZ_A.cif", "name": "tRNA", "detail": "Yeast tRNA-Phe, 76 nt (PDB 1EHZ, chain A)"},
+  {"file": "2GIS_A.cif", "name": "Riboswitch", "detail": "T. tengcongensis SAM-I riboswitch aptamer, 94 nt (PDB 2GIS, chain A)"},
+  {"file": "1GID_A.cif", "name": "Group I intron", "detail": "Tetrahymena P4-P6 ribozyme domain, 158 nt (PDB 1GID, chain A)"},
+  {"file": "2A64_A.cif", "name": "RNase P RNA", "detail": "Bacterial ribonuclease P RNA, 298 nt (PDB 2A64, chain A)"},
+  {"file": "3ZP8_A.cif", "name": "Hammerhead ribozyme", "detail": "Full-length hammerhead ribozyme, 42 nt (PDB 3ZP8, chain A)"},
+  {"file": "1L2X_A.cif", "name": "Viral RNA pseudoknot", "detail": "MMTV frameshifting pseudoknot, 27 nt (PDB 1L2X, chain A)"}
 ]

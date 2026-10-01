@@ -139,6 +139,11 @@ function wireForm() {
     if (l.classList.contains("off")) return;
     document.querySelectorAll("#mode label").forEach((x) => x.classList.toggle("on", x === l));
   }));
+  document.querySelectorAll(".num-step button").forEach((b) => b.addEventListener("click", () => {
+    const inp = $(b.dataset.for);
+    const max = +inp.max || Infinity;
+    inp.value = Math.min(max, (+inp.value || 0) + +b.dataset.step);
+  }));
   $("form").addEventListener("submit", submit);
 }
 
@@ -181,6 +186,7 @@ async function submit(e) {
 function showView(which) {
   $("view-search").hidden = which !== "search";
   $("view-result").hidden = which !== "result";
+  $("view-tutorial").hidden = which !== "tutorial";
 }
 
 async function loadResult(id) {
@@ -235,7 +241,33 @@ function renderResult() {
     activeDb = b.dataset.k; openRank = null; setHash(); renderResult();
   }));
   $("res").hidden = false;
+  renderBest();
   renderTable();
+}
+
+function renderBest() {
+  const res = job.results[activeDb];
+  const h = res.hits[0];
+  if (!h) { $("best").innerHTML = ""; return; }
+  const tm = res.rerank === "tm";
+  const a = h.aln || {};
+  const kv = [
+    ["Aligned", a.n_aligned == null ? "—" : `${a.n_aligned} nt`],
+    ["3Dr identity", pct(a.token_identity)],
+    ...(noSequence(res) ? [] : [["Seq. identity", pct(a.seq_identity)]]),
+    ["RMSD", a.rmsd == null ? "—" : `${a.rmsd.toFixed(2)} Å`],
+    tm ? ["Symmetric TM", h.tm_mean.toFixed(3)] : ["E-value", fmtE(h.evalue)],
+  ].map(([k, v]) => `<div>${k}<b>${v}</b></div>`).join("");
+  $("best").innerHTML = `<div class="best">
+    <div><div class="tag">Best hit</div>
+      <div class="main">${esc(shortTarget(h))}</div>
+      <div class="sub">${esc(h.desc || h.title || "")}${h.organism ? ` · <i>${esc(h.organism)}</i>` : ""}</div></div>
+    <div class="kv">${kv}</div>
+    <button class="btn small" id="best-open">Show alignment</button></div>`;
+  $("best-open").addEventListener("click", () => {
+    openRank = h.rank; setHash(); renderTable();
+    $("hits").querySelector("tr.hit.open")?.scrollIntoView({ behavior: "smooth", block: "center" });
+  });
 }
 
 function covBar(a, qlen) {
@@ -250,6 +282,17 @@ function covBar(a, qlen) {
 
 // NuFold / RNAcentral models are named URS<id>_<taxid>_rank_<n>
 const URS = /^(URS[0-9A-F]{10})_(\d+)(?:_rank_(\d+))?/;
+
+function shortTarget(h) {
+  const u = !h.pdb && h.target.match(URS);
+  if (u) return u[1];
+  return h.pdb ? `${h.pdb} ${h.chain}` : h.target;
+}
+
+function noSequence(res) {
+  const h = res.hits.find((x) => x.aln);
+  return !!h && h.aln.t_seq_known === false;
+}
 
 function targetCell(h) {
   const u = !h.pdb && h.target.match(URS);
@@ -272,9 +315,13 @@ function renderTable() {
   $("tab-meta").textContent = `${res.database.n_chains.toLocaleString()} chains searched in ` +
     `${res.seconds.toFixed(2)} s` + (res.database.source ? ` · ${res.database.source}` : "") +
     (res.database.built ? ` · built ${res.database.built}` : "");
+  const noSeq = noSequence(res);
+  const ncol = (tm ? 7 : 8) + (noSeq ? 1 : 0);
   const head = `<tr><th>#</th><th>Target</th><th>Description</th>
-    <th class="num">Seq. id.</th><th class="num">RMSD</th>
-    ${tm ? '<th class="num">TM-score</th>' : `<th class="num">E-value${cal ? "" : "*"}</th><th class="num">Bits</th>`}
+    ${noSeq ? '<th class="num" title="Aligned nucleotides">Aligned nt</th><th class="num" title="Fraction of aligned pairs with the same 3Dr structural token">3Dr id.</th>'
+            : '<th class="num">Seq. id.</th>'}<th class="num">RMSD</th>
+    ${tm ? '<th class="num" title="Mean of the query- and target-normalised US-align TM-scores over the whole chains">Symmetric TM-score</th>'
+         : `<th class="num">E-value${cal ? "" : "*"}</th><th class="num">Bits</th>`}
     <th>Query coverage</th></tr>`;
   const rows = res.hits.map((h) => {
     const a = h.aln || {};
@@ -283,21 +330,22 @@ function renderTable() {
       <td>${targetCell(h)}</td>
       <td class="desc"><div class="t" title="${esc(h.title || "")}">${esc(h.desc || h.title || (URS.test(h.target) ? "Predicted structure (NuFold)" : "—"))}</div>
         ${h.organism ? `<div class="o">${esc(h.organism)}</div>` : ""}</td>
-      <td class="num">${pct(a.seq_identity)}</td>
+      ${noSeq ? `<td class="num">${a.n_aligned ?? "—"}</td><td class="num">${pct(a.token_identity)}</td>`
+              : `<td class="num">${pct(a.seq_identity)}</td>`}
       <td class="num">${a.rmsd == null ? "—" : a.rmsd.toFixed(2) + " Å"}</td>
       ${tm ? `<td class="num">${h.tm_mean.toFixed(3)}</td>`
            : `<td class="num">${fmtE(h.evalue)}</td><td class="num">${h.bits == null ? h.sw_score.toFixed(1) : h.bits.toFixed(1)}</td>`}
       <td class="cov">${covBar(h.aln, job.query.n_tokens)}</td></tr>
-      ${h.rank === openRank ? `<tr><td class="detail" colspan="${tm ? 7 : 8}">${detailHtml(h)}</td></tr>` : ""}`;
+      ${h.rank === openRank ? `<tr><td class="detail" colspan="${ncol}">${detailHtml(h)}</td></tr>` : ""}`;
   }).join("");
-  $("hits").innerHTML = head + (rows || `<tr><td colspan="8" class="hint" style="padding:18px">No hits passed the prefilter.</td></tr>`);
+  $("hits").innerHTML = head + (rows || `<tr><td colspan="9" class="hint" style="padding:18px">No hits passed the prefilter.</td></tr>`);
   $("hits").querySelectorAll("tr.hit").forEach((tr) => tr.addEventListener("click", () => {
     const r = +tr.dataset.rank;
     openRank = openRank === r ? null : r;
     setHash();
     renderTable();
   }));
-  $("foot").textContent = tm ? "Ranked by the mean of the query- and target-normalised US-align TM-scores."
+  $("foot").textContent = tm ? "Ranked by the symmetric TM-score: the mean of the query- and target-normalised US-align TM-scores over the whole chains."
     : `Ranked by 3Dr Smith–Waterman score.${cal ? "" : " * E-values for this database are not yet empirically calibrated; use them to rank hits, not as significance."}`;
   if (openRank != null) openDetail(res.hits[openRank - 1]);
 }
@@ -306,7 +354,7 @@ function detailHtml(h) {
   return `<div class="detail-grid">
     <div class="viewer-wrap"><div class="viewer" id="viewer"></div>
       <div class="viewer-legend"><span><span class="sw" style="background:#d9703a"></span>Query</span>
-        <span><span class="sw" style="background:#3f6fb5"></span>${esc(h.pdb ? `${h.pdb} ${h.chain}` : h.target)}</span>
+        <span title="${esc(h.target)}"><span class="sw" style="background:#3f6fb5"></span>${esc(shortTarget(h))}</span>
         <span class="hint">pale = unaligned</span></div></div>
     <div class="detail-body" id="detail-body"><span class="spinner"></span>Aligning…</div></div>`;
 }
@@ -326,12 +374,13 @@ async function openDetail(h) {
 }
 
 function alignmentHtml(h, a) {
+  const noSeq = a.t_seq_known === false;
   const stats = [
-    ["Aligned", `${a.n_aligned} nt`],
-    ["Seq. identity", pct(a.seq_identity)],
-    ["RMSD (C4′)", a.rmsd == null ? "—" : `${a.rmsd.toFixed(2)} Å`],
-    ["TM (aligned)", a.tm_aln == null ? "—" : a.tm_aln.toFixed(3)],
-  ].map(([k, v]) => `<div class="stat"><div class="k">${k}</div><div class="v">${v}</div></div>`).join("");
+    noSeq ? ["3Dr identity", pct(a.token_identity), true] : ["Seq. identity", pct(a.seq_identity)],
+    ["Aligned nucleotides", `${a.n_aligned} nt`],
+    ["RMSD", a.rmsd == null ? "—" : `${a.rmsd.toFixed(2)} Å`],
+    ["Aligned-region TM-score", a.tm_aln == null ? "—" : a.tm_aln.toFixed(3)],
+  ].map(([k, v, hero]) => `<div class="stat${hero ? " hero" : ""}"><div class="k">${k}</div><div class="v">${v}</div></div>`).join("");
   const W = 60, lines = [];
   if (a.q_aln) {
     let qi = a.q_start, ti = a.t_start;
@@ -346,11 +395,29 @@ function alignmentHtml(h, a) {
       qi += qn; ti += tn;
     }
   }
-  return `<div class="stats">${stats}</div>
-    ${lines.length ? `<pre class="aln">${lines.join("\n")}</pre>
-    <div class="aln-note">3Dr line: <b>|</b> same structural token, <b>+</b> positive Structure-BLOSUM substitution, <b>.</b> other aligned pair. Positions count nucleotides with a complete backbone.${a.t_seq_known === false ? " This database carries no sequences, so target residues are shown as ·." : ""}</div>`
+  const structure = h.title ? `<div class="r"><span>Structure</span><span>${esc(h.title)}</span></div>` : "";
+  const method = h.method ? `<div class="r"><span>Method</span><span>${esc(h.method)}${h.resolution ? ` · ${h.resolution} Å` : ""}</span></div>` : "";
+  return `<div class="summary">
+      <div class="r"><span>Alignment</span><span><b>${a.n_aligned} nt</b> · Query ${a.q_start}–${a.q_end}/${a.q_len} · Target ${a.t_start}–${a.t_end}/${a.t_len} · 3Dr identity <b>${pct(a.token_identity)}</b></span></div>
+      ${structure}${method}</div>
+    <div class="stats">${stats}</div>
+    ${lines.length ? `<pre class="aln">${lines.join("\n")}</pre>`
       : '<div class="hint">No sequence available for this database.</div>'}
-    <div class="aln-note">Query ${a.q_start}–${a.q_end} of ${a.q_len} · target ${a.t_start}–${a.t_end} of ${a.t_len} · 3Dr identity ${pct(a.token_identity)}${h.title ? ` · ${esc(h.title)}` : ""}${h.method ? ` · ${esc(h.method)}` : ""}${h.resolution ? ` ${h.resolution} Å` : ""}</div>`;
+    <div class="aln-note">What the symbols mean: see the <a href="/tutorial" target="_blank">tutorial</a>.${noSeq ? " This database carries no sequences, so target residues are shown as ·." : ""}</div>`;
+}
+
+// token index -> the aligned partner's token index, from the gapped strings
+function pairMap(a) {
+  if (!a || !a.q_aln) return null;
+  const q2t = {}, t2q = {};
+  let qi = a.q_start, ti = a.t_start;
+  for (let i = 0; i < a.q_aln.length; i++) {
+    const qg = a.q_aln[i] === "-", tg = a.t_aln[i] === "-";
+    if (!qg && !tg) { q2t[qi] = ti; t2q[ti] = qi; }
+    if (!qg) qi++;
+    if (!tg) ti++;
+  }
+  return { q2t, t2q };
 }
 
 async function drawStructure(h) {
@@ -369,18 +436,44 @@ async function drawStructure(h) {
   const colour = (chain) => (atom) => chain === "A"
     ? (atom.b > 0.5 ? "#d9703a" : "#f2cdb6")
     : (atom.b > 0.5 ? "#3f6fb5" : "#c9d6ea");
-  for (const chain of ["A", "B"]) {
-    viewer.setStyle({ chain }, { stick: { radius: 0.28, colorfunc: colour(chain) },
-                                 sphere: { radius: 0.35, colorfunc: colour(chain) } });
-  }
+  const baseStyle = () => {
+    for (const chain of ["A", "B"]) {
+      viewer.setStyle({ chain }, { stick: { radius: 0.28, colorfunc: colour(chain) },
+                                   sphere: { radius: 0.35, colorfunc: colour(chain) } });
+    }
+  };
+  baseStyle();
   viewer.zoomTo({ chain: "A" });
+  const map = pairMap(h.aln);
+  const picked = document.createElement("div");
+  picked.className = "picked";
+  picked.textContent = "Click a nucleotide in the 3D view to see its aligned partner.";
+  el.closest(".viewer-wrap").appendChild(picked);
+  viewer.setClickable({}, true, (atom) => {
+    const mine = atom.chain === "A" ? "Query" : shortTarget(h);
+    let partner = "";
+    if (map) {
+      const other = atom.chain === "A" ? map.q2t[atom.resi] : map.t2q[atom.resi];
+      partner = other ? ` is aligned to ${atom.chain === "A" ? shortTarget(h) : "Query"} nucleotide ${other}`
+                      : " is not aligned";
+    }
+    picked.textContent = `${mine} nucleotide ${atom.resi}${atom.resn && atom.resn !== "N" ? ` (${atom.resn})` : ""}${partner}`;
+    viewer.removeAllLabels();
+    baseStyle();
+    viewer.addLabel(`${atom.chain === "A" ? "Q" : "T"}${atom.resi}`, { position: atom, fontSize: 12,
+      backgroundColor: "#26211d", backgroundOpacity: 0.85, fontColor: "white" });
+    viewer.setStyle({ chain: atom.chain, resi: atom.resi }, { stick: { radius: 0.5, color: "#e5322d" },
+                                                              sphere: { radius: 0.6, color: "#e5322d" } });
+    viewer.render();
+  });
   viewer.render();
 }
 
 // ---------------------------------------------------------------- boot
 function route() {
   const m = location.pathname.match(/^\/result\/([^/]+)/);
-  if (m) loadResult(m[1]);
+  if (location.pathname === "/tutorial") { showView("tutorial"); job = null; }
+  else if (m) loadResult(m[1]);
   else { showView("search"); job = null; }
 }
 
