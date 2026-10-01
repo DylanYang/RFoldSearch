@@ -38,15 +38,17 @@ def test_keys_lie_in_the_unit_interval():
 
 @pytest.fixture
 def db_path(tmp_path):
-    """Chains with identical token strings, so every score ties exactly.
+    """Chains with identical token strings and coordinates, so every score
+    (Smith-Waterman and alignment TM-score alike) ties exactly.
 
     With nothing but ties, which targets survive the top_n cut is decided
     entirely by the tie-break, which is what these tests are about.
     """
     rng = np.random.default_rng(0)
     tok = rng.integers(0, 80, size=60).astype(np.int16)
+    xyz = rng.normal(size=(len(tok), 5, 3)).astype(np.float32)
     entries = [{"id": f"chain_{i:03d}.pdb", "tokens": tok.copy(),
-                "coords": rng.normal(size=(len(tok), 5, 3)).astype(np.float32),
+                "coords": xyz.copy(),
                 "mask": np.ones(len(tok), bool), "n_valid": len(tok)}
                for i in range(40)]
     p = tmp_path / "db.pt"

@@ -7,6 +7,7 @@ import torch
 from rfoldseek import evalue as EV
 from rfoldseek.database import (assign_clusters, attach_evalue_calibration,
                                 read_clusters)
+from helpers import add_coords
 
 
 def test_read_clusters_parses_a_cdhit_clstr(tmp_path):
@@ -153,9 +154,9 @@ def test_predicted_calibration_requires_matching_clustered_database(tmp_path):
     from rfoldseek.search import Searcher
 
     rng = np.random.default_rng(91)
-    entries = [{"id": f"chain{i}",
-                "tokens": rng.integers(0, 80, size=40).tolist()}
-               for i in range(12)]
+    entries = add_coords([{"id": f"chain{i}",
+                           "tokens": rng.integers(0, 80, size=40).tolist()}
+                          for i in range(12)])
     source = tmp_path / "unclustered.pt"
     torch.save({"n_codes": 80, "entries": entries}, source)
     clusters = tmp_path / "nr80.clstr"
@@ -192,14 +193,15 @@ def test_predicted_calibration_requires_matching_clustered_database(tmp_path):
         str(source), str(clusters), str(path), str(target), index_prefix="t")
     assert attached["n_clusters"] == 6
     searcher = Searcher(str(target))
-    hits = searcher.search(np.asarray(entries[0]["tokens"]), top_k=2)
+    hits = searcher.search(np.asarray(entries[0]["tokens"]), query_entry=entries[0],
+                           top_k=2)
     assert hits
     for hit in hits:
         expected = EV.apply_empirical_calibration(hit["raw_evalue"],
                                                    params["empirical_calibration"])
         assert hit["evalue"] == expected
-    assert [hit["sw_score"] for hit in hits] == sorted(
-        [hit["sw_score"] for hit in hits], reverse=True)
+    assert [hit["structure_score"] for hit in hits] == sorted(
+        [hit["structure_score"] for hit in hits], reverse=True)
 
 
 @pytest.mark.filterwarnings(
@@ -218,6 +220,7 @@ def test_searcher_uses_the_cluster_count_of_the_loaded_database(tmp_path):
     for i in range(12):
         t = [int(rng.integers(80)) for _ in range(40)]
         ents.append({"id": f"chain{i}", "tokens": t})
+    add_coords(ents)
 
     def write(path, labels):
         for e, lab in zip(ents, labels):
@@ -236,8 +239,8 @@ def test_searcher_uses_the_cluster_count_of_the_loaded_database(tmp_path):
     assert s_few.n_clusters == 2
 
     q = np.asarray(ents[0]["tokens"], dtype=np.int64)
-    h_many = s_many.search(q, top_k=1)
-    h_few = s_few.search(q, top_k=1)
+    h_many = s_many.search(q, query_entry=ents[0], top_k=1)
+    h_few = s_few.search(q, query_entry=ents[0], top_k=1)
     assert h_many and h_few, "the synthetic query must retrieve something"
     assert "evalue" in h_many[0], "the packaged parameters were not applied"
     assert h_few[0]["evalue"] < h_many[0]["evalue"]
@@ -247,9 +250,9 @@ def test_searcher_applies_matching_embedded_empirical_calibration(tmp_path):
     from rfoldseek.search import Searcher
 
     rng = np.random.default_rng(3)
-    entries = [{"id": f"chain{i}",
-                "tokens": rng.integers(0, 80, size=40).tolist(),
-                "cluster": f"c{i}"} for i in range(12)]
+    entries = add_coords([{"id": f"chain{i}",
+                           "tokens": rng.integers(0, 80, size=40).tolist(),
+                           "cluster": f"c{i}"} for i in range(12)])
     from rfoldseek.search import asset
     params = json.load(open(asset("evalue_params.json")))
     params["empirical_calibration"] = EV.fit_empirical_calibration(
@@ -259,7 +262,8 @@ def test_searcher_applies_matching_embedded_empirical_calibration(tmp_path):
                 "evalue_params": params}, db)
 
     searcher = Searcher(str(db))
-    hit = searcher.search(np.asarray(entries[0]["tokens"]), top_k=1)[0]
+    hit = searcher.search(np.asarray(entries[0]["tokens"]), query_entry=entries[0],
+                          top_k=1)[0]
     assert hit["evalue"] == EV.apply_empirical_calibration(
         hit["raw_evalue"], params["empirical_calibration"])
 
@@ -295,8 +299,8 @@ def test_cli_header_reports_the_cluster_count_when_it_reports_an_evalue(tmp_path
     from rfoldseek import cli
 
     rng = np.random.default_rng(0)
-    ents = [{"id": f"chain{i}", "tokens": [int(rng.integers(80)) for _ in range(40)],
-             "cluster": f"c{i // 4}"} for i in range(12)]
+    ents = add_coords([{"id": f"chain{i}", "tokens": [int(rng.integers(80)) for _ in range(40)],
+                        "cluster": f"c{i // 4}"} for i in range(12)])
     db = tmp_path / "db.pt"
     torch.save({"n_codes": 80, "checkpoint": "none", "entries": ents}, str(db))
 

@@ -1,6 +1,6 @@
 <h1><a name="rfoldseek"></a><img src=".github/header.PNG" alt="RFoldseek" height="88" /></h1>
 
-RFoldseek enables fast RNA tertiary-structure search with **3Dr**, a learned discrete structural alphabet. Each nucleotide's local geometry is quantised into one of 80 states by a VQ-VAE, converting RNA chains into token strings that are searched with an inverted-index k-mer prefilter. The standard RFoldseek mode reranks prefilter hits by affine-gap token Smith-Waterman alignment and assigns a Karlin-Altschul database E-value to each hit. We also provide RFoldseek-TM, an accuracy-oriented mode in which the same prefilter candidates are reranked by coordinate alignment with US-align using the mean of the two length-normalised TM-scores.
+RFoldseek enables fast RNA tertiary-structure search with **3Dr**, a learned discrete structural alphabet. Each nucleotide's local geometry is quantised into one of 80 states by a VQ-VAE, converting RNA chains into token strings that are searched with an inverted-index k-mer prefilter. The standard RFoldseek mode aligns prefilter hits by affine-gap token Smith-Waterman, superposes the aligned C4′ atoms, ranks hits by the Smith-Waterman score times the resulting alignment TM-score, and assigns a Karlin-Altschul database E-value to each hit from its Smith-Waterman score. We also provide RFoldseek-TM, an accuracy-oriented mode in which the same prefilter candidates are reranked by coordinate alignment with US-align using the mean of the two length-normalised TM-scores.
 
 <p align="center"><img src=".github/fig1.jpeg" width="720" /></p>
 
@@ -95,8 +95,12 @@ rfoldseek search --query query_db.pt --query_id query_chain_id --db target_db.pt
 Both commands run the same two-stage pipeline — a k-mer prefilter over the 3Dr tokens, 
 then a reranking of the candidates. What differs is how the candidates are reranked, chosen with `--rerank`:
 
-- **`sw`** (default): affine-gap token Smith-Waterman, with a Karlin-Altschul
-  E-value per hit. Fast, self-contained.
+- **`atm`** (default): affine-gap token Smith-Waterman gives the score S and
+  the alignment; the C4′ atoms of the aligned nucleotides are superposed without
+  changing the alignment, and the alignment TM-score aTM (mean of the query- and
+  target-length-normalised TM-scores) is taken. Hits are ranked by S × aTM, so a
+  hit must match locally *and* in the arrangement of its aligned segments. The
+  E-value is that of S.
 - **`tm`** (RFoldseek-TM): the candidate pool is handed to
   [US-align](https://github.com/pylelab/USalign) and ranked by the mean of its two length-normalised TM-scores. 
   This measures structural similarity directly instead of scoring a token alignment, at a large cost in speed.
@@ -116,15 +120,23 @@ git clone https://github.com/pylelab/USalign && cd USalign && g++ -O3 -o USalign
 
 #### Output format
 
-A comment line naming the query and the database, then one row per hit. Under the default mode, hits are ranked by Smith-Waterman score:
+A comment line naming the query and the database, then one row per hit. Under the default mode, hits are ranked by the structure score:
 
 ```
-# query: query_chain_id  (128 tokens)   database: target_db.pt
-rank  target                    SW_score    bits    E-value    len
-   1  4V9F_A                      412.00   118.3    2.1e-30    129
-   2  6XU8_B                      287.50    83.1    5.4e-19    121
-   3  7QR4_A                      231.00    67.4    8.8e-14    134
+# query: PDB_00001FFZ_1_A  (496 tokens)   database: db.pt  (885 chains, 882 clusters)
+rank  target                   structure_score    aTM    E-value  aligned    len
+   1  PDB_00001FFK_1_0                  118.59  0.583    8.3e-32      489   2706
+   2  PDB_00005AN9_1_N                  117.27  0.651    1.1e-27      468   1162
+   3  PDB_00004V9F_1_0                   94.04  0.559    1.2e-25      485   2803
 ```
+
+- `aTM`: alignment TM-score, 0 to 1: the TM-score of the token alignment after superposition, averaged over normalisation by the query and by the target length.
+- `structure_score`: the ranking score, S × aTM, where S is the token Smith-Waterman score.
+- `E-value`: expected number of hits at least this good by chance, computed from S alone; it therefore need not increase down the list.
+- `aligned`: number of aligned nucleotide pairs.
+- `len`: target length.
+
+The Python interface also returns `sw_score` (S) and `bits`, the length- and composition-normalised form of S from which the E-value is computed.
 
 Under `--rerank tm` — RFoldseek-TM — the comment line names the mode and the score columns change:
 
@@ -141,7 +153,7 @@ rank  target                    TM_mean  TM_query  TM_target    len
 | Option       | Category    | Description                                                                        |
 | ------------ | ----------- | ---------------------------------------------------------------------------------- |
 | `--top_k`    | Output      | Number of top hits to return (default: 10)                                         |
-| `--rerank`   | Scoring     | `sw` (default) or `tm`                                                             |
+| `--rerank`   | Scoring     | `atm` (default) or `tm`                                                            |
 | `--top_n`    | Sensitivity | Candidate-pool depth passed to the reranker (default: 200) |
 | `--min_diag` | Sensitivity | k-mer hits required on a common diagonal to admit a target (default: 2, Foldseek's double-match rule) |
 | `--query_id` | Input       | Chain id to look up inside `--query` when it is a database file                    |
@@ -354,7 +366,8 @@ from rfoldseek import Searcher
 
 s = Searcher("target_db.pt")
 hits = s.search_id("target_chain_id", top_k=10)
-# [{'rank': 1, 'target': …, 'sw_score': …, 'bits': …, 'evalue': …}, …]
+# [{'rank': 1, 'target': …, 'structure_score': …, 'atm': …, 'aligned': …,
+#   'sw_score': …, 'bits': …, 'evalue': …, 'length': …}, …]
 ```
 
 Anything else is searched by handing `search` the tokens from above:
@@ -365,8 +378,8 @@ import numpy as np
 hits = s.search(np.asarray(enc["tokens"], np.int64), query_entry=enc, top_k=10)
 ```
 
-`query_entry` is read only by `rerank="tm"`, which needs the query coordinates
-for US-align; plain Smith-Waterman search can leave it out. `search_id`
+`query_entry` supplies the query coordinates, which both rerankers need; a
+chain already in the database brings its own. `search_id`
 forwards its keyword arguments to `search`, so `top_n`, `min_diag`, `rerank`
 and `tie_seed` are available from both. `bits` and `evalue` are present when
 E-value parameters are loaded, which they are by default.

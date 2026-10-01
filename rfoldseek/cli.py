@@ -9,7 +9,8 @@ import torch
 
 from .database import (attach_evalue_calibration, build_database, short_id,
                        structure_to_entry)
-from .search import (DEFAULT_MIN_DIAG, DEFAULT_TOP_N, Searcher, asset)
+from .search import (DEFAULT_MIN_DIAG, DEFAULT_RERANK, DEFAULT_TOP_N, RERANKERS,
+                     Searcher, asset)
 from .tokenizer import encode_entry, load_model
 from .usalign import USalignFailed, USalignNotFound
 
@@ -104,15 +105,16 @@ def cmd_search(a):
                   f"  {h['length']:>5}")
         return
     has_ev = "evalue" in hits[0]
-    header = f"{'rank':>4}  {'target':<24}{'SW_score':>10}"
+    header = f"{'rank':>4}  {'target':<24}{'structure_score':>16}{'aTM':>7}"
     if has_ev:
-        header += f"{'bits':>8}{'E-value':>11}"
-    print(header + f"  {'len':>5}")
+        header += f"{'E-value':>11}"
+    print(header + f"{'aligned':>9}  {'len':>5}")
     for h in hits:
-        line = f"{h['rank']:>4}  {h['target']:<24}{h['sw_score']:>10.2f}"
+        line = (f"{h['rank']:>4}  {h['target']:<24}{h['structure_score']:>16.2f}"
+                f"{h['atm']:>7.3f}")
         if has_ev:
-            line += f"{h['bits']:>8.1f}{h['evalue']:>11.2g}"
-        print(line + f"  {h['length']:>5}")
+            line += f"{h['evalue']:>11.2g}"
+        print(line + f"{h['aligned']:>9}  {h['length']:>5}")
 
 
 def main(argv=None):
@@ -167,9 +169,10 @@ def main(argv=None):
     p.add_argument("--top_k", type=int, default=10)
     p.add_argument("--top_n", type=int, default=DEFAULT_TOP_N)
     p.add_argument("--min_diag", type=int, default=DEFAULT_MIN_DIAG)
-    p.add_argument("--rerank", choices=("sw", "tm"), default="sw",
-                   help="rerank the candidate pool by token Smith-Waterman "
-                        "(default) or by US-align TM-score (RFoldseek-TM)")
+    p.add_argument("--rerank", choices=RERANKERS, default=DEFAULT_RERANK,
+                   help="rerank the candidate pool by Smith-Waterman score times "
+                        "alignment TM-score (atm, default) or by US-align "
+                        "TM-score (tm, RFoldseek-TM)")
     p.add_argument("--usalign", default=None,
                    help="path to the USalign binary (default: $USALIGN, then PATH)")
     p.add_argument("--tie_seed", type=int, default=None,
