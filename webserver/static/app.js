@@ -68,6 +68,7 @@ function renderDbs() {
         <div class="meta">${d.n_chains.toLocaleString()} chains${d.built ? ` · built ${esc(d.built)}` : ""}
           ${d.evalue_calibrated ? "" : '<span class="badge warn" title="This database has no empirical E-value calibration yet; E-values rank hits but are not calibrated significance.">E-value uncalibrated</span>'}</div>
         ${d.source ? `<div class="meta">${esc(d.source)}</div>` : ""}
+        ${d.notice ? `<div class="notice">${esc(d.notice)}</div>` : ""}
       </div>
     </label>`).join("");
   box.querySelectorAll("input").forEach((inp) => inp.addEventListener("change", () => {
@@ -312,9 +313,10 @@ function renderTable() {
   const res = job.results[activeDb];
   const tm = res.rerank === "tm";
   const cal = res.database.evalue_calibrated;
-  $("tab-meta").textContent = `${res.database.n_chains.toLocaleString()} chains searched in ` +
+  $("tab-meta").innerHTML = esc(`${res.database.n_chains.toLocaleString()} chains searched in ` +
     `${res.seconds.toFixed(2)} s` + (res.database.source ? ` · ${res.database.source}` : "") +
-    (res.database.built ? ` · built ${res.database.built}` : "");
+    (res.database.built ? ` · built ${res.database.built}` : "")) +
+    (res.database.notice ? `<div class="notice">${esc(res.database.notice)}</div>` : "");
   const noSeq = noSequence(res);
   const ncol = (tm ? 7 : 8) + (noSeq ? 1 : 0);
   const head = `<tr><th>#</th><th>Target</th><th>Description</th>
@@ -329,7 +331,8 @@ function renderTable() {
       <td class="rank">${h.rank}</td>
       <td>${targetCell(h)}</td>
       <td class="desc"><div class="t" title="${esc(h.title || "")}">${esc(h.desc || h.title || (URS.test(h.target) ? "Predicted structure (NuFold)" : "—"))}</div>
-        ${h.organism ? `<div class="o">${esc(h.organism)}</div>` : ""}</td>
+        ${h.organism ? `<div class="o">${esc(h.organism)}</div>` : ""}
+        ${h.rfam || h.plddt != null ? `<div class="o plain">${[h.rfam && `Rfam ${esc(h.rfam)}`, h.plddt != null && `pLDDT ${h.plddt.toFixed(1)}`, h.msa_depth != null && `MSA ${h.msa_depth.toLocaleString()}`].filter(Boolean).join(" · ")}</div>` : ""}</td>
       ${noSeq ? `<td class="num">${a.n_aligned ?? "—"}</td><td class="num">${pct(a.token_identity)}</td>`
               : `<td class="num">${pct(a.seq_identity)}</td>`}
       <td class="num">${a.rmsd == null ? "—" : a.rmsd.toFixed(2) + " Å"}</td>
@@ -396,10 +399,11 @@ function alignmentHtml(h, a) {
     }
   }
   const structure = h.title ? `<div class="r"><span>Structure</span><span>${esc(h.title)}</span></div>` : "";
+  const model = h.plddt != null || h.rfam ? `<div class="r"><span>Model</span><span>${[h.rfam && `<a href="https://rfam.org/family/${esc(h.rfam)}" target="_blank">Rfam ${esc(h.rfam)}</a>`, h.plddt != null && `mean pLDDT <b>${h.plddt.toFixed(1)}</b>`, h.msa_depth != null && `MSA depth ${h.msa_depth.toLocaleString()}`].filter(Boolean).join(" · ")}</span></div>` : "";
   const method = h.method ? `<div class="r"><span>Method</span><span>${esc(h.method)}${h.resolution ? ` · ${h.resolution} Å` : ""}</span></div>` : "";
   return `<div class="summary">
       <div class="r"><span>Alignment</span><span><b>${a.n_aligned} nt</b> · Query ${a.q_start}–${a.q_end}/${a.q_len} · Target ${a.t_start}–${a.t_end}/${a.t_len} · 3Dr identity <b>${pct(a.token_identity)}</b></span></div>
-      ${structure}${method}</div>
+      ${structure}${method}${model}</div>
     <div class="stats">${stats}</div>
     ${lines.length ? `<pre class="aln">${lines.join("\n")}</pre>`
       : '<div class="hint">No sequence available for this database.</div>'}
