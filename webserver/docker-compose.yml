@@ -1,0 +1,17 @@
+services:
+  rfoldseek:
+    build: .
+    ports: ["8000:8000"]
+    volumes:
+      - ./databases:/data:ro
+    environment:
+      # key=label:path, comma-separated
+      RFOLDSEEK_DBS: "rnasolo=RNAsolo experimental (885 chains):/data/db.pt"
+      RFOLDSEEK_MAX_CONCURRENT: "2"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c",
+             "import urllib.request,json,sys; sys.exit(0 if json.load(urllib.request.urlopen('http://localhost:8000/api/health'))['ready'] else 1)"]
+      interval: 30s
+      start_period: 300s      # a large database takes minutes to load
+      retries: 3

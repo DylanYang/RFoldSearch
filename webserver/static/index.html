@@ -1,0 +1,374 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>RFoldseek Search</title>
+<link rel="icon" href="/static/logo.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+  :root {
+    --ink: #1d1b19; --ink-2: #4a4642; --muted: #8a847e; --line: #ebe7e2;
+    --line-2: #f3f0ec; --bg: #fbfaf8; --card: #ffffff;
+    --accent: #d9703a; --accent-ink: #b4541f; --accent-soft: #fbeee5;
+    --target: #3f6fb5; --target-soft: #e3ebf6;
+    --good: #2f8a57; --warn: #a86b12; --warn-soft: #fbf1df; --bad: #b3372f;
+    --mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+    --sans: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    --radius: 12px;
+  }
+  * { box-sizing: border-box }
+  html, body { margin: 0 }
+  body { background: var(--bg); color: var(--ink); font: 15.5px/1.6 var(--sans);
+         -webkit-font-smoothing: antialiased }
+  a { color: var(--accent-ink); text-decoration: none }
+  a:hover { text-decoration: underline }
+  button { font: inherit; cursor: pointer }
+  [hidden] { display: none !important }
+
+  /* header */
+  header.top { background: #26211d; border-bottom: 3px solid var(--accent);
+               position: sticky; top: 0; z-index: 20 }
+  .bar { max-width: 1320px; margin: 0 auto; padding: 18px 32px;
+         display: flex; align-items: center; gap: 22px }
+  .brand { display: flex; align-items: center; gap: 14px; color: #fff }
+  .brand:hover { text-decoration: none }
+  .brand img { width: 52px; height: 52px }
+  .brand b { font-size: 26px; font-weight: 700; letter-spacing: -.01em; color: #fff }
+  .brand span { color: #c9bfb6; font-size: 15px; margin-left: 4px }
+  nav.links { margin-left: auto; display: flex; gap: 28px; font-size: 16px; font-weight: 500 }
+  nav.links a { color: #f1ebe5 }
+  nav.links a:hover { color: #fff; text-decoration: none; border-bottom: 2px solid var(--accent) }
+
+  main { max-width: 1320px; margin: 0 auto; padding: 28px 24px 80px }
+  .card { background: var(--card); border: 1px solid var(--line);
+          border-radius: var(--radius); padding: 22px 24px }
+  h1 { font-size: 26px; letter-spacing: -.015em; margin: 0 0 4px }
+  .lead { color: var(--muted); margin: 0 0 20px; font-size: 15px }
+  .label { font-size: 11.5px; font-weight: 600; letter-spacing: .06em;
+           text-transform: uppercase; color: var(--muted); margin: 0 0 8px }
+
+  /* search form */
+  .search-grid { display: grid; grid-template-columns: minmax(0, 1.55fr) minmax(0, 1fr);
+                 gap: 22px }
+  @media (max-width: 860px) { .search-grid { grid-template-columns: 1fr } }
+  .drop { position: relative; border: 1.5px dashed #d8d2cb; border-radius: 10px;
+          background: #fdfcfb; transition: border-color .15s, background .15s }
+  .drop.over { border-color: var(--accent); background: var(--accent-soft) }
+  .drop textarea { display: block; width: 100%; height: 250px; resize: vertical;
+                   border: 0; background: transparent; padding: 14px 16px;
+                   font: 12px/1.5 var(--mono); color: var(--ink-2); outline: none }
+  .drop textarea::placeholder { color: #aaa39c; font-family: var(--sans); font-size: 14px;
+                                line-height: 1.6 }
+  .file-chip { position: absolute; left: 12px; bottom: 12px; display: flex; gap: 8px;
+               align-items: center; background: var(--card); border: 1px solid var(--line);
+               border-radius: 999px; padding: 4px 6px 4px 12px; font-size: 12.5px }
+  .file-chip button { border: 0; background: var(--line-2); border-radius: 999px;
+                      width: 20px; height: 20px; line-height: 20px; padding: 0; color: var(--muted) }
+  .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-top: 12px }
+  .btn { border: 1px solid var(--line); background: var(--card); color: var(--ink);
+         border-radius: 8px; padding: 7px 13px; font-size: 13.5px; font-weight: 500 }
+  .btn:hover { border-color: #d6cfc8; background: #fdfcfb }
+  .btn.primary { background: var(--accent); border-color: var(--accent); color: #fff;
+                 padding: 10px 22px; font-size: 14.5px; font-weight: 600 }
+  .btn.primary:hover { background: var(--accent-ink); border-color: var(--accent-ink) }
+  .btn.primary:disabled { opacity: .55; cursor: default }
+  .btn.small { padding: 5px 10px; font-size: 12.5px }
+  .menu { position: relative }
+  .menu-list { position: absolute; top: calc(100% + 6px); left: 0; z-index: 10; min-width: 300px;
+               background: var(--card); border: 1px solid var(--line); border-radius: 10px;
+               box-shadow: 0 10px 30px rgba(40, 30, 20, .10); padding: 6px }
+  .menu-list button { display: block; width: 100%; text-align: left; border: 0;
+                      background: none; padding: 8px 10px; border-radius: 7px }
+  .menu-list button:hover { background: var(--line-2) }
+  .menu-list small { display: block; color: var(--muted); font-size: 12px }
+  .hint { color: var(--muted); font-size: 12.5px }
+
+  .dbs { display: flex; flex-direction: column; gap: 8px }
+  .db { display: flex; gap: 11px; align-items: flex-start; border: 1px solid var(--line);
+        border-radius: 10px; padding: 11px 13px; cursor: pointer; transition: border-color .15s }
+  .db:hover { border-color: #d6cfc8 }
+  .db.on { border-color: var(--accent); background: #fffaf6 }
+  .db input { margin-top: 3px; accent-color: var(--accent) }
+  .db .name { font-weight: 600 }
+  .db .meta { color: var(--muted); font-size: 12.5px }
+  .badge { display: inline-block; font-size: 11px; font-weight: 600; border-radius: 999px;
+           padding: 1px 8px; margin-left: 6px; vertical-align: 1px }
+  .badge.warn { background: var(--warn-soft); color: var(--warn) }
+  .badge.soft { background: var(--line-2); color: var(--ink-2) }
+  .seg { display: flex; border: 1px solid var(--line); border-radius: 9px; padding: 3px; gap: 3px }
+  .seg label { flex: 1; text-align: center; padding: 7px 8px; border-radius: 7px; cursor: pointer;
+               font-size: 13px; color: var(--ink-2) }
+  .seg input { display: none }
+  .seg label.on { background: var(--accent-soft); color: var(--accent-ink); font-weight: 600 }
+  .seg label.off { opacity: .45; cursor: not-allowed }
+  details.adv { margin-top: 16px; border-top: 1px solid var(--line-2); padding-top: 12px }
+  details.adv summary { cursor: pointer; color: var(--ink-2); font-size: 13px }
+  .adv-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-top: 12px }
+  .adv-grid input { flex: 1; min-width: 0; width: 100%; padding: 7px 9px; border: 1px solid var(--line);
+                    border-radius: 7px; font: inherit; font-size: 13.5px }
+  .adv-grid .hint { display: block; margin-top: 3px; font-size: 11.5px }
+  .submit-row { display: flex; align-items: center; gap: 14px; margin-top: 20px }
+
+  .about { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-top: 22px }
+  @media (max-width: 860px) { .about { grid-template-columns: 1fr } }
+  .about .card { padding: 16px 18px }
+  .about h3 { margin: 0 0 4px; font-size: 14px }
+  .about p { margin: 0; color: var(--ink-2); font-size: 13px }
+
+  /* status */
+  .banner { border-radius: 10px; padding: 11px 14px; font-size: 13.5px; margin-bottom: 16px }
+  .banner.err { background: #fbeceb; color: var(--bad) }
+  .banner.info { background: var(--line-2); color: var(--ink-2) }
+  .spinner { width: 16px; height: 16px; border: 2px solid #f0d9ca; border-top-color: var(--accent);
+             border-radius: 50%; animation: spin .8s linear infinite; display: inline-block;
+             vertical-align: -3px; margin-right: 8px }
+  @keyframes spin { to { transform: rotate(360deg) } }
+
+  .loader { display: flex; flex-direction: column; align-items: center; gap: 14px;
+            padding: 56px 20px; background: var(--card); border: 1px solid var(--line);
+            border-radius: var(--radius); color: var(--ink-2) }
+  .loader img { width: 96px; height: 96px; animation: sniff 1.8s ease-in-out infinite;
+                transform-origin: 50% 80% }
+  @keyframes sniff { 0%, 100% { transform: translateX(-26px) rotate(-8deg) }
+                     50% { transform: translateX(26px) rotate(8deg) } }
+  .loader .dots span { display: inline-block; width: 8px; height: 8px; margin: 0 3px; border-radius: 50%;
+                       background: var(--accent); animation: bounce 1.2s infinite ease-in-out }
+  .loader .dots span:nth-child(2) { animation-delay: .15s }
+  .loader .dots span:nth-child(3) { animation-delay: .3s }
+  @keyframes bounce { 0%, 80%, 100% { transform: scale(.4); opacity: .4 } 40% { transform: scale(1); opacity: 1 } }
+  .loader .msg { font-size: 15px }
+
+  .modes label { text-align: left !important; padding: 9px 12px !important }
+  .modes .m-name { display: block; font-weight: 600; font-size: 14.5px }
+  .modes .m-sub { display: block; font-size: 12.5px; color: var(--muted); font-weight: 400 }
+  .modes .m-speed { display: block; font-size: 12px; color: var(--accent-ink); font-weight: 500; margin-top: 2px }
+  .seg.modes { flex-direction: column }
+  .num-step { display: flex; gap: 4px }
+  .num-step button { border: 1px solid var(--line); background: var(--card); border-radius: 7px;
+                     padding: 0 9px; font-size: 12.5px; color: var(--ink-2); white-space: nowrap }
+  .num-step button:hover { background: var(--line-2) }
+
+  .best { display: flex; gap: 20px; align-items: center; flex-wrap: wrap; background: var(--accent-soft);
+          border: 1px solid #f0d3bf; border-radius: var(--radius); padding: 14px 18px; margin-bottom: 14px }
+  .best .tag { font-size: 11.5px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase;
+               color: var(--accent-ink) }
+  .best .main { font-weight: 600; font-size: 16px }
+  .best .sub { color: var(--ink-2); font-size: 13.5px }
+  .best .kv { display: flex; gap: 18px; margin-left: auto; flex-wrap: wrap }
+  .best .kv div { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em }
+  .best .kv b { display: block; font-size: 17px; color: var(--ink); text-transform: none; letter-spacing: 0 }
+
+  .summary { margin-bottom: 12px; font-size: 14px }
+  .summary .r { display: flex; gap: 12px; padding: 2px 0 }
+  .summary .r > span:first-child { width: 78px; flex: none; color: var(--muted); font-size: 12px;
+                                   text-transform: uppercase; letter-spacing: .05em; padding-top: 2px }
+  .stat.hero { grid-column: span 2; background: var(--accent-soft); border-color: #f0d3bf }
+  .stat.hero .v { font-size: 20px; color: var(--accent-ink) }
+  .picked { position: absolute; left: 0; right: 0; bottom: 0; z-index: 2; color: var(--ink-2); font-size: 13px; padding: 8px 12px; border-top: 1px solid var(--line-2);
+            background: #fffcf9; min-height: 36px }
+
+  .doc { max-width: 860px }
+  .doc h2 { font-size: 20px; margin: 28px 0 8px }
+  .doc h3 { font-size: 16px; margin: 20px 0 6px }
+  .doc p, .doc li { color: var(--ink-2) }
+  .doc code, .doc .kbd { font-family: var(--mono); font-size: 13px; background: var(--line-2);
+                         padding: 1px 6px; border-radius: 5px }
+  .doc table { border-collapse: collapse; margin: 8px 0 }
+  .doc td, .doc th { border: 1px solid var(--line); padding: 6px 12px; text-align: left; font-size: 14px }
+
+  /* results */
+  .res-head { display: flex; align-items: flex-start; gap: 16px; flex-wrap: wrap; margin-bottom: 16px }
+  .res-head h1 { font-size: 19px }
+  .res-head .sub { color: var(--muted); font-size: 13px }
+  .res-head .actions { margin-left: auto; display: flex; gap: 8px; flex-wrap: wrap }
+  .tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--line); margin-bottom: 0 }
+  .tab { border: 0; background: none; padding: 10px 14px; color: var(--ink-2);
+         border-bottom: 2px solid transparent; margin-bottom: -1px; font-size: 13.5px }
+  .tab.on { color: var(--ink); border-bottom-color: var(--accent); font-weight: 600 }
+  .tab .n { color: var(--muted); font-weight: 400; margin-left: 4px }
+  .tab-meta { color: var(--muted); font-size: 12.5px; padding: 10px 2px 12px }
+  .tablewrap { overflow-x: auto; background: var(--card); border: 1px solid var(--line);
+               border-radius: var(--radius) }
+  table.hits { width: 100%; border-collapse: collapse; font-size: 14.5px }
+  table.hits th { text-align: left; font-size: 11.5px; font-weight: 600; letter-spacing: .04em;
+                  text-transform: uppercase; color: var(--muted); padding: 10px 12px;
+                  border-bottom: 1px solid var(--line); white-space: nowrap; background: #fdfcfb }
+  table.hits td { padding: 9px 12px; border-bottom: 1px solid var(--line-2); vertical-align: middle }
+  table.hits tr.hit { cursor: pointer }
+  table.hits tr.hit:hover td { background: #fdfaf7 }
+  table.hits tr.hit.open td { background: #fff7f1 }
+  td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap }
+  td.rank { color: var(--muted); width: 36px }
+  .tgt { font-family: var(--mono); font-size: 13.5px; white-space: nowrap }
+  .desc { max-width: 330px }
+  .desc .t { overflow: hidden; text-overflow: ellipsis; white-space: nowrap }
+  .desc .o { color: var(--muted); font-size: 12px; font-style: italic; overflow: hidden;
+             text-overflow: ellipsis; white-space: nowrap }
+  .cov { width: 150px }
+  .cov svg { display: block }
+  td.detail { background: #fffcf9 !important; padding: 0 !important }
+  .detail-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.25fr); gap: 0 }
+  @media (max-width: 960px) { .detail-grid { grid-template-columns: 1fr } }
+  .viewer-wrap { position: relative; border-right: 1px solid var(--line-2); min-height: 420px }
+  .viewer { position: absolute; inset: 0 }
+  .viewer-legend { position: absolute; left: 12px; bottom: 48px; z-index: 2; font-size: 12px; color: var(--ink-2);
+                   background: rgba(255, 255, 255, .85); border-radius: 7px; padding: 4px 9px;
+                   display: flex; gap: 12px }
+  .sw { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 5px;
+        vertical-align: -1px }
+  .detail-body { padding: 16px 18px 18px }
+  .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 14px }
+  .stat { background: var(--card); border: 1px solid var(--line-2); border-radius: 9px; padding: 8px 10px }
+  .stat .k { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .05em }
+  .stat .v { font-size: 15px; font-weight: 600; font-variant-numeric: tabular-nums }
+  .aln { font: 12px/1.45 var(--mono); background: var(--card); border: 1px solid var(--line-2);
+         border-radius: 9px; padding: 10px 12px; overflow-x: auto; white-space: pre; margin: 0 }
+  .aln .q { color: var(--accent-ink) } .aln .t { color: var(--target) }
+  .aln .m { color: var(--muted) } .aln .pos { color: #b9b2ab }
+  .aln-note { color: var(--muted); font-size: 11.5px; margin-top: 6px }
+  .foot { color: var(--muted); font-size: 12px; margin-top: 12px }
+  footer { max-width: 1320px; margin: 0 auto; padding: 0 24px 40px; color: var(--muted); font-size: 12.5px }
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="bar">
+    <a class="brand" href="/"><img src="/static/logo.png" alt=""><b>RFoldseek</b><span>RNA structure search</span></a>
+    <nav class="links">
+      <a href="/">Search</a>
+      <a href="/tutorial">Tutorial</a>
+      <a href="/api/docs" target="_blank">API</a>
+      <a href="https://github.com/DylanYang/RFoldseek" target="_blank">GitHub</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+  <div id="error" class="banner err" hidden></div>
+
+  <!-- search view -->
+  <section id="view-search">
+    <div class="card">
+      <h1>Search RNA structures</h1>
+      <p class="lead">Upload or paste one RNA chain (PDB or mmCIF). It is encoded in the learned 3Dr
+        structural alphabet and searched against the selected databases in seconds.</p>
+      <form id="form" class="search-grid" autocomplete="off">
+        <div>
+          <div class="label">Query structure</div>
+          <div class="drop" id="drop">
+            <textarea id="text" spellcheck="false"
+              placeholder="Paste a PDB or mmCIF structure here, or drop a file onto this box.&#10;&#10;The first RNA chain is used; nucleotides need C3′, C4′ and O4′ atoms."></textarea>
+            <div class="file-chip" id="chip" hidden><span id="chip-name"></span><button type="button" id="chip-x" title="Remove">×</button></div>
+          </div>
+          <div class="row">
+            <label class="btn">Upload file<input type="file" id="file" accept=".pdb,.cif,.mmcif,.ent" hidden></label>
+            <div class="menu">
+              <button type="button" class="btn" id="ex-btn">Load example ▾</button>
+              <div class="menu-list" id="ex-list" hidden></div>
+            </div>
+            <span class="hint" id="max-upload"></span>
+          </div>
+        </div>
+        <div>
+          <div class="label">Databases</div>
+          <div class="dbs" id="dbs"><div class="hint"><span class="spinner"></span>Connecting to the server…</div></div>
+          <div class="label" style="margin-top:18px">Mode</div>
+          <div class="seg modes" id="mode">
+            <label class="on"><input type="radio" name="rerank" value="sw" checked>
+              <span class="m-name">Fast search</span>
+              <span class="m-sub">RFoldseek · structural-token alignment</span>
+              <span class="m-speed">Fastest, recommended for routine search</span></label>
+            <label id="mode-tm"><input type="radio" name="rerank" value="tm">
+              <span class="m-name">Accurate reranking</span>
+              <span class="m-sub">RFoldseek-TM · coordinate refinement</span>
+              <span class="m-speed">Slower, improved structural ranking</span></label>
+          </div>
+          <details class="adv">
+            <summary>Advanced options</summary>
+            <div class="adv-grid">
+              <label><span class="hint">Hits shown</span><span class="num-step"><input type="number" id="top_k" value="50" min="1" max="1000"><button type="button" data-for="top_k" data-step="50" title="Add 50">+50</button></span></label>
+              <label><span class="hint">Candidate depth</span><span class="num-step"><input type="number" id="top_n" value="200" min="1" max="2000"><button type="button" data-for="top_n" data-step="100" title="Add 100">+100</button></span></label>
+              <label><span class="hint">Min. diagonal k-mers</span><input type="number" id="min_diag" value="2" min="1" max="8"></label>
+            </div>
+          </details>
+          <div class="submit-row">
+            <button class="btn primary" id="go" type="submit" disabled>Search</button>
+            <span class="hint" id="go-hint"></span>
+          </div>
+        </div>
+      </form>
+    </div>
+    <div class="about">
+      <div class="card"><h3>3Dr alphabet</h3><p>Each nucleotide's local geometry is quantised into one of 80 learned states, turning an RNA chain into a token string.</p></div>
+      <div class="card"><h3>Fast search</h3><p>A k-mer prefilter over an inverted index, then affine-gap Smith–Waterman with the Structure-BLOSUM matrix.</p></div>
+      <div class="card"><h3>RFoldseek-TM</h3><p>Optionally reranks the same candidates by US-align TM-score for higher sensitivity at a higher cost.</p></div>
+    </div>
+  </section>
+
+  <!-- tutorial view -->
+  <section id="view-tutorial" hidden>
+    <div class="card doc">
+      <h1>How to read the results</h1>
+      <p class="lead">RFoldseek encodes every nucleotide as one of 80 learned 3Dr structural states, aligns the resulting token strings, and reports the closest structures in each database.</p>
+
+      <h2>1. Choose a mode</h2>
+      <p><b>Fast search</b> (RFoldseek) prefilters with a k-mer index and aligns structural tokens with an affine-gap Smith–Waterman and the Structure-BLOSUM matrix. It is the recommended mode for routine searches.
+         <b>Accurate reranking</b> (RFoldseek-TM) re-scores the same candidates with US-align on the coordinates; it is slower and can improve the structural ranking.</p>
+
+      <h2>2. The hit table</h2>
+      <table>
+        <tr><th>Column</th><th>Meaning</th></tr>
+        <tr><td>Target</td><td>The matched chain: PDB id and chain, or a predicted-model id.</td></tr>
+        <tr><td>Seq. id.</td><td>Nucleotide identity over the aligned positions. Hidden for databases without sequences.</td></tr>
+        <tr><td>Aligned nt / 3Dr id.</td><td>Number of aligned nucleotides and the fraction of aligned pairs with the same structural token. Shown for databases without sequences.</td></tr>
+        <tr><td>RMSD</td><td>Root-mean-square deviation of the superposed aligned nucleotides, in Å.</td></tr>
+        <tr><td>E-value, Bits</td><td>Expected number of chance hits at least this good, and the normalised alignment score. Databases marked <i>uncalibrated</i> have no empirical E-value calibration yet: use them to rank hits, not as significance.</td></tr>
+        <tr><td>Symmetric TM-score</td><td>Accurate reranking only. The mean of the query-normalised and target-normalised US-align TM-scores over the whole chains.</td></tr>
+        <tr><td>Query coverage</td><td>The part of your query that is aligned; darker means higher identity.</td></tr>
+      </table>
+
+      <h2>3. Inside a hit</h2>
+      <p>Click a row to open it. The summary line gives the alignment length, the query and target ranges, and the 3Dr identity. <b>Aligned-region TM-score</b> is the TM-score computed over the aligned nucleotides only, so it can differ from the symmetric whole-chain TM-score in the table.</p>
+      <h3>The 3Dr line</h3>
+      <p>Between the query and target sequences, <code>|</code> marks the same structural token, <code>+</code> a positive Structure-BLOSUM substitution and <code>.</code> any other aligned pair. Positions count nucleotides with a complete C3′, C4′, O4′ backbone. Databases without sequences show the target residues as <code>·</code>.</p>
+      <h3>The 3D view</h3>
+      <p>The query is orange and the hit is blue after superposition on the aligned nucleotides; pale colours are unaligned. Rotate and zoom with the mouse, and click a nucleotide to see which nucleotide of the other structure it is aligned to.</p>
+
+      <h2>4. Databases</h2>
+      <p>PDB-RNA (all RCSB RNA chains) and RNAsolo (a non-redundant representative set) hold experimental structures. NuFold holds predicted structures, which carry no sequence, so 3Dr identity is the main measure of agreement there.</p>
+    </div>
+  </section>
+
+  <!-- result view -->
+  <section id="view-result" hidden>
+    <div id="res-loading" class="loader" hidden><img src="/static/logo.png" alt=""><div class="dots"><span></span><span></span><span></span></div><div class="msg" id="res-loading-text">Searching…</div></div>
+    <div id="res" hidden>
+      <div class="res-head">
+        <div>
+          <h1 id="res-title"></h1>
+          <div class="sub" id="res-sub"></div>
+        </div>
+        <div class="actions">
+          <button class="btn small" id="copy-link">Copy link</button>
+          <a class="btn small" id="dl-tsv">Download TSV</a>
+          <a class="btn small" id="dl-json">JSON</a>
+          <a class="btn small" href="/">New search</a>
+        </div>
+      </div>
+      <div id="best"></div>
+      <div class="tabs" id="tabs"></div>
+      <div class="tab-meta" id="tab-meta"></div>
+      <div class="tablewrap"><table class="hits" id="hits"></table></div>
+      <div class="foot" id="foot"></div>
+    </div>
+  </section>
+</main>
+<footer>RFoldseek · learned 3Dr structural alphabet for fast RNA tertiary-structure search</footer>
+
+<script src="https://cdn.jsdelivr.net/npm/3dmol@2.4.2/build/3Dmol-min.js"></script>
+<script src="/static/app.js"></script>
+</body>
+</html>
