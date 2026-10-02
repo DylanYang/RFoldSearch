@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import tempfile
 import threading
 import time
@@ -33,6 +34,26 @@ from typing import Optional
 from . import align
 
 ALIGN_MAX = int(os.environ.get("RFOLDSEEK_ALIGN_MAX", "100"))
+URS_ID = re.compile(r"^URS[0-9A-F]{10}_(\d+)")
+# NCBI Taxonomy names for the taxon ids that occur in the NuFold set
+# (app/nufold_taxa.json: id -> {"name", "common"}), so predicted models show
+# an organism instead of a bare taxon id.
+try:
+    TAXA = json.loads((Path(__file__).with_name("nufold_taxa.json")).read_text())
+except OSError:
+    TAXA = {}
+
+
+def organism_of(target: str) -> Optional[str]:
+    """'Homo sapiens (human) · taxon 9606' for an RNAcentral-style model id."""
+    m = URS_ID.match(target)
+    if not m:
+        return None
+    t = TAXA.get(m.group(1))
+    if not t or not t.get("name"):
+        return f"taxon {m.group(1)}"
+    common = f" ({t['common']})" if t.get("common") else ""
+    return f"{t['name']}{common} \u00b7 taxon {m.group(1)}"
 _ANNOTATION = ("pdb", "chain", "auth_asym", "desc", "organism", "title",
                "method", "resolution")
 
@@ -180,6 +201,10 @@ class Engine:
         for n, hit in enumerate(hits):
             ann = h.meta.get(hit["target"], {})
             hit.update({k: ann[k] for k in _ANNOTATION if ann.get(k) is not None})
+            if "organism" not in hit:
+                org = organism_of(hit["target"])
+                if org:
+                    hit["organism"] = org
             if n < ALIGN_MAX:
                 hit["aln"] = self.alignment(h, enc, hit["target"])
         return {

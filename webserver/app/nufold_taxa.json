@@ -1,0 +1,194 @@
+{
+ "1352": {
+  "name": "Enterococcus faecium",
+  "common": null
+ },
+ "3702": {
+  "name": "Arabidopsis thaliana",
+  "common": "thale cress"
+ },
+ "3847": {
+  "name": "Glycine max",
+  "common": "soybean"
+ },
+ "4577": {
+  "name": "Zea mays",
+  "common": "maize"
+ },
+ "5671": {
+  "name": "Leishmania infantum",
+  "common": null
+ },
+ "6183": {
+  "name": "Schistosoma mansoni",
+  "common": null
+ },
+ "6239": {
+  "name": "Caenorhabditis elegans",
+  "common": null
+ },
+ "6248": {
+  "name": "Strongyloides stercoralis",
+  "common": null
+ },
+ "6279": {
+  "name": "Brugia malayi",
+  "common": "agent of lymphatic filariasis"
+ },
+ "6282": {
+  "name": "Onchocerca volvulus",
+  "common": null
+ },
+ "6293": {
+  "name": "Wuchereria bancrofti",
+  "common": "agent of lymphatic filariasis"
+ },
+ "7227": {
+  "name": "Drosophila melanogaster",
+  "common": "fruit fly"
+ },
+ "7955": {
+  "name": "Danio rerio",
+  "common": "zebrafish"
+ },
+ "9606": {
+  "name": "Homo sapiens",
+  "common": "human"
+ },
+ "10090": {
+  "name": "Mus musculus",
+  "common": "house mouse"
+ },
+ "10116": {
+  "name": "Rattus norvegicus",
+  "common": "Norway rat"
+ },
+ "36087": {
+  "name": "Trichuris trichiura",
+  "common": "human whipworm"
+ },
+ "36329": {
+  "name": "Plasmodium falciparum 3D7",
+  "common": null
+ },
+ "39947": {
+  "name": "Oryza sativa Japonica Group",
+  "common": "Japanese rice"
+ },
+ "44689": {
+  "name": "Dictyostelium discoideum",
+  "common": null
+ },
+ "71421": {
+  "name": "Haemophilus influenzae Rd KW20",
+  "common": null
+ },
+ "83332": {
+  "name": "Mycobacterium tuberculosis H37Rv",
+  "common": null
+ },
+ "83333": {
+  "name": "Escherichia coli K-12",
+  "common": null
+ },
+ "85962": {
+  "name": "Helicobacter pylori 26695",
+  "common": null
+ },
+ "86049": {
+  "name": "Cladophialophora carrionii",
+  "common": null
+ },
+ "93061": {
+  "name": "Staphylococcus aureus subsp. aureus NCTC 8325",
+  "common": null
+ },
+ "99287": {
+  "name": "Salmonella enterica subsp. enterica serovar Typhimurium str. LT2",
+  "common": null
+ },
+ "100816": {
+  "name": "Madurella mycetomatis",
+  "common": null
+ },
+ "171101": {
+  "name": "Streptococcus pneumoniae R6",
+  "common": null
+ },
+ "185431": {
+  "name": "Trypanosoma brucei brucei TREU927",
+  "common": null
+ },
+ "192222": {
+  "name": "Campylobacter jejuni subsp. jejuni NCTC 11168 = ATCC 700819",
+  "common": null
+ },
+ "208964": {
+  "name": "Pseudomonas aeruginosa PAO1",
+  "common": null
+ },
+ "237561": {
+  "name": "Candida albicans SC5314",
+  "common": null
+ },
+ "242231": {
+  "name": "Neisseria gonorrhoeae FA 1090",
+  "common": null
+ },
+ "243232": {
+  "name": "Methanocaldococcus jannaschii DSM 2661",
+  "common": null
+ },
+ "272631": {
+  "name": "Mycobacterium leprae TN",
+  "common": null
+ },
+ "284812": {
+  "name": "Schizosaccharomyces pombe 972h-",
+  "common": null
+ },
+ "300267": {
+  "name": "Shigella dysenteriae Sd197",
+  "common": null
+ },
+ "318479": {
+  "name": "Dracunculus medinensis",
+  "common": "Guinea worm"
+ },
+ "353153": {
+  "name": "Trypanosoma cruzi strain CL Brener",
+  "common": null
+ },
+ "447093": {
+  "name": "Histoplasma capsulatum G186AR",
+  "common": null
+ },
+ "502779": {
+  "name": "Paracoccidioides lutzii",
+  "common": null
+ },
+ "559292": {
+  "name": "Saccharomyces cerevisiae S288C",
+  "common": null
+ },
+ "1125630": {
+  "name": "Klebsiella pneumoniae subsp. pneumoniae HS11286",
+  "common": null
+ },
+ "1133849": {
+  "name": "Nocardia brasiliensis ATCC 700358",
+  "common": null
+ },
+ "1299332": {
+  "name": "Mycobacterium ulcerans str. Harvey",
+  "common": null
+ },
+ "1391915": {
+  "name": "Sporothrix schenckii ATCC 58251",
+  "common": null
+ },
+ "1442368": {
+  "name": "Fonsecaea pedrosoi CBS 271.37",
+  "common": null
+ }
+}
