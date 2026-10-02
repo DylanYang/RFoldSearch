@@ -1,6 +1,6 @@
 <h1><a name="rfoldseek"></a><img src=".github/header.PNG" alt="RFoldseek" height="88" /></h1>
 
-RFoldseek enables fast RNA tertiary-structure search with **3Dr**, a learned discrete structural alphabet. Each nucleotide's local geometry is quantised into one of 80 states by a VQ-VAE, converting RNA chains into token strings that are searched with an inverted-index k-mer prefilter. The standard RFoldseek mode aligns prefilter hits by affine-gap token Smith-Waterman, superposes the aligned C4′ atoms, ranks hits by the Smith-Waterman score times the resulting alignment TM-score, and assigns a Karlin-Altschul database E-value to each hit from its Smith-Waterman score. We also provide RFoldseek-TM, an accuracy-oriented mode in which the same prefilter candidates are reranked by coordinate alignment with US-align using the mean of the two length-normalised TM-scores.
+RFoldseek enables fast RNA tertiary-structure search with **3Dr**, a learned discrete structural alphabet. Each nucleotide's local geometry is quantised into one of 80 states by a VQ-VAE, converting RNA chains into token strings that are searched with an inverted-index k-mer prefilter. The standard RFoldseek mode aligns prefilter hits by affine-gap token Smith-Waterman, superposes the aligned C4′ atoms, ranks hits by the Smith-Waterman score times the resulting alignment TM-score, and assigns each hit a cluster-maximum Gumbel E-value from its Smith-Waterman score. We also provide RFoldseek-TM, an accuracy-oriented mode in which the same prefilter candidates are reranked by coordinate alignment with US-align using the mean of the two length-normalised TM-scores.
 
 <p align="center"><img src=".github/fig1.jpeg" width="720" /></p>
 
@@ -95,12 +95,21 @@ rfoldseek search --query query_db.pt --query_id query_chain_id --db target_db.pt
 Both commands run the same two-stage pipeline — a k-mer prefilter over the 3Dr tokens, 
 then a reranking of the candidates. What differs is how the candidates are reranked, chosen with `--rerank`:
 
-- **`atm`** (default): affine-gap token Smith-Waterman gives the score S and
-  the alignment; the C4′ atoms of the aligned nucleotides are superposed without
-  changing the alignment, and the alignment TM-score aTM (mean of the query- and
-  target-length-normalised TM-scores) is taken. Hits are ranked by S × aTM, so a
-  hit must match locally *and* in the arrangement of its aligned segments. The
-  E-value is that of S.
+- **`atm`** (default): affine-gap token Smith-Waterman gives the score S and,
+  in the same dynamic-programming pass, the alignment. The C4′ atoms of the
+  aligned nucleotides are then superposed without re-optimising the alignment,
+  and the alignment TM-score aTM = (T_Q + T_T) / 2 is taken, where T_X sums
+  1 / (1 + (r_i / d0(L_X))²) over the aligned pairs, divides by the query
+  (X = Q) or target (X = T) length, and d0(L) = max(0.5, 0.6 √(L − 0.5) − 2.5) Å.
+  Normalising by both lengths penalises partial coverage. The superposition is
+  fitted by iterative Kabsch refinement from two starts, all aligned pairs and
+  the highest-scoring gapless segment of the alignment; each iteration refits
+  on the pairs closer than min(d0(L_Q), d0(L_T)) + 1 Å, for up to five
+  iterations or until that set stops changing, and the best aTM over both starts
+  and all iterations is kept. Hits are ranked by the structure score S × aTM, so
+  a hit must match locally *and* in the arrangement of its aligned segments;
+  equal structure scores are ordered as in the prefilter. The E-value is that
+  of S.
 - **`tm`** (RFoldseek-TM): the candidate pool is handed to
   [US-align](https://github.com/pylelab/USalign) and ranked by the mean of its two length-normalised TM-scores. 
   This measures structural similarity directly instead of scoring a token alignment, at a large cost in speed.

@@ -4,9 +4,14 @@ The token Smith-Waterman score S rewards local geometric similarity, which each
 3Dr token encodes, but cannot see how the aligned segments are arranged in
 space. aTM adds that: the C4' atoms of the aligned nucleotide pairs are
 superposed without changing the alignment, and a TM-score is taken,
-normalised by the query and by the target length and averaged. Candidates are
-ranked by S * aTM (cf. Foldseek's structure bit score); E-values stay those of
-S alone.
+normalised by the query and by the target length and averaged, so partial
+coverage is penalised. The superposition comes from iterative Kabsch
+refinement started from all aligned pairs and from the highest-scoring gapless
+segment; each iteration refits on the pairs within min(d0(Lq), d0(Lt)) + 1 A,
+for up to five iterations or until that set is unchanged, and the best aTM
+over both starts and all iterations is kept. Candidates are ranked by S * aTM
+(cf. Foldseek's structure bit score), ties ordered as in the prefilter;
+E-values stay those of S alone.
 
 The traceback Smith-Waterman below uses exactly the recurrence and tie rules
 of ``smith_waterman._smith_waterman_numba``, so its score equals S; one
@@ -161,7 +166,8 @@ def _refine(a, b, d0q, d0t, Lq, Lt, sel):
 def alignment_tm(a, b, Lq, Lt, block_start=0, block_end=0):
     """aTM of aligned C4' pairs a[k] <-> b[k]: the best mean of the query- and
     target-normalised TM-scores over two seeds (all pairs; pairs
-    block_start:block_end), each refined on pairs within min(d0) + 1 A."""
+    block_start:block_end) and every refinement of each, refitting on pairs
+    within min(d0) + 1 A."""
     n = a.shape[0]
     if n < MIN_PAIRS:
         return 0.0
