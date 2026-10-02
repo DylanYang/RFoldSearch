@@ -183,8 +183,9 @@ range before evaluation; queries outside that range emit a warning because
 the boundary estimate is not independently validated there. Each database
 also has its own empirical mapping from
 the initial E-value to the family-weighted mean number of unrelated
-background clusters per query. Hits remain ranked by raw Smith--Waterman
-score.
+background clusters per query. E-values are computed from S_SW alone, while
+hits are ranked by the structure score R_str = S_SW × aTM, so E-values need not
+increase down the list.
 
 The numbered fitting workflow below covers a length-grid Gumbel model. An
 already fitted query-composition model for a predicted database can be used
