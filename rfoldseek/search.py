@@ -2,9 +2,9 @@
 
 Two reranking backends share the token prefilter. ``atm`` (default) aligns
 candidates by affine-gap token Smith-Waterman, superposes the aligned C4'
-atoms and ranks by S * aTM, the Smith-Waterman score times the alignment
+atoms and ranks by R_str = S_SW * aTM, the Smith-Waterman score times the alignment
 TM-score (structure_score.py); it reports the cluster-maximum Gumbel E-value
-of S. ``tm`` (RFoldseek-TM) hands the candidate pool to US-align and ranks by
+of S_SW. ``tm`` (RFoldseek-TM) hands the candidate pool to US-align and ranks by
 the mean of its two length-normalised TM-scores; that backend reports no
 E-value. Both need coordinates for the query and the database.
 """
@@ -124,9 +124,9 @@ class Searcher:
                usalign=None, query_entry=None, tie_seed=None):
         """-> list of hit dicts, ranked by the chosen backend's score.
 
-        ``rerank="atm"`` (default) ranks by ``structure_score`` = S * aTM and
+        ``rerank="atm"`` (default) ranks by ``structure_score`` (R_str = S_SW * aTM) and
         reports ``atm``, ``aligned`` (aligned nucleotide pairs), an E-value,
-        and ``sw_score`` (S) and ``bits`` from which the E-value is computed.
+        and ``sw_score`` (S_SW) and ``bits`` from which the E-value is computed.
         ``rerank="tm"`` ranks by US-align TM-score and reports
         ``tm_mean``/``tm_query``/``tm_target`` instead. Both need the query
         coordinates: pass ``query_entry``, or search a chain in the database.

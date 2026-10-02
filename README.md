@@ -95,7 +95,7 @@ rfoldseek search --query query_db.pt --query_id query_chain_id --db target_db.pt
 Both commands run the same two-stage pipeline — a k-mer prefilter over the 3Dr tokens, 
 then a reranking of the candidates. What differs is how the candidates are reranked, chosen with `--rerank`:
 
-- **`atm`** (default): affine-gap token Smith-Waterman gives the score S and,
+- **`atm`** (default): affine-gap token Smith-Waterman gives the alignment score S_SW and,
   in the same dynamic-programming pass, the alignment. The C4′ atoms of the
   aligned nucleotides are then superposed without re-optimising the alignment,
   and the alignment TM-score aTM = (T_Q + T_T) / 2 is taken, where T_X sums
@@ -106,10 +106,10 @@ then a reranking of the candidates. What differs is how the candidates are reran
   the highest-scoring gapless segment of the alignment; each iteration refits
   on the pairs closer than min(d0(L_Q), d0(L_T)) + 1 Å, for up to five
   iterations or until that set stops changing, and the best aTM over both starts
-  and all iterations is kept. Hits are ranked by the structure score S × aTM, so
+  and all iterations is kept. Hits are ranked by the structure score R_str = S_SW × aTM, so
   a hit must match locally *and* in the arrangement of its aligned segments;
   equal structure scores are ordered as in the prefilter. The E-value is that
-  of S.
+  of S_SW.
 - **`tm`** (RFoldseek-TM): the candidate pool is handed to
   [US-align](https://github.com/pylelab/USalign) and ranked by the mean of its two length-normalised TM-scores. 
   This measures structural similarity directly instead of scoring a token alignment, at a large cost in speed.
@@ -140,12 +140,12 @@ rank  target                   structure_score    aTM    E-value  aligned    len
 ```
 
 - `aTM`: alignment TM-score, 0 to 1: the TM-score of the token alignment after superposition, averaged over normalisation by the query and by the target length.
-- `structure_score`: the ranking score, S × aTM, where S is the token Smith-Waterman score.
-- `E-value`: expected number of hits at least this good by chance, computed from S alone; it therefore need not increase down the list.
+- `structure_score`: the ranking score R_str = S_SW × aTM, where S_SW is the token Smith-Waterman score.
+- `E-value`: expected number of hits at least this good by chance, computed from S_SW alone; it therefore need not increase down the list.
 - `aligned`: number of aligned nucleotide pairs.
 - `len`: target length.
 
-The Python interface also returns `sw_score` (S) and `bits`, the length- and composition-normalised form of S from which the E-value is computed.
+The Python interface also returns `sw_score` (S_SW) and `bits`, the length- and composition-normalised form of S_SW from which the E-value is computed.
 
 Under `--rerank tm` — RFoldseek-TM — the comment line names the mode and the score columns change:
 

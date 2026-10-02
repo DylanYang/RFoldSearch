@@ -1,20 +1,25 @@
 """Structure-aware ranking: the alignment TM-score (aTM) of a token alignment.
 
-The token Smith-Waterman score S rewards local geometric similarity, which each
-3Dr token encodes, but cannot see how the aligned segments are arranged in
-space. aTM adds that: the C4' atoms of the aligned nucleotide pairs are
-superposed without changing the alignment, and a TM-score is taken,
-normalised by the query and by the target length and averaged, so partial
-coverage is penalised. The superposition comes from iterative Kabsch
-refinement started from all aligned pairs and from the highest-scoring gapless
-segment; each iteration refits on the pairs within min(d0(Lq), d0(Lt)) + 1 A,
-for up to five iterations or until that set is unchanged, and the best aTM
-over both starts and all iterations is kept. Candidates are ranked by S * aTM
-(cf. Foldseek's structure bit score), ties ordered as in the prefilter;
-E-values stay those of S alone.
+The token Smith-Waterman score S_SW rewards local geometric similarity, which
+each 3Dr token encodes, but cannot see how the aligned segments are arranged
+in space. aTM adds that: the C4' atoms of the aligned nucleotide pairs are
+superposed without changing the alignment, and
+
+    T_X = (1 / L_X) * sum_i 1 / (1 + (r_i / d0(L_X))^2),   X in {Q, T},
+    aTM = (T_Q + T_T) / 2,
+
+with r_i the C4'-C4' distance of aligned pair i and L_Q, L_T the query and
+target lengths, so partial coverage is penalised. The superposition comes from
+iterative Kabsch refinement started from all aligned pairs and from the
+highest-scoring gapless segment; each iteration refits on the pairs with
+r_i < min(d0(L_Q), d0(L_T)) + 1 A, for up to five iterations or until that set
+is unchanged, and the best aTM over both starts and all iterations is kept.
+Candidates are ranked by the structure score R_str = S_SW * aTM (cf.
+Foldseek's structure bit score), ties ordered as in the prefilter; E-values
+stay those of S_SW alone.
 
 The traceback Smith-Waterman below uses exactly the recurrence and tie rules
-of ``smith_waterman._smith_waterman_numba``, so its score equals S; one
+of ``smith_waterman._smith_waterman_numba``, so its score equals S_SW; one
 dynamic-programming pass gives both the score and the alignment.
 """
 import numpy as np
@@ -184,7 +189,7 @@ def alignment_tm(a, b, Lq, Lt, block_start=0, block_end=0):
 
 @njit(cache=True)
 def score_pair(q, qxyz, t, txyz, sub, go, ge):
-    """-> (S, aTM, number of aligned pairs) for one query-target pair."""
+    """-> (S_SW, aTM, number of aligned pairs) for one query-target pair."""
     s, qa, ta = smith_waterman_traceback(q, t, sub, go, ge)
     bs, be = _best_block(q, t, qa, ta, sub)
     return s, alignment_tm(qxyz[qa], txyz[ta], len(q), len(t), bs, be), len(qa)
@@ -192,7 +197,7 @@ def score_pair(q, qxyz, t, txyz, sub, go, ge):
 
 @njit(parallel=True, cache=True)
 def score_candidates(q, qxyz, cand, toks, offsets, xyz, sub, go, ge):
-    """(S, aTM, aligned pairs) for every candidate, in parallel. Chain c
+    """(S_SW, aTM, aligned pairs) for every candidate, in parallel. Chain c
     occupies rows offsets[c]:offsets[c + 1] of the flattened ``toks`` and
     ``xyz``."""
     n = len(cand)
