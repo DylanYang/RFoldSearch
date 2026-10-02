@@ -55,7 +55,7 @@ def organism_of(target: str) -> Optional[str]:
     common = f" ({t['common']})" if t.get("common") else ""
     return f"{t['name']}{common} \u00b7 taxon {m.group(1)}"
 _ANNOTATION = ("pdb", "chain", "auth_asym", "desc", "organism", "title",
-               "method", "resolution")
+               "method", "resolution", "rfam", "plddt", "msa_depth")
 
 
 @dataclass
@@ -68,12 +68,14 @@ class DatabaseHandle:
     meta: dict = field(default_factory=dict)       # short id -> annotation
     source: Optional[str] = None
     built: Optional[str] = None
+    notice: Optional[str] = None
     lock: threading.Lock = field(default_factory=threading.Lock)
 
     def info(self) -> dict:
         return {"key": self.key, "label": self.label,
                 "n_chains": self.n_chains, "source": self.source,
                 "built": self.built,
+                "notice": self.notice,
                 "evalue_calibrated": bool(
                     (self.searcher.ev_par or {}).get("empirical_calibration")
                     and self.searcher.db.get("clustered"))}
@@ -138,6 +140,7 @@ class Engine:
                 with open(sidecar) as fh:
                     side = json.load(fh)
                 h.source, h.built = side.get("source"), side.get("built")
+                h.notice = side.get("notice")
                 h.meta = {short_id(k, i): v
                           for i, (k, v) in enumerate(side["entries"].items())}
                 missing = sum(cid not in h.meta for cid in h.searcher.ids)
