@@ -1,5 +1,6 @@
 """Build and load searchable token databases (.pt)."""
 from __future__ import annotations
+import hashlib
 import json
 import os
 
@@ -10,6 +11,53 @@ from .backbone import extract_backbone_coords
 from .edges import find_base_pair_and_stack_idx
 from .prefilter import KMER_K
 from .tokenizer import encode_entry, load_model
+
+
+def database_fingerprint(entries, clusters, n_codes: int = 80) -> str:
+    """Stable identity for the logical token database and its clustering.
+
+    Local paths and arbitrary cluster labels are excluded. Cluster membership
+    is represented by the sorted identities of its members, so rebuilding the
+    same content in another directory produces the same fingerprint.
+    """
+    if len(entries) != len(clusters):
+        raise ValueError("clusters must give one label per database entry")
+    identities = []
+    for index, entry in enumerate(entries):
+        tokens = np.asarray(entry["tokens"], dtype="<i4").reshape(-1)
+        token_hash = hashlib.sha256(tokens.tobytes()).hexdigest()
+        identities.append((short_id(entry.get("id"), index), token_hash, len(tokens)))
+    members = {}
+    for identity, cluster in zip(identities, clusters):
+        members.setdefault(str(cluster), []).append(identity)
+    cluster_signatures = {}
+    for cluster, group in members.items():
+        digest = hashlib.sha256()
+        for identity in sorted(group):
+            digest.update(json.dumps(identity, separators=(",", ":")).encode())
+            digest.update(b"\0")
+        cluster_signatures[cluster] = digest.hexdigest()
+    rows = [identity + (cluster_signatures[str(cluster)],)
+            for identity, cluster in zip(identities, clusters)]
+    digest = hashlib.sha256(b"rfoldseek-logical-token-db-v1\0")
+    digest.update(str(int(n_codes)).encode())
+    digest.update(b"\0")
+    for row in sorted(rows):
+        digest.update(json.dumps(row, separators=(",", ":")).encode())
+        digest.update(b"\0")
+    return digest.hexdigest()
+
+
+def calibration_context_fingerprint(database_digest: str, matrix,
+                                    gap_open: float, gap_extend: float) -> str:
+    """Bind E-value parameters to the target, score matrix and gap costs."""
+    substitution = np.asarray(matrix, dtype="<f4")
+    digest = hashlib.sha256(b"rfoldseek-evalue-context-v1\0")
+    digest.update(str(database_digest).encode())
+    digest.update(b"\0")
+    digest.update(substitution.tobytes())
+    digest.update(np.asarray([gap_open, gap_extend], dtype="<f8").tobytes())
+    return digest.hexdigest()
 
 
 def structure_to_entry(path: str, max_len: int | None = None) -> dict:
@@ -127,6 +175,7 @@ def build_database(checkpoint: str, data_paths: list[str], output: str,
     for e, lab in zip(entries, labels):
         e["cluster"] = lab
     n_clusters = len(set(labels))
+    target_fingerprint = database_fingerprint(entries, labels, int(n_codes))
     embedded_evalue_params = None
     if evalue_params is not None:
         with open(evalue_params) as handle:
@@ -140,6 +189,9 @@ def build_database(checkpoint: str, data_paths: list[str], output: str,
                 f"E-value parameters have {int(fitted_clusters)} clusters, "
                 f"but the database has {n_clusters}"
             )
+        fitted_target = embedded_evalue_params.get("target_database_fingerprint")
+        if fitted_target is not None and fitted_target != target_fingerprint:
+            raise ValueError("E-value parameters were fitted for a different target database")
         empirical = embedded_evalue_params.get("empirical_calibration")
         if empirical is not None:
             fitted_n = empirical.get("n_clusters", embedded_evalue_params.get("n_clusters"))
@@ -152,7 +204,8 @@ def build_database(checkpoint: str, data_paths: list[str], output: str,
                     f"but the database has {n_clusters}"
                 )
     db = {"n_codes": int(n_codes), "entries": entries, "checkpoint": checkpoint,
-          "n_clusters": n_clusters, "clustered": bool(clusters)}
+          "n_clusters": n_clusters, "clustered": bool(clusters),
+          "database_fingerprint": target_fingerprint}
     if embedded_evalue_params is not None:
         db["evalue_params"] = embedded_evalue_params
     os.makedirs(os.path.dirname(os.path.abspath(output)), exist_ok=True)
@@ -215,10 +268,16 @@ def attach_evalue_calibration(database: str, clusters: str,
             f"E-value parameters have {fitted_n} clusters, "
             f"but the cluster file assigns {n_clusters}"
         )
+    target_fingerprint = database_fingerprint(
+        entries, labels, int(db.get("n_codes", 80)))
+    fitted_target = params.get("target_database_fingerprint")
+    if fitted_target is not None and fitted_target != target_fingerprint:
+        raise ValueError("E-value parameters were fitted for a different target database")
     for entry, label in zip(entries, labels):
         entry["cluster"] = label
     db["n_clusters"] = n_clusters
     db["clustered"] = True
+    db["database_fingerprint"] = target_fingerprint
     db["evalue_params"] = params
     os.makedirs(os.path.dirname(os.path.abspath(output)), exist_ok=True)
     torch.save(db, output)

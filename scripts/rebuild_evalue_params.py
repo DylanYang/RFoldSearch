@@ -14,7 +14,8 @@ import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from rfoldseek import evalue as EV
-from rfoldseek.database import load_database, short_id
+from rfoldseek.database import (calibration_context_fingerprint,
+                                database_fingerprint, load_database, short_id)
 from rfoldseek.search import load_matrix
 
 
@@ -64,10 +65,10 @@ def read_query_panel(path):
     return query_ids
 
 
-def read_related(path, tm_threshold):
-    related = set()
+def read_adjudication(path, tm_threshold):
+    audited, related = set(), set()
     if path is None:
-        return related
+        return audited, related
     with open(path, newline="") as handle:
         for row in csv.DictReader(handle, delimiter="\t"):
             query = first_present(row, ("query_id", "query"))
@@ -77,15 +78,27 @@ def read_related(path, tm_threshold):
             tm_target = first_present(row, ("tm_target_normalized", "tm_target"))
             tm_mean = first_present(row, ("tm_mean", "tm_symmetric", "tm_sym"))
             is_related = marked in {"1", "true", "yes", "y"}
+            has_result = marked in {"0", "1", "false", "true", "no", "yes", "n", "y"}
             if tm_query and tm_target:
+                has_result = True
                 is_related = is_related or 0.5 * (
                     float(tm_query) + float(tm_target)) >= tm_threshold
             elif tm_mean:
+                has_result = True
                 is_related = is_related or float(tm_mean) >= tm_threshold
-            if query and target and is_related:
-                related.add((query, target))
-                related.add((target, query))
-    return related
+            elif first_present(row, ("tm_symmetric_min",)):
+                raise ValueError(
+                    "tm_symmetric_min is not the mean TM-score; provide both "
+                    "normalized scores or a tm_mean column")
+            if query and target and has_result:
+                aliases = {(query, target),
+                           (short_id(query, query), short_id(target, target))}
+                audited.update(aliases)
+                audited.update((second, first) for first, second in aliases)
+                if is_related:
+                    related.update(aliases)
+                    related.update((second, first) for first, second in aliases)
+    return audited, related
 
 
 def main():
@@ -107,6 +120,12 @@ def main():
     parser.add_argument("--related-pairs", default=None,
                         help="optional US-align adjudication TSV")
     parser.add_argument("--tm-threshold", default=0.45, type=float)
+    parser.add_argument("--audit-ceiling", default=100.0, type=float,
+                        help="require US-align results for fitted cluster leaders at or below this E0")
+    parser.add_argument("--missing-audit-output", default=None,
+                        help="unreviewed leaders; default is OUTPUT.missing-audit.tsv")
+    parser.add_argument("--allow-unreviewed", action="store_true",
+                        help="write provisional parameters without enforcing structural audit coverage")
     parser.add_argument("--ridge", default=1e-3, type=float)
     parser.add_argument(
         "--query-fits-output", default=None,
@@ -120,19 +139,24 @@ def main():
         help="optional legacy length-ratio filter; default uses the full database",
     )
     args = parser.parse_args()
+    missing_output = (Path(args.missing_audit_output)
+                      if args.missing_audit_output else
+                      Path(args.output).with_name(
+                          Path(args.output).stem + ".missing-audit.tsv"))
     if args.model == "query-conditional" and args.len_ratio is not None:
         parser.error("--len-ratio is only available with --model length-grid; "
                      "the deployed query-conditional model uses the full database")
 
-    _, _, tokens, chain_ids, _, clusters = load_database(args.db)
+    _, entries, tokens, chain_ids, n_codes, clusters = load_database(args.db)
     matrix = load_matrix(args.matrix)
+    target_fingerprint = database_fingerprint(entries, clusters, n_codes)
     labels = read_labels(args.labels)
     family = np.asarray([labels.get(chain_id, {}).get("family", "")
                          for chain_id in chain_ids], dtype=object)
     clan = np.asarray([labels.get(chain_id, {}).get("clan", "")
                        for chain_id in chain_ids], dtype=object)
 
-    related = read_related(args.related_pairs, args.tm_threshold)
+    audited, related = read_adjudication(args.related_pairs, args.tm_threshold)
 
     def exclude(first, second):
         same_family = (family[first] not in UNKNOWN and family[second] not in UNKNOWN
@@ -144,6 +168,12 @@ def main():
                       or (short_id(query_id, query_id), short_id(target_id, target_id))
                       in related)
         return same_family or same_clan or structural
+
+    def is_audited(first, second):
+        query_id, target_id = chain_ids[first], chain_ids[second]
+        return ((query_id, target_id) in audited
+                or (short_id(query_id, query_id), short_id(target_id, target_id))
+                in audited)
 
     lengths = tuple(int(value) for value in args.lengths.split(",") if value)
     started = time.time()
@@ -165,7 +195,30 @@ def main():
         fitted = EV.calibrate_clustermax_query_conditional(
             matrix, tokens, clusters, query_indices,
             gap_open=-2.0, gap_extend=-0.5, exclude=exclude, ridge=args.ridge,
+            is_audited=(None if args.allow_unreviewed else is_audited),
+            audit_evalue_ceiling=(None if args.allow_unreviewed
+                                  else args.audit_ceiling),
         )
+        missing_audit = fitted.pop("missing_audit", [])
+        if missing_audit:
+            missing_output.parent.mkdir(parents=True, exist_ok=True)
+            with missing_output.open("w", newline="") as handle:
+                fields = ("query_id", "target_id", "cluster_id",
+                          "raw_score", "raw_evalue")
+                writer = csv.DictWriter(handle, fieldnames=fields, delimiter="\t")
+                writer.writeheader()
+                for row in missing_audit:
+                    writer.writerow({
+                        "query_id": chain_ids[row["query_index"]],
+                        "target_id": chain_ids[row["target_index"]],
+                        "cluster_id": row["cluster"],
+                        "raw_score": row["raw_score"],
+                        "raw_evalue": row["raw_evalue"],
+                    })
+            raise SystemExit(
+                f"{len(missing_audit)} fitted cluster leaders at "
+                f"E0<={args.audit_ceiling:g} lack US-align adjudication; "
+                f"wrote {missing_output}")
         query_fits = fitted.pop("query_fits")
         for row in query_fits:
             row["query_id"] = chain_ids[row.pop("query_index")]
@@ -193,6 +246,9 @@ def main():
         "calibration_database": str(Path(args.db).resolve()),
         "n_clusters": fitted["n_clusters"],
         "n_chains": fitted["n_chains"],
+        "target_database_fingerprint": target_fingerprint,
+        "calibration_context_fingerprint": calibration_context_fingerprint(
+            target_fingerprint, matrix, -2.0, -0.5),
         "search_scope": ("full_database" if args.len_ratio is None
                          else f"length_ratio_{args.len_ratio:g}"),
         "clusters": "stored cluster labels in the RFoldseek database",
@@ -203,12 +259,18 @@ def main():
     if args.model == "query-conditional":
         params["query_parameter_model"] = fitted["query_parameter_model"]
         params["n_calibration_queries"] = len(query_fits)
+        params["validation_status"] = (
+            "provisional-incomplete-structural-audit" if args.allow_unreviewed
+            else "background-audit-complete")
+        if not args.allow_unreviewed:
+            params["structural_audit_ceiling"] = args.audit_ceiling
     else:
         params["skipped_lengths"] = fitted["skipped_lengths"]
         params["length_table"] = fitted["length_table"]
     output = Path(args.output)
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(json.dumps(params, indent=2) + "\n")
+    missing_output.unlink(missing_ok=True)
     print(f"wrote {output} in {time.time() - started:.0f}s "
           f"({fitted['n_clusters']} clusters, {fitted['n_chains']} chains)")
 

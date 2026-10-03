@@ -15,7 +15,8 @@ import warnings
 import numpy as np
 import torch
 
-from .database import load_database, short_id
+from .database import (calibration_context_fingerprint, database_fingerprint,
+                       load_database, short_id)
 from .prefilter import KMER_K, KmerPrefilter
 from . import structure_score as _ss
 from . import evalue as _evalue
@@ -62,7 +63,49 @@ class Searcher:
         if evalue_params_path is None and embedded_params:
             self.ev_par = self.db["evalue_params"]
         else:
-            self.ev_par = json.load(open(ev_path)) if os.path.exists(ev_path) else None
+            if os.path.exists(ev_path):
+                with open(ev_path) as handle:
+                    self.ev_par = json.load(handle)
+            else:
+                self.ev_par = None
+        target_fingerprint = database_fingerprint(
+            self.ents, self.clusters, self.n_codes)
+        stored_fingerprint = self.db.get("database_fingerprint")
+        if (stored_fingerprint is not None
+                and stored_fingerprint != target_fingerprint):
+            raise ValueError("stored database fingerprint does not match its contents")
+        score_fingerprint = calibration_context_fingerprint(
+            target_fingerprint, self.sub, GAP_OPEN, GAP_EXTEND)
+        if self.ev_par is not None:
+            if self.ev_par.get("validation_status") == (
+                    "provisional-incomplete-structural-audit"):
+                warnings.warn(
+                    "The E-value parameters are provisional because their "
+                    "structural-background audit is incomplete; this search "
+                    "will not report an E-value.",
+                    stacklevel=2,
+                )
+                self.ev_par = None
+        if self.ev_par is not None:
+            fitted_target = self.ev_par.get("target_database_fingerprint")
+            fitted_context = self.ev_par.get("calibration_context_fingerprint")
+            mismatch = ((fitted_target is not None
+                         and fitted_target != target_fingerprint)
+                        or (fitted_context is not None
+                            and fitted_context != score_fingerprint))
+            if mismatch and using_packaged_default:
+                warnings.warn(
+                    "The packaged E-value parameters belong to a different target "
+                    "database or scoring context; this search will not report an "
+                    "E-value. Attach parameters fitted for the loaded database.",
+                    stacklevel=2,
+                )
+                self.ev_par = None
+            elif mismatch:
+                raise ValueError(
+                    "E-value parameters were fitted for a different target database "
+                    "or scoring context"
+                )
         if (self.ev_par is not None
                 and self.ev_par.get("query_parameter_model") is not None
                 and "training_domain" not in self.ev_par["query_parameter_model"]):
@@ -77,6 +120,18 @@ class Searcher:
                 f"{self.n_clusters}; attach parameters fitted for this database"
             )
         self.empirical_ev = (self.ev_par or {}).get("empirical_calibration")
+        if self.empirical_ev is not None:
+            validation_status = self.empirical_ev.get("validation_status")
+            if validation_status in {
+                    "provisional-incomplete-structural-audit",
+                    "structural-audit-not-recorded"}:
+                warnings.warn(
+                    "The empirical E-value calibration is provisional because "
+                    "a complete structural-background audit is not recorded; "
+                    "reporting the initial parametric E-value only.",
+                    stacklevel=2,
+                )
+                self.empirical_ev = None
         if self.empirical_ev is not None:
             fitted_n = self.empirical_ev.get(
                 "n_clusters", self.ev_par.get("n_clusters"))

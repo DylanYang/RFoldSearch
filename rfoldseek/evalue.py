@@ -218,6 +218,8 @@ def calibrate_clustermax_query_conditional(
     gap_open: float = -2.0,
     gap_extend: float = -0.5,
     exclude=None,
+    is_audited=None,
+    audit_evalue_ceiling: float | None = None,
     ridge: float = 1e-3,
 ) -> dict:
     """Fit the deployment query model from full-database cluster maxima.
@@ -254,11 +256,12 @@ def calibrate_clustermax_query_conditional(
                         if exclude is None or not exclude(qi, index)]
             if not eligible:
                 continue
-            maxima.append(max(
+            score = max(
                 smith_waterman_numba(toks[qi], toks[index], sub,
                                      gap_open, gap_extend)
                 for index in eligible
-            ))
+            )
+            maxima.append(score)
         if len(maxima) < 20:
             raise ValueError(
                 f"query index {qi} has too few eligible cluster maxima to fit")
@@ -281,12 +284,46 @@ def calibrate_clustermax_query_conditional(
         [row["beta"] for row in rows],
         ridge=ridge,
     )
-    return {
+    result = {
         "query_parameter_model": model,
         "query_fits": rows,
         "n_clusters": len(members),
         "n_chains": len(toks),
     }
+    if is_audited is not None and audit_evalue_ceiling is not None:
+        # Audit against the final deployed regression, not each query's
+        # temporary MLE. Re-score instead of retaining every query--cluster
+        # score in memory; calibration is offline and correctness matters more
+        # than one additional scan.
+        audit_params = {"query_parameter_model": model}
+        missing_audit = []
+        for qi in query_indices:
+            mu, beta = clustermax_params_for_query(audit_params, toks[qi])
+            for cluster, indices in members.items():
+                if cluster == clusters[qi]:
+                    continue
+                eligible = [index for index in indices
+                            if exclude is None or not exclude(qi, index)]
+                if not eligible:
+                    continue
+                score, leader = max(
+                    (smith_waterman_numba(toks[qi], toks[index], sub,
+                                          gap_open, gap_extend), index)
+                    for index in eligible
+                )
+                raw_evalue = evalue_clustermax(
+                    score, mu, beta, len(members))
+                if (raw_evalue <= audit_evalue_ceiling
+                        and not is_audited(qi, leader)):
+                    missing_audit.append({
+                        "query_index": qi,
+                        "target_index": int(leader),
+                        "cluster": cluster,
+                        "raw_score": float(score),
+                        "raw_evalue": raw_evalue,
+                    })
+        result["missing_audit"] = missing_audit
+    return result
 
 
 def clustermax_params_for_length(params: dict, m: float):

@@ -5,6 +5,7 @@ import torch
 
 from rfoldseek import usalign
 from rfoldseek.search import Searcher
+from helpers import synthetic_evalue_params
 
 pytestmark = pytest.mark.filterwarnings(
     "ignore:E-value parameters were calibrated on .* clusters:UserWarning")
@@ -28,7 +29,8 @@ def db_path(tmp_path):
             "n_valid": len(t),
         })
     p = tmp_path / "tiny_db.pt"
-    torch.save({"n_codes": 80, "entries": entries, "checkpoint": "synthetic"}, p)
+    torch.save({"n_codes": 80, "entries": entries, "checkpoint": "synthetic",
+                "evalue_params": synthetic_evalue_params()}, p)
     return str(p)
 
 

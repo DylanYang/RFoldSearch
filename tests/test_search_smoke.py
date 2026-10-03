@@ -4,7 +4,7 @@ import pytest
 import torch
 
 from rfoldseek.search import Searcher
-from helpers import add_coords
+from helpers import add_coords, synthetic_evalue_params
 
 pytestmark = pytest.mark.filterwarnings(
     "ignore:E-value parameters were calibrated on .* clusters:UserWarning")
@@ -21,7 +21,8 @@ def test_search_pipeline(tmp_path):
         entries.append({"id": f"chain_{i:03d}.pdb", "tokens": t})
     add_coords(entries)
     db_path = tmp_path / "tiny_db.pt"
-    torch.save({"n_codes": 80, "entries": entries, "checkpoint": "synthetic"},
+    torch.save({"n_codes": 80, "entries": entries, "checkpoint": "synthetic",
+                "evalue_params": synthetic_evalue_params()},
                db_path)
 
     s = Searcher(str(db_path))

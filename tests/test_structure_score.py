@@ -7,6 +7,7 @@ from rfoldseek import structure_score as ss
 from rfoldseek import evalue as EV
 from rfoldseek.search import GAP_EXTEND, GAP_OPEN, Searcher, load_matrix
 from rfoldseek.smith_waterman import smith_waterman_numba
+from helpers import synthetic_evalue_params
 
 pytestmark = pytest.mark.filterwarnings(
     "ignore:E-value parameters were calibrated on .* clusters:UserWarning")
@@ -81,7 +82,8 @@ def db_path(tmp_path):
         entries.append({"id": f"chain_{i:03d}.pdb", "tokens": t, "coords": coords,
                         "mask": np.ones(len(t), dtype=bool), "n_valid": len(t)})
     p = tmp_path / "tiny_db.pt"
-    torch.save({"n_codes": 80, "entries": entries, "checkpoint": "synthetic"}, p)
+    torch.save({"n_codes": 80, "entries": entries, "checkpoint": "synthetic",
+                "evalue_params": synthetic_evalue_params()}, p)
     return str(p)
 
 

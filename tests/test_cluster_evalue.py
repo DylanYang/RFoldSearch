@@ -6,8 +6,9 @@ import torch
 
 from rfoldseek import evalue as EV
 from rfoldseek.database import (assign_clusters, attach_evalue_calibration,
-                                read_clusters)
-from helpers import add_coords
+                                calibration_context_fingerprint,
+                                database_fingerprint, read_clusters)
+from helpers import add_coords, synthetic_evalue_params
 
 
 def test_read_clusters_parses_a_cdhit_clstr(tmp_path):
@@ -36,6 +37,24 @@ def test_assign_clusters_gives_unmapped_chains_their_own_cluster():
     assert labels[2] != labels[3]
     assert labels[2] not in labels[:2] and labels[3] not in labels[:2]
     assert len(set(labels)) == 3
+
+
+def test_database_fingerprint_tracks_tokens_and_membership_not_cluster_names():
+    entries = [{"id": "a", "tokens": [1, 2, 3]},
+               {"id": "b", "tokens": [3, 2, 1]},
+               {"id": "c", "tokens": [1, 1, 1]}]
+    first = database_fingerprint(entries, ["x", "x", "y"], 80)
+    renamed = database_fingerprint(entries, [10, 10, 11], 80)
+    changed_tokens = database_fingerprint(
+        [entries[0], {"id": "b", "tokens": [3, 2, 2]}, entries[2]],
+        ["x", "x", "y"], 80)
+    changed_membership = database_fingerprint(entries, ["x", "y", "y"], 80)
+    assert first == renamed
+    assert first != changed_tokens
+    assert first != changed_membership
+    matrix = np.eye(4, dtype=np.float32)
+    assert calibration_context_fingerprint(first, matrix, -2.0, -0.5) != (
+        calibration_context_fingerprint(first, matrix, -3.0, -0.5))
 
 
 def test_evalue_counts_clusters_so_redundancy_does_not_inflate_it():
@@ -108,6 +127,10 @@ def test_shipped_params_are_the_cluster_max_scheme():
     assert par["search_scope"] == "full_database"
     assert par["empirical_calibration"]["n_clusters"] == par["n_clusters"]
     assert par["empirical_calibration"]["n_observations"] > 0
+    assert len(par["target_database_fingerprint"]) == 64
+    assert len(par["calibration_context_fingerprint"]) == 64
+    assert (par["empirical_calibration"]["validation_status"] ==
+            "provisional-incomplete-structural-audit")
     assert par["length_table"], "no length grid in the packaged parameters"
     for row in par["length_table"]:
         assert {"length", "mu", "beta"} <= set(row)
@@ -197,6 +220,25 @@ def test_query_conditional_clustermax_backfills_excluded_cluster_leader(monkeypa
     assert 1.0 in captured[0]
 
 
+def test_query_conditional_audit_checks_the_backfilled_leader(monkeypatch):
+    def fake_score(query, target, matrix, gap_open, gap_extend):
+        return float(target[0])
+
+    monkeypatch.setattr(EV, "smith_waterman_numba", fake_score)
+    tokens = [np.concatenate([[index], np.arange(index + 1) % (index % 3 + 1)])
+              for index in range(25)]
+    clusters = ["q0"] + ["a", "a"] + [f"c{index}" for index in range(3, 25)]
+    fitted = EV.calibrate_clustermax_query_conditional(
+        np.ones((30, 30)), tokens, clusters, [0, 3, 4],
+        exclude=lambda query, target: query == 0 and target == 2,
+        is_audited=lambda query, target: not (query == 0 and target == 1),
+        audit_evalue_ceiling=1e9, ridge=0.0,
+    )
+    q0_missing = [row for row in fitted["missing_audit"]
+                  if row["query_index"] == 0]
+    assert {row["target_index"] for row in q0_missing} == {1}
+
+
 def test_predicted_calibration_requires_matching_clustered_database(tmp_path):
     from rfoldseek.search import Searcher
 
@@ -273,7 +315,8 @@ def test_searcher_uses_the_cluster_count_of_the_loaded_database(tmp_path):
         for e, lab in zip(ents, labels):
             e = dict(e)
         db = {"n_codes": 80, "checkpoint": "none",
-              "entries": [dict(e, cluster=lab) for e, lab in zip(ents, labels)]}
+              "entries": [dict(e, cluster=lab) for e, lab in zip(ents, labels)],
+              "evalue_params": synthetic_evalue_params()}
         torch.save(db, path)
         return path
 
@@ -302,6 +345,8 @@ def test_searcher_applies_matching_embedded_empirical_calibration(tmp_path):
                            "cluster": f"c{i}"} for i in range(12)])
     from rfoldseek.search import asset
     params = json.load(open(asset("evalue_params.json")))
+    params.pop("target_database_fingerprint", None)
+    params.pop("calibration_context_fingerprint", None)
     params["empirical_calibration"] = EV.fit_empirical_calibration(
         [0.01, 0.1, 1.0, 10.0], [0.1, 0.2, 0.3, 0.4], n_clusters=12)
     db = tmp_path / "calibrated.pt"
@@ -323,6 +368,8 @@ def test_searcher_rejects_empirical_mapping_for_another_database(tmp_path):
                 "tokens": rng.integers(0, 80, size=40).tolist(),
                 "cluster": f"c{i}"} for i in range(12)]
     params = json.load(open(asset("evalue_params.json")))
+    params.pop("target_database_fingerprint", None)
+    params.pop("calibration_context_fingerprint", None)
     params["empirical_calibration"] = EV.fit_empirical_calibration(
         [0.1, 1.0], n_clusters=99)
     db = tmp_path / "mismatch.pt"
@@ -334,15 +381,21 @@ def test_searcher_rejects_empirical_mapping_for_another_database(tmp_path):
 
 
 def test_searcher_rejects_query_model_for_another_database(tmp_path):
-    from rfoldseek.search import Searcher
+    from rfoldseek.search import Searcher, asset
 
     entries = [{"id": f"chain{i}", "tokens": [i % 80] * 40,
                 "cluster": f"c{i}"} for i in range(12)]
     db = tmp_path / "mismatch_query_model.pt"
     torch.save({"n_codes": 80, "entries": entries, "n_clusters": 12}, db)
 
-    with pytest.raises(ValueError, match="attach parameters fitted for this database"):
-        Searcher(str(db))
+    params = json.load(open(asset("evalue_params.json")))
+    params["n_clusters"] = 12
+    params.pop("empirical_calibration", None)
+    path = tmp_path / "mismatch_query_model.json"
+    path.write_text(json.dumps(params))
+
+    with pytest.raises(ValueError, match="different target database"):
+        Searcher(str(db), evalue_params_path=str(path))
 
 
 @pytest.mark.filterwarnings(
@@ -361,7 +414,8 @@ def test_cli_header_reports_the_cluster_count_when_it_reports_an_evalue(tmp_path
     ents = add_coords([{"id": f"chain{i}", "tokens": [int(rng.integers(80)) for _ in range(40)],
                         "cluster": f"c{i // 4}"} for i in range(12)])
     db = tmp_path / "db.pt"
-    torch.save({"n_codes": 80, "checkpoint": "none", "entries": ents}, str(db))
+    torch.save({"n_codes": 80, "checkpoint": "none", "entries": ents,
+                "evalue_params": synthetic_evalue_params()}, str(db))
 
     cli.main(["search", "--query", "chain0", "--db", str(db), "--top_k", "1"])
     head = capsys.readouterr().out.splitlines()[0]

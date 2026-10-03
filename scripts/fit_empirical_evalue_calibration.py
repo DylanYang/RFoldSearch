@@ -36,6 +36,11 @@ def main():
                              "queries with no background hit in the fitted range")
     parser.add_argument("--raw-evalue-ceiling", type=float, default=None,
                         help="largest initial E-value included in a bounded fit")
+    parser.add_argument(
+        "--background-scaling", choices=("none", "annotated-to-full"),
+        default="none",
+        help="multiply family/query weights by N_D/B_q for annotated backgrounds",
+    )
     source = parser.add_mutually_exclusive_group(required=True)
     source.add_argument("--db", help="target database; cluster count is read from it")
     source.add_argument("--n-clusters", type=int,
@@ -65,16 +70,34 @@ def main():
                     raise ValueError("query panel needs nonempty query_id and family")
                 if query_id in panel:
                     raise ValueError(f"duplicate calibration query: {query_id}")
-                panel[query_id] = family
+                bq = row.get("background_clusters_before_structural_exclusion", "").strip()
+                panel_n = row.get("n_database_clusters", "").strip()
+                scope = row.get("background_scope", "").strip()
+                audit_complete = row.get("structural_audit_complete", "").strip()
+                audit_ceiling = row.get("structural_audit_ceiling", "").strip()
+                panel[query_id] = {
+                    "family": family,
+                    "bq": int(bq) if bq else None,
+                    "n_clusters": int(panel_n) if panel_n else None,
+                    "background_scope": scope or None,
+                    "audit_complete": (truthy(audit_complete)
+                                       if audit_complete else None),
+                    "audit_ceiling": (float(audit_ceiling)
+                                      if audit_ceiling else None),
+                }
         if not panel:
             raise ValueError("query panel is empty")
+    if args.background_scaling == "annotated-to-full" and panel is None:
+        parser.error("annotated-to-full scaling requires --query-panel with B_q metadata")
+    if (args.background_scaling == "annotated-to-full"
+            and any(metadata["background_scope"] != "annotated"
+                    for metadata in panel.values())):
+        parser.error("annotated-to-full scaling requires query metadata produced "
+                     "with --background-scope annotated")
 
     rows = []
     with open(args.background, newline="") as handle:
         reader = csv.DictReader(handle, delimiter="\t")
-        if args.query_panel and "weight" in (reader.fieldnames or []):
-            parser.error("--query-panel cannot be combined with a weight column; "
-                         "remove the column to derive panel-balanced weights")
         for row in reader:
             if truthy(row.get("structurally_related", "")):
                 continue
@@ -88,6 +111,9 @@ def main():
     values = [float(row["raw_evalue"]) for row in rows]
     explicit = [row.get("weight", "").strip() for row in rows]
     if all(explicit):
+        if panel is not None or args.background_scaling != "none":
+            parser.error("explicit weights cannot be combined with --query-panel "
+                         "or --background-scaling")
         weights = [float(value) for value in explicit]
         weighting = "explicit"
     elif any(explicit):
@@ -106,18 +132,36 @@ def main():
         if have_family:
             family_queries = defaultdict(set)
             if panel is not None:
-                for query_id, family in panel.items():
-                    family_queries[family].add(query_id)
+                for query_id, metadata in panel.items():
+                    family_queries[metadata["family"]].add(query_id)
                 for row in rows:
-                    if row.get("family", "").strip() not in ("", panel[row["query_id"]]):
+                    expected_family = panel[row["query_id"]]["family"]
+                    if row.get("family", "").strip() not in ("", expected_family):
                         raise ValueError(f"family mismatch for {row['query_id']}")
             else:
                 for row in rows:
                     family_queries[row["family"]].add(row["query_id"])
-            weights = [1.0 / (len(family_queries) * len(family_queries[
-                panel[row["query_id"]] if panel is not None else row["family"]]))
-                for row in rows]
+            weights = []
+            for row in rows:
+                family = (panel[row["query_id"]]["family"]
+                          if panel is not None else row["family"])
+                weight = 1.0 / (len(family_queries) * len(family_queries[family]))
+                if args.background_scaling == "annotated-to-full":
+                    if panel is None:
+                        parser.error("annotated-to-full scaling requires --query-panel "
+                                     "with per-query B_q metadata")
+                    metadata = panel[row["query_id"]]
+                    if metadata["bq"] is None or metadata["bq"] <= 0:
+                        raise ValueError(f"missing or invalid B_q for {row['query_id']}")
+                    if (metadata["n_clusters"] is not None
+                            and metadata["n_clusters"] != n_clusters):
+                        raise ValueError(
+                            f"database cluster count mismatch for {row['query_id']}")
+                    weight *= n_clusters / metadata["bq"]
+                weights.append(weight)
             weighting = "equal-family, equal-query-within-family"
+            if args.background_scaling == "annotated-to-full":
+                weighting += ", multiplied by N_D/B_q"
         else:
             weights = [1.0 / len(queries)] * len(rows)
             weighting = "equal-query"
@@ -125,7 +169,24 @@ def main():
     calibration["weighting"] = weighting
     if panel is not None:
         calibration["n_calibration_queries"] = len(panel)
-        calibration["n_families"] = len({family for family in panel.values()})
+        calibration["n_families"] = len({
+            metadata["family"] for metadata in panel.values()})
+    calibration["background_scaling"] = args.background_scaling
+    audit_metadata = ([metadata["audit_complete"] for metadata in panel.values()]
+                      if panel is not None else [])
+    if audit_metadata and all(value is True for value in audit_metadata):
+        calibration["validation_status"] = "background-audit-complete"
+        ceilings = {metadata["audit_ceiling"] for metadata in panel.values()}
+        if len(ceilings) != 1 or None in ceilings:
+            raise ValueError("query metadata has inconsistent structural audit ceilings")
+        audit_ceiling = ceilings.pop()
+        if (args.raw_evalue_ceiling is None
+                or args.raw_evalue_ceiling > audit_ceiling):
+            raise ValueError(
+                "empirical fit ceiling must not exceed the structural audit ceiling")
+        calibration["structural_audit_ceiling"] = audit_ceiling
+    else:
+        calibration["validation_status"] = "structural-audit-not-recorded"
     if args.raw_evalue_ceiling is not None:
         calibration["candidate_raw_evalue_ceiling"] = args.raw_evalue_ceiling
     params["empirical_calibration"] = calibration
