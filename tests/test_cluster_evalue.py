@@ -421,3 +421,18 @@ def test_cli_header_reports_the_cluster_count_when_it_reports_an_evalue(tmp_path
     head = capsys.readouterr().out.splitlines()[0]
     assert "12 chains" in head
     assert "3 clusters" in head
+
+
+def test_thinned_empirical_map_is_conservative_and_close():
+    rng = np.random.default_rng(3)
+    raw = np.sort(rng.lognormal(0.0, 2.5, size=5000))
+    weights = rng.uniform(0.2, 1.0, size=raw.size)
+    full = EV.fit_empirical_calibration(raw, weights, n_clusters=100)
+    full["candidate_raw_evalue_ceiling"] = float(raw[-1]) * 2
+    thin = EV.thin_empirical_calibration(full, 0.01)
+    assert len(thin["raw_evalue_knots"]) < len(full["raw_evalue_knots"]) / 5
+    x = np.concatenate([raw, np.logspace(-4, 4, 4000), [raw[-1] * 3]])
+    a = EV.apply_empirical_calibration(x, full)
+    b = EV.apply_empirical_calibration(x, thin)
+    assert np.all(b >= a)
+    assert np.all(b <= a * 1.01 + 1e-12)

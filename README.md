@@ -26,7 +26,7 @@ RFoldseek enables fast RNA tertiary-structure search with **3Dr**, a learned dis
 pip install .
 ```
 
-Requires Python >= 3.9. Runtime dependencies: `numpy`, `torch`, `numba`, `biotite`.
+Requires Python >= 3.9. Runtime dependencies: `numpy`, `torch`, `numba`, `scipy` (needed by numba's linear algebra in the superposition), `biotite`.
 
 ## Hardware and memory requirements
 
@@ -367,6 +367,10 @@ retains the correct family and query denominators. Experimental calibrations
 use the generated query metadata and `--background-scaling annotated-to-full`;
 predicted full-background calibrations use
 `--background-scaling none`.
+The fitted map is stored thinned: adjacent knots are merged into segments that
+report the largest calibrated value they contain, so a stored E-value is never
+smaller than the full map's and at most 1% larger (`--max-relative-step`,
+default 0.01).
 
 5. Search the target database with its matching calibrated parameters:
 
@@ -471,7 +475,7 @@ command line, the corresponding options are `--model`, `--matrix`,
 
 ## Third-party components
 
-No third-party source is vendored. Runtime dependencies are `numpy`, `torch`, `numba` and `biotite`, each
+No third-party source is vendored. Runtime dependencies are `numpy`, `torch`, `numba`, `scipy` and `biotite`, each
 under its own license. `--rerank tm` calls US-align (Zhang et al., *Nat. Methods* 2022) as an external
 program, and `--clusters` consumes the output of CD-HIT-EST (Fu et al.,
 *Bioinformatics* 2012).

@@ -462,6 +462,37 @@ def fit_empirical_calibration(raw_evalues, weights=None, n_clusters=None) -> dic
     return result
 
 
+def thin_empirical_calibration(calibration: dict, max_relative_step: float = 0.01) -> dict:
+    """Merge adjacent knots of an empirical map into conservative segments.
+
+    Each kept knot starts a segment of the original step function and takes the
+    largest calibrated value inside it, so the thinned map never reports a
+    smaller E-value than the full one, and a segment ends before the full map
+    rises more than ``max_relative_step`` above its first value. The first knot,
+    the finite-sample floor, the final value and any ceiling are unchanged.
+    """
+    if not math.isfinite(max_relative_step) or max_relative_step < 0:
+        raise ValueError("max_relative_step must be finite and non-negative")
+    knots = np.asarray(calibration["raw_evalue_knots"], dtype=np.float64)
+    mapped = np.asarray(calibration["calibrated_evalues"], dtype=np.float64)
+    keep_knots, keep_values = [], []
+    start = 0
+    while start < len(knots):
+        end = int(np.searchsorted(mapped, mapped[start] * (1.0 + max_relative_step),
+                                  side="right"))
+        end = max(end, start + 1)
+        keep_knots.append(float(knots[start]))
+        keep_values.append(float(mapped[end - 1]))
+        start = end
+    thinned = dict(calibration)
+    thinned["raw_evalue_knots"] = keep_knots
+    thinned["calibrated_evalues"] = keep_values
+    thinned["thinning"] = {"max_relative_step": float(max_relative_step),
+                           "n_full_knots": int(len(knots)),
+                           "rule": "segment maximum (conservative)"}
+    return thinned
+
+
 def apply_empirical_calibration(raw_evalue, calibration: dict):
     """Map initial E-values to observed background clusters per query.
 

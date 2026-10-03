@@ -17,7 +17,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from rfoldseek.database import load_database
-from rfoldseek.evalue import fit_empirical_calibration
+from rfoldseek.evalue import fit_empirical_calibration, thin_empirical_calibration
 
 
 def truthy(value):
@@ -34,6 +34,9 @@ def main():
     parser.add_argument("--query-panel", default=None,
                         help="TSV of all calibration query_id/family pairs, including "
                              "queries with no background hit in the fitted range")
+    parser.add_argument("--max-relative-step", type=float, default=0.01,
+                        help="merge knots into conservative segments whose calibrated "
+                             "value rises by at most this fraction (default 0.01)")
     parser.add_argument("--raw-evalue-ceiling", type=float, default=None,
                         help="largest initial E-value included in a bounded fit")
     parser.add_argument(
@@ -189,7 +192,8 @@ def main():
         calibration["validation_status"] = "structural-audit-not-recorded"
     if args.raw_evalue_ceiling is not None:
         calibration["candidate_raw_evalue_ceiling"] = args.raw_evalue_ceiling
-    params["empirical_calibration"] = calibration
+    params["empirical_calibration"] = thin_empirical_calibration(
+        calibration, args.max_relative_step)
     with open(args.output, "w") as handle:
         json.dump(params, handle, indent=2)
         handle.write("\n")
