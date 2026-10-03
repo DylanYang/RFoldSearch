@@ -132,6 +132,10 @@ def main():
                         continue
                     if known_equal(query_label["clan"], target_label["clan"]):
                         continue
+                    if ((query_id, target_id) in related
+                            or (short_id(query_id, query_id),
+                                short_id(target_id, target_id)) in related):
+                        continue
                     score = float(smith_waterman_numba(
                         query, target, matrix, GAP_OPEN, GAP_EXTEND
                     ))
@@ -151,9 +155,7 @@ def main():
                     "target_id": target_id,
                     "raw_score": score,
                     "raw_evalue": raw_evalue,
-                    "structurally_related": str(
-                        (query_id, target_id) in related
-                    ).lower(),
+                    "structurally_related": "false",
                 })
                 written += 1
             if query_number % 10 == 0:

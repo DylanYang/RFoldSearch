@@ -152,6 +152,143 @@ def calibrate_clustermax_length_dependent(
             "n_chains": len(toks), "skipped_lengths": skipped}
 
 
+def fit_query_parameter_model(lengths, entropies, mus, betas,
+                              ridge: float = 1e-3) -> dict:
+    """Fit ``[1, z(log length), z(token entropy)] -> (mu, log beta)``.
+
+    The intercept is not penalised. Predictor bounds are stored so deployment
+    can use the same boundary rule as calibration.
+    """
+    lengths = np.asarray(lengths, dtype=np.float64).reshape(-1)
+    entropies = np.asarray(entropies, dtype=np.float64).reshape(-1)
+    mus = np.asarray(mus, dtype=np.float64).reshape(-1)
+    betas = np.asarray(betas, dtype=np.float64).reshape(-1)
+    if not (len(lengths) == len(entropies) == len(mus) == len(betas)):
+        raise ValueError("query-model inputs must have the same length")
+    if len(lengths) < 3:
+        raise ValueError("need at least three per-query Gumbel fits")
+    if (np.any(~np.isfinite(lengths)) or np.any(lengths <= 0)
+            or np.any(~np.isfinite(entropies))
+            or np.any(~np.isfinite(mus))
+            or np.any(~np.isfinite(betas)) or np.any(betas <= 0)):
+        raise ValueError("query-model inputs must be finite and positive where required")
+    if not math.isfinite(ridge) or ridge < 0:
+        raise ValueError("ridge must be finite and non-negative")
+
+    log_length = np.log(lengths)
+    length_scale = float(log_length.std(ddof=0))
+    entropy_scale = float(entropies.std(ddof=0))
+    if length_scale <= 0 or entropy_scale <= 0:
+        raise ValueError("query-conditional predictors must vary in the training set")
+    centre = {
+        "log_length_mean": float(log_length.mean()),
+        "log_length_scale": length_scale,
+        "entropy_mean": float(entropies.mean()),
+        "entropy_scale": entropy_scale,
+    }
+    design = np.column_stack([
+        np.ones(len(lengths)),
+        (log_length - centre["log_length_mean"]) / length_scale,
+        (entropies - centre["entropy_mean"]) / entropy_scale,
+    ])
+    response = np.column_stack([mus, np.log(betas)])
+    gram = design.T @ design
+    gram[1:, 1:] += np.eye(2) * ridge
+    coefficients = np.linalg.solve(gram, design.T @ response)
+    return {
+        "distribution": "Gumbel",
+        "feature_order": ["intercept", "z_log_length", "z_token_entropy"],
+        "centre": centre,
+        "training_domain": {
+            "log_length_min": float(log_length.min()),
+            "log_length_max": float(log_length.max()),
+            "entropy_min": float(entropies.min()),
+            "entropy_max": float(entropies.max()),
+        },
+        "coefficients_mu_logbeta": coefficients.tolist(),
+        "ridge": float(ridge),
+    }
+
+
+def calibrate_clustermax_query_conditional(
+    sub_matrix: np.ndarray,
+    token_lists,
+    clusters,
+    query_indices,
+    gap_open: float = -2.0,
+    gap_extend: float = -0.5,
+    exclude=None,
+    ridge: float = 1e-3,
+) -> dict:
+    """Fit the deployment query model from full-database cluster maxima.
+
+    ``query_indices`` selects a pre-defined calibration panel from the target
+    database. For every query, all eligible target members are searched; the
+    query's own cluster is omitted and exclusions are applied before taking a
+    cluster maximum. Consequently, if a cluster's leading member is excluded,
+    its best remaining member is used (cluster backfill).
+    """
+    sub = np.asarray(sub_matrix, dtype=np.float32)
+    toks = [np.asarray(t, dtype=np.int64) for t in token_lists]
+    clusters = np.asarray(clusters, dtype=object)
+    if len(clusters) != len(toks):
+        raise ValueError("clusters must give one label per chain")
+    members: dict = {}
+    for index, cluster in enumerate(clusters):
+        members.setdefault(cluster, []).append(index)
+    if len(members) < 2:
+        raise ValueError("need at least two clusters to calibrate")
+    query_indices = [int(index) for index in query_indices]
+    if len(set(query_indices)) != len(query_indices):
+        raise ValueError("query_indices must not contain duplicates")
+    if any(index < 0 or index >= len(toks) for index in query_indices):
+        raise ValueError("query index is outside the target database")
+
+    rows = []
+    for qi in query_indices:
+        maxima = []
+        for cluster, indices in members.items():
+            if cluster == clusters[qi]:
+                continue
+            eligible = [index for index in indices
+                        if exclude is None or not exclude(qi, index)]
+            if not eligible:
+                continue
+            maxima.append(max(
+                smith_waterman_numba(toks[qi], toks[index], sub,
+                                     gap_open, gap_extend)
+                for index in eligible
+            ))
+        if len(maxima) < 20:
+            raise ValueError(
+                f"query index {qi} has too few eligible cluster maxima to fit")
+        mu, beta = _gumbel_mle(maxima)
+        counts = np.bincount(toks[qi])
+        probabilities = counts[counts > 0] / len(toks[qi])
+        entropy = float(-(probabilities * np.log2(probabilities)).sum())
+        rows.append({
+            "query_index": qi,
+            "length": len(toks[qi]),
+            "token_entropy": entropy,
+            "mu": mu,
+            "beta": beta,
+            "n_maxima": len(maxima),
+        })
+    model = fit_query_parameter_model(
+        [row["length"] for row in rows],
+        [row["token_entropy"] for row in rows],
+        [row["mu"] for row in rows],
+        [row["beta"] for row in rows],
+        ridge=ridge,
+    )
+    return {
+        "query_parameter_model": model,
+        "query_fits": rows,
+        "n_clusters": len(members),
+        "n_chains": len(toks),
+    }
+
+
 def clustermax_params_for_length(params: dict, m: float):
     """Interpolate ``(mu, beta)`` for a query of length ``m``.
 

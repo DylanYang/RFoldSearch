@@ -187,12 +187,22 @@ background clusters per query. E-values are computed from S_SW alone, while
 hits are ranked by the structure score R_str = S_SW × aTM, so E-values need not
 increase down the list.
 
-The numbered fitting workflow below covers a length-grid Gumbel model. An
-already fitted query-composition model for a predicted database can be used
-through the same search API and attached to its clustered index as described
-after step 5.
+The bundled experimental-database parameter asset contains both the final
+all-family query model and its empirical mapping. That mapping is used only
+when the loaded database has the matching 882 clusters. For any other database
+(including NuFold), attach its own parameter JSON; otherwise RFoldseek warns
+and reports only the initial parametric value rather than applying the wrong
+database-specific empirical curve.
 
-The files in the length-grid calibration pipeline are:
+The numbered workflow below fits the deployed linear query-conditional model
+directly from each database. For every query in a pre-defined, balanced query
+panel it searches the full target database, takes one eligible maximum per
+sequence cluster, fits a per-query Gumbel distribution, and then fits
+`[1, z(log query length), z(3Dr-token entropy)]` to `mu` and `log(beta)` by
+ridge regression. No query--target length-ratio filter is used. The historical
+length-grid model remains available only as an explicit compatibility fallback.
+
+The files in the calibration pipeline are:
 
 | File | Produced by |
 | ---- | ----------- |
@@ -200,6 +210,8 @@ The files in the length-grid calibration pipeline are:
 | `target_nr80.clstr` | CD-HIT-EST on `target_sequences.fasta` |
 | `target_db.pt` | `rfoldseek build` from the target JSONL and cluster file |
 | `labels.tsv` | Step 0 below |
+| `query_panel.tsv` | Balanced calibration-query selection fixed before fitting |
+| `adjudication.tsv` | US-align review of candidate structural relatives |
 | `target_clustermax_params.json` | Step 1 below |
 | `calibration_queries.pt` | Step 2 below |
 | `target_background.tsv` | Step 3 below |
@@ -236,14 +248,26 @@ script keeps the best included hit for each chain. The calibration scripts
 also accept the synonymous columns `entry_id`/`id`, `rfam_acc`, and
 `clan_acc`.
 
-1. Fit the initial cluster-max Gumbel model for `target_db.pt`:
+1. Fit the initial query-conditional cluster-max Gumbel model for
+`target_db.pt`. The query panel must cover the intended query-length and token-
+entropy domain and should be balanced by Rfam family rather than sampled in
+proportion to family size. Structural exclusions are applied before the
+cluster maximum is selected, so an excluded cluster leader is replaced by the
+best remaining eligible member:
 
 ```bash
 python scripts/rebuild_evalue_params.py \
   --db target_db.pt \
   --labels labels.tsv \
+  --query-panel query_panel.tsv \
+  --related-pairs adjudication.tsv \
+  --query-fits-output per_query_gumbel_fits.tsv \
   --output target_clustermax_params.json
 ```
+
+Omitting `--query-panel` uses every chain and is practical only for small
+databases. `--model length-grid` reproduces the legacy fallback; it is not the
+model used for the shipped experimental or predicted databases.
 
 2. Encode an independent calibration panel:
 
@@ -270,11 +294,12 @@ python scripts/build_empirical_evalue_background.py \
 
 The generator performs a full-database token Smith--Waterman scan, excludes
 the query's own cluster and chains from the same annotated family or clan, and
-retains only the highest-scoring member of each CD-HIT cluster. An optional
-US-align audit can be supplied with
+retains only the highest-scoring eligible member of each CD-HIT cluster. An
+optional US-align audit can be supplied with
 `--related-pairs adjudication.tsv`; pairs marked as structurally related, or
 with a mean of the query- and target-normalized TM-scores of at least 0.45,
-are marked for exclusion from the empirical null. The adjudication TSV may
+are excluded before the cluster maximum is selected; the next eligible member
+therefore backfills that cluster. The adjudication TSV may
 provide `tm_query_normalized` and `tm_target_normalized` or their mean as
 `tm_mean`.
 
@@ -288,6 +313,12 @@ python scripts/fit_empirical_evalue_calibration.py \
   --db target_db.pt \
   --output target_evalue_params.json
 ```
+
+Model assessment must keep whole Rfam families out of each test fold. In every
+leave-one-family-out fold, refit both the query-conditional Gumbel regression
+and the empirical mapping using only the remaining families. After that
+validation is complete, rerun steps 1--4 with all calibration families to
+produce the deployment JSON; do not deploy a fold-specific parameter file.
 
 `target_background.tsv` contains the required `raw_evalue` and `query_id`
 columns. It may also contain an explicit

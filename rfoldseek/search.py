@@ -57,7 +57,9 @@ class Searcher:
         # held four hundred times poses one question of the database.
         self.n_clusters = len(set(self.clusters))
         ev_path = evalue_params_path or asset("evalue_params.json")
-        if evalue_params_path is None and self.db.get("evalue_params") is not None:
+        embedded_params = self.db.get("evalue_params") is not None
+        using_packaged_default = evalue_params_path is None and not embedded_params
+        if evalue_params_path is None and embedded_params:
             self.ev_par = self.db["evalue_params"]
         else:
             self.ev_par = json.load(open(ev_path)) if os.path.exists(ev_path) else None
@@ -81,11 +83,22 @@ class Searcher:
             if fitted_n is None:
                 raise ValueError("empirical E-value calibration needs a cluster count")
             if fitted_n is not None and int(fitted_n) != self.n_clusters:
-                raise ValueError(
-                    "empirical E-value calibration was fitted for "
-                    f"{int(fitted_n)} clusters, but the loaded database has "
-                    f"{self.n_clusters}; recalibrate for this database"
-                )
+                if using_packaged_default:
+                    warnings.warn(
+                        "The packaged empirical E-value calibration is for the "
+                        f"{int(fitted_n)}-cluster experimental database, but the "
+                        f"loaded database has {self.n_clusters} clusters; reporting "
+                        "the initial parametric E-value only. Attach this database's "
+                        "own calibration to report a calibrated E-value.",
+                        stacklevel=2,
+                    )
+                    self.empirical_ev = None
+                else:
+                    raise ValueError(
+                        "empirical E-value calibration was fitted for "
+                        f"{int(fitted_n)} clusters, but the loaded database has "
+                        f"{self.n_clusters}; recalibrate for this database"
+                    )
         elif self.ev_par is not None:
             # Parametric-only params: the cluster-max null was fitted on one
             # database. Reused on a database of a different size or structural

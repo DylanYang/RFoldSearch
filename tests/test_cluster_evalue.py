@@ -103,7 +103,11 @@ def test_bounded_empirical_calibration_does_not_saturate_weak_hits():
 def test_shipped_params_are_the_cluster_max_scheme():
     from rfoldseek.search import asset
     par = json.load(open(asset("evalue_params.json")))
-    assert par["scheme"] == "cluster-max-query-conditional"
+    assert par["scheme"] == "cluster-max-query-conditional-empirical"
+    assert par["len_ratio"] is None
+    assert par["search_scope"] == "full_database"
+    assert par["empirical_calibration"]["n_clusters"] == par["n_clusters"]
+    assert par["empirical_calibration"]["n_observations"] > 0
     assert par["length_table"], "no length grid in the packaged parameters"
     for row in par["length_table"]:
         assert {"length", "mu", "beta"} <= set(row)
@@ -147,6 +151,50 @@ def test_query_conditional_gumbel_uses_token_entropy():
     del params["query_parameter_model"]["training_domain"]
     with pytest.raises(ValueError, match="training_domain"):
         EV.clustermax_params_for_query(params, [0, 1, 0, 1])
+
+
+def test_fit_query_parameter_model_recovers_linear_mu_and_log_beta():
+    lengths = np.exp(np.linspace(3.0, 7.0, 20))
+    entropies = np.linspace(2.0, 6.0, 20) ** 1.1
+    log_lengths = np.log(lengths)
+    x = (log_lengths - log_lengths.mean()) / log_lengths.std(ddof=0)
+    h = (entropies - entropies.mean()) / entropies.std(ddof=0)
+    design = np.column_stack([np.ones(len(x)), x, h])
+    expected = np.asarray([[6.0, 1.0], [1.2, 0.2], [-0.7, -0.1]])
+    response = design @ expected
+
+    model = EV.fit_query_parameter_model(
+        lengths, entropies, response[:, 0], np.exp(response[:, 1]), ridge=0.0)
+
+    assert np.asarray(model["coefficients_mu_logbeta"]) == pytest.approx(expected)
+    assert model["feature_order"] == [
+        "intercept", "z_log_length", "z_token_entropy"]
+
+
+def test_query_conditional_clustermax_backfills_excluded_cluster_leader(monkeypatch):
+    def fake_score(query, target, matrix, gap_open, gap_extend):
+        return float(target[0])
+
+    monkeypatch.setattr(EV, "smith_waterman_numba", fake_score)
+    captured = []
+
+    def fake_fit(scores):
+        captured.append(sorted(scores))
+        return float(np.mean(scores)), 1.0
+
+    monkeypatch.setattr(EV, "_gumbel_mle", fake_fit)
+    # Repeat queries with varying lengths/entropies so the regression is defined.
+    tokens = [np.concatenate([[index], np.arange(index + 1) % (index % 3 + 1)])
+              for index in range(25)]
+    clusters = ["q0"] + ["a", "a"] + [f"c{index}" for index in range(3, 25)]
+    EV.calibrate_clustermax_query_conditional(
+        np.ones((30, 30)), tokens, clusters, [0, 3, 4],
+        exclude=lambda query, target: query == 0 and target == 2,
+        ridge=0.0,
+    )
+    # For query 0, target 2 would lead cluster a but is excluded; member 1
+    # remains and must supply that cluster's maximum.
+    assert 1.0 in captured[0]
 
 
 def test_predicted_calibration_requires_matching_clustered_database(tmp_path):
