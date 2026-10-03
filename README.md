@@ -174,13 +174,13 @@ rank  target                    TM_mean  TM_query  TM_target    len
 ### E-values
 
 RFoldseek reports E-values for token Smith--Waterman searches. The initial
-E-value uses a Gumbel distribution fitted to cluster-maximum background
-scores; the search space is the number of CD-HIT-EST clusters. Experimental
-database parameters interpolate Gumbel location and scale by query length.
-Predicted database parameters can instead predict them from log query length
-and 3Dr-token entropy. These predictors are clipped to the fitted training
-range before evaluation; queries outside that range emit a warning because
-the boundary estimate is not independently validated there. Each database
+E-value uses a Gumbel distribution fitted to per-query cluster-maximum
+background scores; the search space is the number of CD-HIT-EST clusters.
+Both experimental and predicted databases can store their own linear ridge
+model of Gumbel location and log scale using log query length and 3Dr-token
+entropy. These predictors are clipped to the fitted training range before
+evaluation; queries outside that range emit a warning because the boundary
+estimate is not independently validated there. Each database
 also has its own empirical mapping from
 the initial E-value to the family-weighted mean number of unrelated
 background clusters per query. E-values are computed from S_SW alone, while
@@ -268,10 +268,10 @@ python scripts/build_empirical_evalue_background.py \
   --output target_background.tsv
 ```
 
-The generator performs a full token Smith--Waterman scan, excludes the query's
-own cluster and chains from the same annotated family or clan, applies the
-threefold length-ratio filter, and retains only the highest-scoring member of
-each CD-HIT cluster. An optional US-align audit can be supplied with
+The generator performs a full-database token Smith--Waterman scan, excludes
+the query's own cluster and chains from the same annotated family or clan, and
+retains only the highest-scoring member of each CD-HIT cluster. An optional
+US-align audit can be supplied with
 `--related-pairs adjudication.tsv`; pairs marked as structurally related, or
 with a mean of the query- and target-normalized TM-scores of at least 0.45,
 are marked for exclusion from the empirical null. The adjudication TSV may

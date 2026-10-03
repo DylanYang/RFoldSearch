@@ -89,7 +89,6 @@ def main():
                         help="TSV labels for query and target chain ids")
     parser.add_argument("--output", required=True)
     parser.add_argument("--matrix", default=None)
-    parser.add_argument("--len-ratio", default=3.0, type=float)
     parser.add_argument("--related-pairs", default=None,
                         help="optional US-align adjudication TSV")
     parser.add_argument("--tm-threshold", default=0.45, type=float)
@@ -132,9 +131,6 @@ def main():
                     if known_equal(query_label["family"], target_label["family"]):
                         continue
                     if known_equal(query_label["clan"], target_label["clan"]):
-                        continue
-                    if (len(target) > args.len_ratio * len(query) or
-                            len(query) > args.len_ratio * len(target)):
                         continue
                     score = float(smith_waterman_numba(
                         query, target, matrix, GAP_OPEN, GAP_EXTEND

@@ -40,7 +40,7 @@ def calibrate_clustermax(
     n_queries: int = 64,
     seed: int = 0,
     exclude=None,
-    len_ratio: float = 3.0,
+    len_ratio=None,
 ) -> dict:
     """Fit the null to cluster maxima rather than to individual pairs.
 
@@ -118,7 +118,7 @@ def calibrate_clustermax_length_dependent(
     n_queries: int = 64,
     seed: int = 0,
     exclude=None,
-    len_ratio: float = 3.0,
+    len_ratio=None,
     max_length_gap: float = 2.0,
 ) -> dict:
     """Cluster-max calibration on a grid of query lengths.
@@ -168,9 +168,10 @@ def clustermax_params_for_length(params: dict, m: float):
 def clustermax_params_for_query(params: dict, tokens):
     """Return Gumbel parameters for a query under the database's fitted model.
 
-    Experimental databases use the length grid. Predicted databases may store
-    a ridge model of per-query ``mu`` and ``log(beta)`` fitted from query length
-    and the Shannon entropy (in bits) of its 3Dr token composition.
+    Any database may store its own linear ridge model of per-query ``mu`` and
+    ``log(beta)`` fitted from standardised log query length and the Shannon
+    entropy (in bits) of its 3Dr-token composition. The historical length grid
+    is used only when a database has no query-conditional model.
     """
     query = np.asarray(tokens, dtype=np.int64)
     if query.ndim != 1 or not len(query) or np.any(query < 0):
@@ -207,9 +208,9 @@ def clustermax_params_for_query(params: dict, tokens):
     h = ((bounded_entropy - float(centre["entropy_mean"]))
          / float(centre["entropy_scale"]))
     coefficients = np.asarray(model["coefficients_mu_logbeta"], dtype=np.float64)
-    if coefficients.shape != (6, 2) or not np.all(np.isfinite(coefficients)):
-        raise ValueError("query-conditional E-value coefficients must be finite 6x2")
-    mu, log_beta = np.asarray([1.0, x, x * x, h, h * h, x * h]) @ coefficients
+    if coefficients.shape != (3, 2) or not np.all(np.isfinite(coefficients)):
+        raise ValueError("query-conditional E-value coefficients must be finite 3x2")
+    mu, log_beta = np.asarray([1.0, x, h]) @ coefficients
     beta = math.exp(float(log_beta))
     if not math.isfinite(mu) or not math.isfinite(beta) or beta <= 0:
         raise ValueError("query-conditional Gumbel parameters must be finite and positive")

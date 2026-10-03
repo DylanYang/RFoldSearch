@@ -134,6 +134,12 @@ def build_database(checkpoint: str, data_paths: list[str], output: str,
         query_model = embedded_evalue_params.get("query_parameter_model")
         if query_model is not None and "training_domain" not in query_model:
             raise ValueError("query-conditional E-value model needs a training_domain")
+        fitted_clusters = embedded_evalue_params.get("n_clusters")
+        if fitted_clusters is not None and int(fitted_clusters) != n_clusters:
+            raise ValueError(
+                f"E-value parameters have {int(fitted_clusters)} clusters, "
+                f"but the database has {n_clusters}"
+            )
         empirical = embedded_evalue_params.get("empirical_calibration")
         if empirical is not None:
             fitted_n = empirical.get("n_clusters", embedded_evalue_params.get("n_clusters"))

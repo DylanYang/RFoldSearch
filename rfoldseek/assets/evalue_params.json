@@ -1,12 +1,38 @@
 {
- "scheme": "cluster-max",
+ "scheme": "cluster-max-query-conditional",
  "gap_open": -2.0,
  "gap_extend": -0.5,
  "seed": 0,
- "len_ratio": 3.0,
+ "len_ratio": null,
  "calibration_database": "/Users/cassie/Desktop/RFoldseek-paper-code/files/models/db.pt",
  "n_clusters": 882,
  "n_chains": 885,
+ "query_parameter_model": {
+  "distribution": "Gumbel",
+  "feature_order": [
+   "intercept",
+   "z_log_length",
+   "z_token_entropy"
+  ],
+  "centre": {
+   "log_length_mean": 5.405412276932465,
+   "log_length_scale": 1.4314640237189997,
+   "entropy_mean": 5.108781332445416,
+   "entropy_scale": 0.8183067132985551
+  },
+  "training_domain": {
+   "log_length_min": 2.995732273553991,
+   "log_length_max": 8.392989587956931,
+   "entropy_min": 2.440820042086996,
+   "entropy_max": 6.263660143519078
+  },
+  "coefficients_mu_logbeta": [
+   [6.314415369706011, 0.8335985926771917],
+   [1.0011305030375621, 0.14505472758053625],
+   [-0.9752239208961088, -0.2642365302581427]
+  ],
+  "ridge": 0.001
+ },
  "skipped_lengths": [],
  "length_table": [
   {
@@ -96,5 +122,5 @@
  ],
  "clusters": "cd-hit-est -c 0.8 -n 5 -aS 0.8 -aL 0.8 -g 1",
  "null": "cluster maxima over real database chains, same Rfam family or clan excluded; nothing censored",
- "note": "Gumbel (mu, beta) of the cluster-max null on a grid of query lengths, interpolated by evalue.clustermax_params_for_length. E = N_clusters * (1 - exp(-exp(-(S - mu)/beta))); the bit score is (S - mu)/(beta ln 2). Fitting maxima rather than individual pairs removes the per-database censoring fraction the earlier chain-level calibration needed, and keeps the calibration stable across databases of different redundancy."
+ "note": "Database-specific Gumbel mu and log(beta) are predicted by a linear ridge model [1, z(log query length), z(3Dr-token entropy)] fitted from per-query full-database cluster maxima. The length table is retained only as a compatibility fallback. E = N_clusters * (1 - exp(-exp(-(S - mu)/beta))); the bit score is (S - mu)/(beta ln 2)."
 }

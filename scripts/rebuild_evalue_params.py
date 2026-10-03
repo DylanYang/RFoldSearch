@@ -56,7 +56,10 @@ def main():
     parser.add_argument("--lengths", default="20,30,40,60,80,120,160,220,300,500,1000,2000")
     parser.add_argument("--n-queries", default=24, type=int)
     parser.add_argument("--seed", default=0, type=int)
-    parser.add_argument("--len-ratio", default=3.0, type=float)
+    parser.add_argument(
+        "--len-ratio", default=None, type=float,
+        help="optional legacy length-ratio filter; default uses the full database",
+    )
     args = parser.parse_args()
 
     _, _, tokens, chain_ids, _, clusters = load_database(args.db)

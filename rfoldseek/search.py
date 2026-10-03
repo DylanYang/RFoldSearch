@@ -65,6 +65,15 @@ class Searcher:
                 and self.ev_par.get("query_parameter_model") is not None
                 and "training_domain" not in self.ev_par["query_parameter_model"]):
             raise ValueError("query-conditional E-value model needs a training_domain")
+        fitted_clusters = (self.ev_par or {}).get("n_clusters")
+        if (fitted_clusters is not None
+                and self.db.get("n_clusters") is not None
+                and int(fitted_clusters) != self.n_clusters):
+            raise ValueError(
+                "E-value parameters were fitted for "
+                f"{int(fitted_clusters)} clusters, but the loaded database has "
+                f"{self.n_clusters}; attach parameters fitted for this database"
+            )
         self.empirical_ev = (self.ev_par or {}).get("empirical_calibration")
         if self.empirical_ev is not None:
             fitted_n = self.empirical_ev.get(

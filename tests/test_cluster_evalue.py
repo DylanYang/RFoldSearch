@@ -103,7 +103,7 @@ def test_bounded_empirical_calibration_does_not_saturate_weak_hits():
 def test_shipped_params_are_the_cluster_max_scheme():
     from rfoldseek.search import asset
     par = json.load(open(asset("evalue_params.json")))
-    assert par["scheme"] == "cluster-max"
+    assert par["scheme"] == "cluster-max-query-conditional"
     assert par["length_table"], "no length grid in the packaged parameters"
     for row in par["length_table"]:
         assert {"length", "mu", "beta"} <= set(row)
@@ -120,8 +120,7 @@ def test_query_conditional_gumbel_uses_token_entropy():
         "centre": {"log_length_mean": 0.0, "log_length_scale": 1.0,
                    "entropy_mean": 0.0, "entropy_scale": 1.0},
         "coefficients_mu_logbeta": [
-            [10.0, 0.0], [1.0, 0.0], [0.0, 0.0],
-            [2.0, 0.0], [0.0, 0.0], [0.0, 0.0],
+            [10.0, 0.0], [1.0, 0.0], [2.0, 0.0],
         ],
     }}
     one_token = EV.clustermax_params_for_query(params, [0, 0, 0, 0])
@@ -134,9 +133,9 @@ def test_query_conditional_gumbel_uses_token_entropy():
         high_entropy = EV.clustermax_params_for_query(params, list(range(8)))
     assert long_query == pytest.approx((12.0 + np.log(8), 1.0))
     assert high_entropy == pytest.approx((12.0 + np.log(8), 1.0))
-    # A polynomial log-beta term must also use the bounded predictors.
+    # Linear log-beta terms must also use the bounded predictors.
+    params["query_parameter_model"]["coefficients_mu_logbeta"][1][1] = -1.0
     params["query_parameter_model"]["coefficients_mu_logbeta"][2][1] = -1.0
-    params["query_parameter_model"]["coefficients_mu_logbeta"][4][1] = -1.0
     at_boundary = EV.clustermax_params_for_query(params, [0, 1] * 4)
     with pytest.warns(RuntimeWarning, match="outside"):
         long_and_diverse = EV.clustermax_params_for_query(params, list(range(16)))
@@ -175,7 +174,7 @@ def test_predicted_calibration_requires_matching_clustered_database(tmp_path):
             "centre": {"log_length_mean": 0.0, "log_length_scale": 1.0,
                        "entropy_mean": 0.0, "entropy_scale": 1.0},
             "coefficients_mu_logbeta": [[8.0, np.log(3.0)]]
-                                      + [[0.0, 0.0]] * 5,
+                                      + [[0.0, 0.0]] * 2,
         },
         "empirical_calibration": {
             "raw_evalue_knots": [0.1, 1.0, 10.0],
@@ -283,6 +282,18 @@ def test_searcher_rejects_empirical_mapping_for_another_database(tmp_path):
                 "evalue_params": params}, db)
 
     with pytest.raises(ValueError, match="recalibrate for this database"):
+        Searcher(str(db))
+
+
+def test_searcher_rejects_query_model_for_another_database(tmp_path):
+    from rfoldseek.search import Searcher
+
+    entries = [{"id": f"chain{i}", "tokens": [i % 80] * 40,
+                "cluster": f"c{i}"} for i in range(12)]
+    db = tmp_path / "mismatch_query_model.pt"
+    torch.save({"n_codes": 80, "entries": entries, "n_clusters": 12}, db)
+
+    with pytest.raises(ValueError, match="attach parameters fitted for this database"):
         Searcher(str(db))
 
 
