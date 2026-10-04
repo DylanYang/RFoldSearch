@@ -121,8 +121,8 @@ def test_searcher_uses_the_cluster_count_of_the_loaded_database(tmp_path):
     assert s_few.n_clusters == 2
 
     q = np.asarray(ents[0]["tokens"], dtype=np.int64)
-    h_many = s_many.search(q, top_k=1)
-    h_few = s_few.search(q, top_k=1)
+    h_many = s_many.search(q, top_k=1, rerank="sw")
+    h_few = s_few.search(q, top_k=1, rerank="sw")
     assert h_many and h_few, "the synthetic query must retrieve something"
     assert "evalue" in h_many[0], "the packaged parameters were not applied"
     assert h_few[0]["evalue"] < h_many[0]["evalue"]
@@ -144,7 +144,8 @@ def test_searcher_applies_matching_embedded_empirical_calibration(tmp_path):
                 "evalue_params": params}, db)
 
     searcher = Searcher(str(db))
-    hit = searcher.search(np.asarray(entries[0]["tokens"]), top_k=1)[0]
+    hit = searcher.search(np.asarray(entries[0]["tokens"]), top_k=1,
+                          rerank="sw")[0]
     assert hit["evalue"] == EV.apply_empirical_calibration(
         hit["raw_evalue"], params["empirical_calibration"])
 

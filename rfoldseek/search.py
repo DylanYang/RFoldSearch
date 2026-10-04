@@ -1,10 +1,11 @@
 """The search pipeline: encode -> prefilter -> rerank.
 
-Two reranking backends share the token prefilter. ``sw`` scores candidates by
-affine-gap token Smith-Waterman and reports a Karlin-Altschul E-value. ``tm``
+Three reranking backends share the token prefilter. ``tm_a`` (default) aligns
+candidates by affine-gap token Smith-Waterman, superposes the aligned C4'
+atoms and ranks by R_str = S_SW * TM_a. ``sw`` keeps the token-only
+Smith-Waterman ranking. Both report the E-value of S_SW. ``tm``
 (RFoldseek-TM) hands the candidate pool to US-align and ranks by the mean of
-its two length-normalised TM-scores; TM-scores have no Karlin-Altschul
-statistics, so that backend reports no E-value.
+its two length-normalised TM-scores; that backend reports no E-value.
 """
 import json
 import os
@@ -15,6 +16,7 @@ import torch
 from .database import load_database, short_id
 from .prefilter import KMER_K, KmerPrefilter
 from .smith_waterman import smith_waterman_numba
+from . import structure_score as _ss
 from . import evalue as _evalue
 from . import usalign as _usalign
 from . import tiebreak as _tiebreak
@@ -23,6 +25,8 @@ GAP_OPEN = -2.0
 GAP_EXTEND = -0.5
 DEFAULT_TOP_N = 200      # candidate-pool size after the prefilter (validation-selected)
 DEFAULT_MIN_DIAG = 2     # Foldseek double-match rule
+DEFAULT_RERANK = "tm_a"
+RERANKERS = ("tm_a", "sw", "tm")
 _NO_CUT = 1 << 62        # ask the prefilter for every candidate, uncut
 
 _ASSETS = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets")
@@ -66,6 +70,24 @@ class Searcher:
                     f"{self.n_clusters}; recalibrate for this database"
                 )
         self._tie_cache = {}
+        self._flat = None
+
+    def _flat_structures(self):
+        """Flattened tokens and C4' coordinates for TM_a, built on first use.
+
+        Return ``None`` when any database chain lacks coordinates matching its
+        token sequence.
+        """
+        if self._flat is None:
+            xyz = [_ss.c4_coords(e, len(t)) for e, t in zip(self.ents, self.toks)]
+            if any(x is None for x in xyz):
+                self._flat = False
+            else:
+                offsets = np.zeros(len(self.toks) + 1, np.int64)
+                offsets[1:] = np.cumsum([len(t) for t in self.toks])
+                self._flat = (np.concatenate(self.toks).astype(np.int64), offsets,
+                              np.concatenate(xyz))
+        return self._flat or None
 
     def tie_keys(self, seed):
         """Hash tie-break keys for every chain, cached per seed."""
@@ -74,12 +96,15 @@ class Searcher:
         return self._tie_cache[seed]
 
     def search(self, qtok, top_k=10, top_n=DEFAULT_TOP_N,
-               min_diag=DEFAULT_MIN_DIAG, self_idx=-1, rerank="sw",
+               min_diag=DEFAULT_MIN_DIAG, self_idx=-1, rerank=DEFAULT_RERANK,
                usalign=None, query_entry=None, tie_seed=None):
         """-> list of hit dicts, ranked by the chosen backend's score.
 
-        ``rerank="sw"`` ranks by Smith-Waterman score and reports bits and an
-        E-value. ``rerank="tm"`` ranks by US-align TM-score and reports
+        ``rerank="tm_a"`` (default) ranks by ``structure_score``
+        (R_str = S_SW * TM_a) and reports ``tm_a``, ``aligned`` (aligned
+        nucleotide pairs), and the S_SW-derived fields ``sw_score``, ``bits``,
+        and E-value. ``rerank="sw"`` retains the token-only Smith-Waterman
+        ranking. ``rerank="tm"`` ranks by US-align TM-score and reports
         ``tm_mean``/``tm_query``/``tm_target`` instead.
 
         ``tie_seed`` makes equal scores break by a hash of the chain id
@@ -87,8 +112,9 @@ class Searcher:
         cut and the reranking. ``None`` keeps the historical index-order
         behaviour.
         """
-        if rerank not in ("sw", "tm"):
-            raise ValueError(f"unknown rerank backend {rerank!r}; use 'sw' or 'tm'")
+        if rerank not in RERANKERS:
+            raise ValueError(
+                f"unknown rerank backend {rerank!r}; use one of {RERANKERS}")
         qtok = np.asarray(qtok, dtype=np.int64)
         if len(qtok) < KMER_K:
             raise ValueError(f"query has {len(qtok)} tokens; need >= {KMER_K}")
@@ -110,20 +136,38 @@ class Searcher:
                     )
                 query_entry = self.ents[self_idx]
             return self._rerank_tm(query_entry, cand, top_k, usalign, tie_seed)
-        sw = np.array([smith_waterman_numba(qtok, self.toks[t], self.sub,
-                                            GAP_OPEN, GAP_EXTEND) for t in cand])
-        if tie_seed is None:
-            order = np.argsort(-sw, kind="stable")
+        tm_a = aligned = None
+        if rerank == "tm_a":
+            (toks, offsets, xyz), qxyz = self._tm_a_inputs(
+                qtok, query_entry, self_idx)
+            sw, tm_a, aligned = _ss.score_candidates(
+                qtok, qxyz, np.asarray(cand, np.int64), toks, offsets, xyz,
+                self.sub, np.float32(GAP_OPEN), np.float32(GAP_EXTEND))
+            score = sw * tm_a
         else:
-            order = np.lexsort((self.tie_keys(tie_seed)[cand], -sw))
+            sw = np.array([
+                smith_waterman_numba(qtok, self.toks[t], self.sub,
+                                     GAP_OPEN, GAP_EXTEND)
+                for t in cand
+            ])
+            score = sw
+        if tie_seed is None:
+            order = np.argsort(-score, kind="stable")
+        else:
+            order = np.lexsort((self.tie_keys(tie_seed)[cand], -score))
         hits = []
+        if self.ev_par is not None:
+            mu, beta = _evalue.clustermax_params_for_length(self.ev_par,
+                                                            len(qtok))
         for rank, oi in enumerate(order[:top_k], 1):
             t, sc = int(cand[oi]), float(sw[oi])
             hit = {"rank": rank, "target": self.ids[t], "sw_score": sc,
                    "length": len(self.toks[t])}
+            if tm_a is not None:
+                hit["structure_score"] = float(score[oi])
+                hit["tm_a"] = float(tm_a[oi])
+                hit["aligned"] = int(aligned[oi])
             if self.ev_par is not None:
-                mu, beta = _evalue.clustermax_params_for_length(self.ev_par,
-                                                                len(qtok))
                 hit["bits"] = float(_evalue.bit_score_clustermax(sc, mu, beta))
                 raw_evalue = float(_evalue.evalue_clustermax(
                     sc, mu, beta, self.n_clusters))
@@ -135,6 +179,22 @@ class Searcher:
                     hit["evalue"] = raw_evalue
             hits.append(hit)
         return hits
+
+    def _tm_a_inputs(self, qtok, query_entry, self_idx):
+        """Return (flattened database, query C4') for TM_a ranking."""
+        flat = self._flat_structures()
+        if flat is None:
+            raise ValueError(
+                "structure-aware ranking needs C4' coordinates for every "
+                "database chain; rebuild the database from structures")
+        entry = query_entry if query_entry is not None else (
+            self.ents[self_idx] if self_idx >= 0 else None)
+        qxyz = _ss.c4_coords(entry, len(qtok)) if entry is not None else None
+        if qxyz is None:
+            raise ValueError(
+                "structure-aware ranking needs the query's C4' coordinates; "
+                "pass query_entry, or search a chain in the database")
+        return flat, qxyz
 
     def _rerank_tm(self, query_entry, cand, top_k, usalign, tie_seed=None):
         """Rank the candidate pool by US-align TM-score (RFoldseek-TM)."""

@@ -15,7 +15,7 @@ DB = os.environ.get("RFOLDSEEK_PAPER_DB")
 @pytest.mark.skipif(not DB, reason="RFOLDSEEK_PAPER_DB not set")
 def test_readme_example():
     s = Searcher(DB)
-    hits = s.search_id("PDB_00001FFZ_1_A", top_k=3)
+    hits = s.search_id("PDB_00001FFZ_1_A", top_k=3, rerank="sw")
     got = [(h["target"], round(h["sw_score"], 2)) for h in hits]
     assert got == [("PDB_00001FFK_1_0", 203.54),
                    ("PDB_00005AN9_1_N", 180.02),

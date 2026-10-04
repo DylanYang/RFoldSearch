@@ -281,10 +281,10 @@
           <div class="dbs" id="dbs"><div class="hint"><span class="spinner"></span>Connecting to the server…</div></div>
           <div class="label" style="margin-top:18px">Mode</div>
           <div class="seg modes" id="mode">
-            <label class="on"><input type="radio" name="rerank" value="sw" checked>
-              <span class="m-name">Fast search</span>
-              <span class="m-sub">RFoldseek · structural-token alignment</span>
-              <span class="m-speed">Fastest, recommended for routine search</span></label>
+            <label class="on"><input type="radio" name="rerank" value="tm_a" checked>
+              <span class="m-name">Structure-score search</span>
+              <span class="m-sub">RFoldseek · R<sub>str</sub> = S<sub>SW</sub> × TM<sub>a</sub></span>
+              <span class="m-speed">Default, structure-aware candidate ranking</span></label>
             <label id="mode-tm"><input type="radio" name="rerank" value="tm">
               <span class="m-name">Accurate reranking</span>
               <span class="m-sub">RFoldseek-TM · coordinate refinement</span>
@@ -307,7 +307,7 @@
     </div>
     <div class="about">
       <div class="card"><h3>3Dr alphabet</h3><p>Each nucleotide's local geometry is quantised into one of 80 learned states, turning an RNA chain into a token string.</p></div>
-      <div class="card"><h3>Fast search</h3><p>A k-mer prefilter over an inverted index, then affine-gap Smith–Waterman with the Structure-BLOSUM matrix.</p></div>
+      <div class="card"><h3>Structure score</h3><p>Affine-gap Smith–Waterman defines the token alignment; aligned C4′ atoms then yield TM<sub>a</sub>, and candidates rank by S<sub>SW</sub> × TM<sub>a</sub>.</p></div>
       <div class="card"><h3>RFoldseek-TM</h3><p>Optionally reranks the same candidates by US-align TM-score for higher sensitivity at a higher cost.</p></div>
     </div>
   </section>
@@ -319,7 +319,7 @@
       <p class="lead">RFoldseek encodes every nucleotide as one of 80 learned 3Dr structural states, aligns the resulting token strings, and reports the closest structures in each database.</p>
 
       <h2>1. Choose a mode</h2>
-      <p><b>Fast search</b> (RFoldseek) prefilters with a k-mer index and aligns structural tokens with an affine-gap Smith–Waterman and the Structure-BLOSUM matrix. It is the recommended mode for routine searches.
+      <p><b>Structure-score search</b> (RFoldseek) prefilters with a k-mer index, aligns structural tokens with affine-gap Smith–Waterman, superposes the aligned C4′ atoms, and ranks by R<sub>str</sub> = S<sub>SW</sub> × TM<sub>a</sub>. It is the default mode.
          <b>Accurate reranking</b> (RFoldseek-TM) re-scores the same candidates with US-align on the coordinates; it is slower and can improve the structural ranking.</p>
 
       <h2>2. The hit table</h2>
@@ -329,7 +329,8 @@
         <tr><td>Seq. id.</td><td>Nucleotide identity over the aligned positions. Hidden for databases without sequences.</td></tr>
         <tr><td>Aligned nt / 3Dr id.</td><td>Number of aligned nucleotides and the fraction of aligned pairs with the same structural token. Shown for databases without sequences.</td></tr>
         <tr><td>RMSD</td><td>Root-mean-square deviation of the superposed aligned nucleotides, in Å.</td></tr>
-        <tr><td>E-value, Bits</td><td>Expected number of chance hits at least this good, and the normalised alignment score. Databases marked <i>uncalibrated</i> have no empirical E-value calibration yet: use them to rank hits, not as significance.</td></tr>
+        <tr><td>R<sub>str</sub>, TM<sub>a</sub></td><td>The default ranking score S<sub>SW</sub> × TM<sub>a</sub>, and the query/target length-normalised TM-score of the fixed token alignment.</td></tr>
+        <tr><td>E-value, Bits</td><td>Expected number of chance Smith–Waterman hits at least this good, and the normalised token-alignment score. These are derived from S<sub>SW</sub>, not R<sub>str</sub>. Databases marked <i>uncalibrated</i> have no empirical E-value calibration yet.</td></tr>
         <tr><td>Symmetric TM-score</td><td>Accurate reranking only. The mean of the query-normalised and target-normalised US-align TM-scores over the whole chains.</td></tr>
         <tr><td>Query coverage</td><td>The part of your query that is aligned; darker means higher identity.</td></tr>
       </table>
