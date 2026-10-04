@@ -406,27 +406,18 @@ def evalue_clustermax(score, mu: float, beta: float, n_clusters: int):
     return float(n_clusters) * tail
 
 
-def fit_empirical_calibration(raw_evalues, weights=None, n_clusters=None) -> dict:
-    """Fit a monotone empirical correction to background E-values.
+def fit_power_calibration(raw_evalues, weights=None, n_clusters=None,
+                          maximum=100.0, n_points=96) -> dict:
+    """Fit ``E_cal = a * E0**b`` to weighted background counts.
 
-    ``raw_evalues`` contains initial cluster-max E-values from known background
-    (structurally unrelated) hits; the caller must first remove genuine
-    structural homologues from the background -- same annotated family or clan,
-    and cross-family candidates with a high symmetric US-align TM-score -- or
-    the calibration is inflated by real matches and turns over-strict.
-    ``weights`` gives each observation's contribution to the expected number of
-    background clusters per query. Thus, at a threshold ``e``, the cumulative
-    weight of observations with ``raw_evalue <= e`` is the observed
-    background-cluster count to report as the calibrated E-value. Equal-query
-    or equal-family weighting should be performed by the caller when creating
-    these weights; equal-family weighting keeps large, redundant families from
-    dominating the fit.
-
-    Repeated knots are collapsed so tied raw E-values receive the same
-    calibrated value. A half-observation finite-sample floor avoids unsupported
-    zero E-values below the smallest observed background value. Values below
-    the first knot are deliberately not extrapolated: the calibration data do
-    not establish the shape of that unobserved tail.
+    ``raw_evalues`` are initial cluster-max E-values for structurally unrelated
+    background hits. ``weights`` define their contributions to the observed
+    number of background clusters per query; callers use equal-family and
+    equal-query weighting, with any database-specific background expansion,
+    before calling this function. The observed cumulative count is evaluated
+    on a logarithmic grid through ``maximum`` and fitted by least squares in
+    log--log space. The returned positive ``a`` and ``b`` define a monotone
+    database-specific correction.
     """
     values = np.asarray(raw_evalues, dtype=np.float64).reshape(-1)
     if weights is None:
@@ -443,17 +434,41 @@ def fit_empirical_calibration(raw_evalues, weights=None, n_clusters=None) -> dic
         raise ValueError("weights must be finite and positive")
     if n_clusters is not None and int(n_clusters) < 1:
         raise ValueError("n_clusters must be positive")
+    if not math.isfinite(maximum) or maximum <= 0:
+        raise ValueError("maximum must be finite and positive")
+    if int(n_points) < 2:
+        raise ValueError("n_points must be at least two")
 
     order = np.argsort(values, kind="stable")
     values, weights = values[order], weights[order]
-    knots, first = np.unique(values, return_index=True)
-    knot_weights = np.add.reduceat(weights, first)
-    cumulative = np.cumsum(knot_weights)
+    positive = values[values > 0]
+    if not len(positive):
+        raise ValueError("need at least one positive background E-value")
+    lower = max(float(positive.min()), 1e-6)
+    upper = min(float(maximum), float(values.max()))
+    if upper <= lower:
+        raise ValueError("insufficient E-value range for power calibration")
+    thresholds = np.geomspace(lower, upper, int(n_points))
+    cumulative = np.cumsum(weights)
+    positions = np.searchsorted(values, thresholds, side="right")
+    observed = np.zeros_like(thresholds)
+    present = positions > 0
+    observed[present] = cumulative[positions[present] - 1]
+    keep = observed > 0
+    fit_x, fit_y = thresholds[keep], observed[keep]
+    if len(fit_x) < 2:
+        raise ValueError("insufficient positive background counts for power calibration")
+    slope, intercept = np.polyfit(np.log(fit_x), np.log(fit_y), 1)
+    a, b = math.exp(float(intercept)), float(slope)
+    if not math.isfinite(a) or not math.isfinite(b) or a <= 0 or b <= 0:
+        raise ValueError("power calibration requires finite positive a and b")
     result = {
-        "scheme": "empirical-monotone",
-        "raw_evalue_knots": knots.tolist(),
-        "calibrated_evalues": cumulative.tolist(),
-        "finite_sample_floor": float(0.5 * weights.min()),
+        "scheme": "power-law",
+        "a": a,
+        "b": b,
+        "fit_raw_evalue_min": float(fit_x.min()),
+        "fit_raw_evalue_max": float(fit_x.max()),
+        "fit_grid_points": int(len(fit_x)),
         "n_observations": int(values.size),
         "total_weight": float(cumulative[-1]),
     }
@@ -462,65 +477,16 @@ def fit_empirical_calibration(raw_evalues, weights=None, n_clusters=None) -> dic
     return result
 
 
-def thin_empirical_calibration(calibration: dict, max_relative_step: float = 0.01) -> dict:
-    """Merge adjacent knots of an empirical map into conservative segments.
-
-    Each kept knot starts a segment of the original step function and takes the
-    largest calibrated value inside it, so the thinned map never reports a
-    smaller E-value than the full one, and a segment ends before the full map
-    rises more than ``max_relative_step`` above its first value. The first knot,
-    the finite-sample floor, the final value and any ceiling are unchanged.
-    """
-    if not math.isfinite(max_relative_step) or max_relative_step < 0:
-        raise ValueError("max_relative_step must be finite and non-negative")
-    knots = np.asarray(calibration["raw_evalue_knots"], dtype=np.float64)
-    mapped = np.asarray(calibration["calibrated_evalues"], dtype=np.float64)
-    keep_knots, keep_values = [], []
-    start = 0
-    while start < len(knots):
-        end = int(np.searchsorted(mapped, mapped[start] * (1.0 + max_relative_step),
-                                  side="right"))
-        end = max(end, start + 1)
-        keep_knots.append(float(knots[start]))
-        keep_values.append(float(mapped[end - 1]))
-        start = end
-    thinned = dict(calibration)
-    thinned["raw_evalue_knots"] = keep_knots
-    thinned["calibrated_evalues"] = keep_values
-    thinned["thinning"] = {"max_relative_step": float(max_relative_step),
-                           "n_full_knots": int(len(knots)),
-                           "rule": "segment maximum (conservative)"}
-    return thinned
-
-
-def apply_empirical_calibration(raw_evalue, calibration: dict):
-    """Map initial E-values to observed background clusters per query.
-
-    The empirical CDF is a right-continuous step function: a raw E-value equal
-    to a stored knot includes that knot. Values below the first knot receive
-    the finite-sample floor rather than an unvalidated tail extrapolation.
-    A calibration fitted only up to an explicit raw
-    E-value ceiling reports the uncalibrated (conservative) raw E-value beyond
-    that ceiling instead of saturating at the last empirical count.
-    """
+def apply_power_calibration(raw_evalue, calibration: dict):
+    """Apply a positive monotone power-law correction to initial E-values."""
     values = np.asarray(raw_evalue, dtype=np.float64)
-    knots = np.asarray(calibration["raw_evalue_knots"], dtype=np.float64)
-    mapped = np.asarray(calibration["calibrated_evalues"], dtype=np.float64)
-    if knots.ndim != 1 or mapped.ndim != 1 or len(knots) != len(mapped) or not len(knots):
-        raise ValueError("invalid empirical E-value calibration table")
-    if np.any(np.diff(knots) <= 0) or np.any(np.diff(mapped) < 0):
-        raise ValueError("empirical E-value calibration must be monotone")
-    positions = np.searchsorted(knots, values, side="right")
-    floor = float(calibration.get("finite_sample_floor", 0.0))
-    output = np.full(values.shape, floor, dtype=np.float64)
-    present = positions > 0
-    output[present] = mapped[np.minimum(positions[present] - 1, len(mapped) - 1)]
-    ceiling = calibration.get("candidate_raw_evalue_ceiling")
-    if ceiling is not None:
-        if float(ceiling) < float(knots[-1]):
-            raise ValueError("empirical E-value ceiling is below the final knot")
-        output = np.where(values > float(ceiling),
-                          np.maximum(values, float(mapped[-1])), output)
+    a, b = float(calibration["a"]), float(calibration["b"])
+    if (not math.isfinite(a) or not math.isfinite(b)
+            or a <= 0 or b <= 0):
+        raise ValueError("power calibration requires finite positive a and b")
+    if np.any(~np.isfinite(values)) or np.any(values < 0):
+        raise ValueError("raw E-values must be finite and non-negative")
+    output = a * np.power(values, b)
     if output.ndim == 0:
         return float(output)
     return output

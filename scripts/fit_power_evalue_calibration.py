@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Attach a database-specific empirical correction to E-value parameters.
+"""Attach a database-specific power-law correction to E-value parameters.
 
 The input TSV is produced by a calibration benchmark and must contain
 ``raw_evalue``. It may supply an explicit ``weight`` per row. Otherwise it must
@@ -17,7 +17,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from rfoldseek.database import load_database
-from rfoldseek.evalue import fit_empirical_calibration, thin_empirical_calibration
+from rfoldseek.evalue import fit_power_calibration
 
 
 def truthy(value):
@@ -34,9 +34,6 @@ def main():
     parser.add_argument("--query-panel", default=None,
                         help="TSV of all calibration query_id/family pairs, including "
                              "queries with no background hit in the fitted range")
-    parser.add_argument("--max-relative-step", type=float, default=0.01,
-                        help="merge knots into conservative segments whose calibrated "
-                             "value rises by at most this fraction (default 0.01)")
     parser.add_argument("--raw-evalue-ceiling", type=float, default=None,
                         help="largest initial E-value included in a bounded fit")
     parser.add_argument(
@@ -168,7 +165,10 @@ def main():
         else:
             weights = [1.0 / len(queries)] * len(rows)
             weighting = "equal-query"
-    calibration = fit_empirical_calibration(values, weights, n_clusters)
+    fit_maximum = (args.raw_evalue_ceiling if args.raw_evalue_ceiling is not None
+                   else max(values))
+    calibration = fit_power_calibration(
+        values, weights, n_clusters, maximum=fit_maximum)
     calibration["weighting"] = weighting
     if panel is not None:
         calibration["n_calibration_queries"] = len(panel)
@@ -186,14 +186,14 @@ def main():
         if (args.raw_evalue_ceiling is None
                 or args.raw_evalue_ceiling > audit_ceiling):
             raise ValueError(
-                "empirical fit ceiling must not exceed the structural audit ceiling")
+                "power fit ceiling must not exceed the structural audit ceiling")
         calibration["structural_audit_ceiling"] = audit_ceiling
     else:
         calibration["validation_status"] = "structural-audit-not-recorded"
     if args.raw_evalue_ceiling is not None:
-        calibration["candidate_raw_evalue_ceiling"] = args.raw_evalue_ceiling
-    params["empirical_calibration"] = thin_empirical_calibration(
-        calibration, args.max_relative_step)
+        calibration["fit_raw_evalue_ceiling"] = args.raw_evalue_ceiling
+    params["scheme"] = "cluster-max-query-conditional-power"
+    params["power_calibration"] = calibration
     with open(args.output, "w") as handle:
         json.dump(params, handle, indent=2)
         handle.write("\n")

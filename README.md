@@ -90,13 +90,15 @@ Under `--rerank tm` the score columns are `TM_mean`, `TM_query` and `TM_target`.
 
 The E-value is the expected number of unrelated database **clusters** (CD-HIT, 80% identity) reaching a hit's score, so a family held hundreds of times counts once. It is computed in two steps:
 
-1. A Gumbel null of per-cluster maximum scores, whose location and scale are predicted from the query's length and 3Dr-token entropy, gives an initial E-value.
-2. A database-specific empirical map converts it into the observed number of structurally unrelated clusters per query (US-align TM-score < 0.45).
+1. A Gumbel null of per-cluster maximum scores gives an initial E-value. Its parameters follow the database-specific linear model `(mu_q, log beta_q) = (1, z_log_length, z_token_entropy) B_D`.
+2. A database-specific positive power law, `E_cal = a_D * E0**b_D`, calibrates it to the observed number of structurally unrelated clusters per query (US-align TM-score < 0.45).
+
+Gumbel fitting, calibration and deployment all use the complete target database; no query--target length-ratio filter is applied.
 
 Parameters belong to one database. RFoldseek checks a fingerprint of the tokens, clusters, substitution matrix and gap costs, and does not apply parameters fitted for another database:
 
 - **Your own database**: without its own parameters, searches run normally but report no E-value. Fit them as below.
-- **The bundled 885-chain experimental database**: the packaged parameters report the initial E-value only; the empirical map is provisional and will be refitted before release.
+- **The bundled 885-chain experimental database**: the packaged parameters report the initial E-value only; its power fit is provisional until the structural audit is complete through the fitted range.
 
 ### Calibrating a database
 
@@ -123,16 +125,16 @@ python scripts/rebuild_evalue_params.py --db target_db.pt --labels labels.tsv \
 **2. Background.** One observation per query and cluster.
 
 ```bash
-python scripts/build_empirical_evalue_background.py --db target_db.pt \
+python scripts/build_evalue_calibration_background.py --db target_db.pt \
   --queries calibration_queries.pt --params target_clustermax_params.json \
   --labels labels.tsv --related-pairs adjudication.tsv --audit-ceiling 100 \
   --background-scope all --output target_background.tsv
 ```
 
-**3. Empirical map.**
+**3. Power-law calibration.**
 
 ```bash
-python scripts/fit_empirical_evalue_calibration.py --params target_clustermax_params.json \
+python scripts/fit_power_evalue_calibration.py --params target_clustermax_params.json \
   --background target_background.tsv --query-panel target_background.queries.tsv \
   --background-scaling none --raw-evalue-ceiling 100 --db target_db.pt \
   --output target_evalue_params.json
@@ -150,7 +152,7 @@ Rules that matter:
 - **Audit to completion.** Steps 1 and 2 need a US-align result for every cluster leader with initial E-value ≤ 100. If any is missing they stop and write `*.missing-audit.tsv`. Run US-align on those pairs, append the results to `adjudication.tsv` and rerun; a related leader is replaced by the next member, which may need its own audit, so repeat until both steps succeed.
 - **Predicted vs experimental databases.** Predicted databases use `--background-scope all` and `--background-scaling none`, as above. Experimental databases use `--background-scope annotated` and `--background-scaling annotated-to-full`, which counts only Rfam-annotated background clusters and rescales them to the whole database.
 - **Validate by family.** Assess the calibration leave-one-Rfam-family-out, refitting steps 1–3 without the held-out family in each fold; deploy the fit on all families.
-- The stored map is thinned into conservative segments: a stored E-value is never smaller than the full map's and at most 1% larger (`--max-relative-step`).
+- The fitted `a_D > 0` and `b_D > 0` make calibration monotone and preserve raw-score ranking for a fixed query.
 
 When CD-HIT was given positional ids (`t0`, `t1`, …), add `--index-prefix t` to `attach-calibration`.
 
@@ -183,7 +185,7 @@ hits = s.search(np.asarray(enc["tokens"], np.int64), query_entry=enc, top_k=10)
 #   'sw_score': …, 'bits': …, 'evalue': …, 'length': …}, …]
 ```
 
-`query_entry` supplies the query coordinates needed for reranking. `top_n`, `min_diag`, `rerank` and `tie_seed` are accepted by both calls. `evalue` (and `bits`) are present when E-value parameters apply to the database; with an empirical map, `raw_evalue` holds the initial value.
+`query_entry` supplies the query coordinates needed for reranking. `top_n`, `min_diag`, `rerank` and `tie_seed` are accepted by both calls. `evalue` (and `bits`) are present when E-value parameters apply to the database; with power calibration, `raw_evalue` holds the initial value.
 
 ## Third-party components
 

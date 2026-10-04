@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build cluster-max background observations for empirical E-value fitting."""
+"""Build cluster-max background observations for power E-value fitting."""
 
 from __future__ import annotations
 

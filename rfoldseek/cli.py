@@ -85,8 +85,8 @@ def cmd_search(a):
     if a.rerank != "tm" and s.ev_par is not None:
         size += f", {s.n_clusters} clusters"
     head = f"# query: {qname}  ({qlen} tokens)   database: {a.db}  ({size})"
-    if a.rerank != "tm" and s.empirical_ev is not None:
-        head += "   E-values: database-calibrated"
+    if a.rerank != "tm" and s.power_ev is not None:
+        head += "   E-values: power-calibrated"
     if a.rerank == "tm":
         head += "   rerank: RFoldseek-TM"
     print(head)

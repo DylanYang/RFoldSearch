@@ -88,48 +88,44 @@ def test_evalue_extreme_tail_does_not_collapse_to_zero():
     assert value == pytest.approx(expected, rel=1e-12)
 
 
-def test_empirical_calibration_is_a_monotone_weighted_background_count():
-    calibration = EV.fit_empirical_calibration(
-        [0.1, 0.1, 1.0, 10.0], weights=[0.2, 0.3, 0.5, 1.0], n_clusters=12)
+def test_power_calibration_fits_and_applies_a_monotone_map():
+    raw = np.geomspace(0.01, 10.0, 200)
+    expected_a, expected_b = 1.7, 0.8
+    observed = expected_a * raw ** expected_b
+    weights = np.diff(np.r_[0.0, observed])
+    calibration = EV.fit_power_calibration(
+        raw, weights=weights, n_clusters=12, maximum=10.0)
 
-    assert calibration["raw_evalue_knots"] == [0.1, 1.0, 10.0]
-    assert calibration["calibrated_evalues"] == pytest.approx([0.5, 1.0, 2.0])
-    observed = EV.apply_empirical_calibration(
-        np.array([0.01, 0.1, 0.5, 1.0, 100.0]), calibration)
-    assert observed == pytest.approx([0.1, 0.5, 0.5, 1.0, 2.0])
-    assert np.all(np.diff(observed) >= 0)
-
-
-def test_invalid_empirical_calibration_is_rejected():
-    with pytest.raises(ValueError, match="monotone"):
-        EV.apply_empirical_calibration(
-            1.0, {"raw_evalue_knots": [1.0, 0.1],
-                  "calibrated_evalues": [0.1, 1.0]})
+    assert calibration["scheme"] == "power-law"
+    assert calibration["a"] == pytest.approx(expected_a, rel=0.03)
+    assert calibration["b"] == pytest.approx(expected_b, rel=0.02)
+    mapped = EV.apply_power_calibration(
+        np.array([0.0, 0.1, 1.0, 10.0]), calibration)
+    assert mapped[0] == 0.0
+    assert np.all(np.diff(mapped) > 0)
 
 
-def test_bounded_empirical_calibration_does_not_saturate_weak_hits():
-    calibration = {
-        "raw_evalue_knots": [1.0, 10.0, 99.0],
-        "calibrated_evalues": [0.1, 1.0, 18.0],
-        "finite_sample_floor": 0.01,
-        "candidate_raw_evalue_ceiling": 100.0,
-    }
-    assert EV.apply_empirical_calibration(
-        [0.1, 99.5, 100.1, 1000.0], calibration) == pytest.approx(
-            [0.01, 18.0, 100.1, 1000.0])
+@pytest.mark.parametrize("calibration", [
+    {"a": 0.0, "b": 1.0}, {"a": 1.0, "b": 0.0},
+    {"a": float("inf"), "b": 1.0},
+])
+def test_invalid_power_calibration_is_rejected(calibration):
+    with pytest.raises(ValueError, match="positive"):
+        EV.apply_power_calibration(1.0, calibration)
 
 
 def test_shipped_params_are_the_cluster_max_scheme():
     from rfoldseek.search import asset
     par = json.load(open(asset("evalue_params.json")))
-    assert par["scheme"] == "cluster-max-query-conditional-empirical"
+    assert par["scheme"] == "cluster-max-query-conditional-power"
     assert par["len_ratio"] is None
     assert par["search_scope"] == "full_database"
-    assert par["empirical_calibration"]["n_clusters"] == par["n_clusters"]
-    assert par["empirical_calibration"]["n_observations"] > 0
+    assert par["power_calibration"]["n_clusters"] == par["n_clusters"]
+    assert par["power_calibration"]["a"] > 0
+    assert par["power_calibration"]["b"] > 0
     assert len(par["target_database_fingerprint"]) == 64
     assert len(par["calibration_context_fingerprint"]) == 64
-    assert (par["empirical_calibration"]["validation_status"] ==
+    assert (par["power_calibration"]["validation_status"] ==
             "provisional-incomplete-structural-audit")
     assert par["length_table"], "no length grid in the packaged parameters"
     for row in par["length_table"]:
@@ -254,7 +250,7 @@ def test_predicted_calibration_requires_matching_clustered_database(tmp_path):
         if i % 2 == 0 else f"1\t40nt, >t{i}... at +/90.00%\n"
         for i in range(12)))
     params = {
-        "scheme": "predicted-query-conditional-clustermax-empirical",
+        "scheme": "predicted-query-conditional-clustermax-power",
         "n_clusters": 6,
         "query_parameter_model": {
             "distribution": "Gumbel",
@@ -266,11 +262,7 @@ def test_predicted_calibration_requires_matching_clustered_database(tmp_path):
             "coefficients_mu_logbeta": [[8.0, np.log(3.0)]]
                                       + [[0.0, 0.0]] * 2,
         },
-        "empirical_calibration": {
-            "raw_evalue_knots": [0.1, 1.0, 10.0],
-            "calibrated_evalues": [0.01, 0.1, 1.0],
-            "finite_sample_floor": 0.005,
-        },
+        "power_calibration": {"a": 0.1, "b": 1.0, "n_clusters": 6},
     }
     path = tmp_path / "predicted.json"
     path.write_text(json.dumps(params))
@@ -286,8 +278,8 @@ def test_predicted_calibration_requires_matching_clustered_database(tmp_path):
                            top_k=2)
     assert hits
     for hit in hits:
-        expected = EV.apply_empirical_calibration(hit["raw_evalue"],
-                                                   params["empirical_calibration"])
+        expected = EV.apply_power_calibration(hit["raw_evalue"],
+                                               params["power_calibration"])
         assert hit["evalue"] == expected
     assert [hit["structure_score"] for hit in hits] == sorted(
         [hit["structure_score"] for hit in hits], reverse=True)
@@ -336,7 +328,7 @@ def test_searcher_uses_the_cluster_count_of_the_loaded_database(tmp_path):
     assert h_few[0]["evalue"] < h_many[0]["evalue"]
 
 
-def test_searcher_applies_matching_embedded_empirical_calibration(tmp_path):
+def test_searcher_applies_matching_embedded_power_calibration(tmp_path):
     from rfoldseek.search import Searcher
 
     rng = np.random.default_rng(3)
@@ -347,8 +339,10 @@ def test_searcher_applies_matching_embedded_empirical_calibration(tmp_path):
     params = json.load(open(asset("evalue_params.json")))
     params.pop("target_database_fingerprint", None)
     params.pop("calibration_context_fingerprint", None)
-    params["empirical_calibration"] = EV.fit_empirical_calibration(
-        [0.01, 0.1, 1.0, 10.0], [0.1, 0.2, 0.3, 0.4], n_clusters=12)
+    params["power_calibration"] = {
+        "scheme": "power-law", "a": 0.4, "b": 0.8, "n_clusters": 12,
+        "validation_status": "background-audit-complete",
+    }
     db = tmp_path / "calibrated.pt"
     torch.save({"n_codes": 80, "entries": entries,
                 "evalue_params": params}, db)
@@ -356,11 +350,11 @@ def test_searcher_applies_matching_embedded_empirical_calibration(tmp_path):
     searcher = Searcher(str(db))
     hit = searcher.search(np.asarray(entries[0]["tokens"]), query_entry=entries[0],
                           top_k=1)[0]
-    assert hit["evalue"] == EV.apply_empirical_calibration(
-        hit["raw_evalue"], params["empirical_calibration"])
+    assert hit["evalue"] == EV.apply_power_calibration(
+        hit["raw_evalue"], params["power_calibration"])
 
 
-def test_searcher_rejects_empirical_mapping_for_another_database(tmp_path):
+def test_searcher_rejects_power_mapping_for_another_database(tmp_path):
     from rfoldseek.search import Searcher, asset
 
     rng = np.random.default_rng(4)
@@ -370,8 +364,7 @@ def test_searcher_rejects_empirical_mapping_for_another_database(tmp_path):
     params = json.load(open(asset("evalue_params.json")))
     params.pop("target_database_fingerprint", None)
     params.pop("calibration_context_fingerprint", None)
-    params["empirical_calibration"] = EV.fit_empirical_calibration(
-        [0.1, 1.0], n_clusters=99)
+    params["power_calibration"] = {"a": 1.0, "b": 1.0, "n_clusters": 99}
     db = tmp_path / "mismatch.pt"
     torch.save({"n_codes": 80, "entries": entries,
                 "evalue_params": params}, db)
@@ -390,7 +383,7 @@ def test_searcher_rejects_query_model_for_another_database(tmp_path):
 
     params = json.load(open(asset("evalue_params.json")))
     params["n_clusters"] = 12
-    params.pop("empirical_calibration", None)
+    params.pop("power_calibration", None)
     path = tmp_path / "mismatch_query_model.json"
     path.write_text(json.dumps(params))
 
@@ -421,18 +414,3 @@ def test_cli_header_reports_the_cluster_count_when_it_reports_an_evalue(tmp_path
     head = capsys.readouterr().out.splitlines()[0]
     assert "12 chains" in head
     assert "3 clusters" in head
-
-
-def test_thinned_empirical_map_is_conservative_and_close():
-    rng = np.random.default_rng(3)
-    raw = np.sort(rng.lognormal(0.0, 2.5, size=5000))
-    weights = rng.uniform(0.2, 1.0, size=raw.size)
-    full = EV.fit_empirical_calibration(raw, weights, n_clusters=100)
-    full["candidate_raw_evalue_ceiling"] = float(raw[-1]) * 2
-    thin = EV.thin_empirical_calibration(full, 0.01)
-    assert len(thin["raw_evalue_knots"]) < len(full["raw_evalue_knots"]) / 5
-    x = np.concatenate([raw, np.logspace(-4, 4, 4000), [raw[-1] * 3]])
-    a = EV.apply_empirical_calibration(x, full)
-    b = EV.apply_empirical_calibration(x, thin)
-    assert np.all(b >= a)
-    assert np.all(b <= a * 1.01 + 1e-12)

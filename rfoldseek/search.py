@@ -119,38 +119,39 @@ class Searcher:
                 f"{int(fitted_clusters)} clusters, but the loaded database has "
                 f"{self.n_clusters}; attach parameters fitted for this database"
             )
-        self.empirical_ev = (self.ev_par or {}).get("empirical_calibration")
-        if self.empirical_ev is not None:
-            validation_status = self.empirical_ev.get("validation_status")
+        self.power_ev = (self.ev_par or {}).get("power_calibration")
+        if self.power_ev is not None:
+            _evalue.apply_power_calibration(0.0, self.power_ev)
+            validation_status = self.power_ev.get("validation_status")
             if validation_status in {
                     "provisional-incomplete-structural-audit",
                     "structural-audit-not-recorded"}:
                 warnings.warn(
-                    "The empirical E-value calibration is provisional because "
+                    "The power-law E-value calibration is provisional because "
                     "a complete structural-background audit is not recorded; "
                     "reporting the initial parametric E-value only.",
                     stacklevel=2,
                 )
-                self.empirical_ev = None
-        if self.empirical_ev is not None:
-            fitted_n = self.empirical_ev.get(
+                self.power_ev = None
+        if self.power_ev is not None:
+            fitted_n = self.power_ev.get(
                 "n_clusters", self.ev_par.get("n_clusters"))
             if fitted_n is None:
-                raise ValueError("empirical E-value calibration needs a cluster count")
+                raise ValueError("power E-value calibration needs a cluster count")
             if fitted_n is not None and int(fitted_n) != self.n_clusters:
                 if using_packaged_default:
                     warnings.warn(
-                        "The packaged empirical E-value calibration is for the "
+                        "The packaged power E-value calibration is for the "
                         f"{int(fitted_n)}-cluster experimental database, but the "
                         f"loaded database has {self.n_clusters} clusters; reporting "
                         "the initial parametric E-value only. Attach this database's "
                         "own calibration to report a calibrated E-value.",
                         stacklevel=2,
                     )
-                    self.empirical_ev = None
+                    self.power_ev = None
                 else:
                     raise ValueError(
-                        "empirical E-value calibration was fitted for "
+                        "power E-value calibration was fitted for "
                         f"{int(fitted_n)} clusters, but the loaded database has "
                         f"{self.n_clusters}; recalibrate for this database"
                     )
@@ -168,9 +169,9 @@ class Searcher:
                     f"clusters but this database has {self.n_clusters} "
                     "(>2x different); the parametric E-value may be "
                     "miscalibrated on a database of this size or structural "
-                    "makeup. Fit a database-specific empirical_calibration "
-                    "(scripts/build_empirical_evalue_background.py + "
-                    "scripts/fit_empirical_evalue_calibration.py).",
+                    "makeup. Fit a database-specific power_calibration "
+                    "(scripts/build_evalue_calibration_background.py + "
+                    "scripts/fit_power_evalue_calibration.py).",
                     stacklevel=2,
                 )
         self._tie_cache = {}
@@ -259,10 +260,10 @@ class Searcher:
                 hit["bits"] = float(_evalue.bit_score_clustermax(sc, mu, beta))
                 raw_evalue = float(_evalue.evalue_clustermax(
                     sc, mu, beta, self.n_clusters))
-                if self.empirical_ev is not None:
+                if self.power_ev is not None:
                     hit["raw_evalue"] = raw_evalue
-                    hit["evalue"] = float(_evalue.apply_empirical_calibration(
-                        raw_evalue, self.empirical_ev))
+                    hit["evalue"] = float(_evalue.apply_power_calibration(
+                        raw_evalue, self.power_ev))
                 else:
                     hit["evalue"] = raw_evalue
             hits.append(hit)

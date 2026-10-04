@@ -30,6 +30,6 @@ def synthetic_evalue_params():
     for field in ("target_database_fingerprint",
                   "calibration_context_fingerprint", "n_clusters"):
         params.pop(field, None)
-    params.pop("empirical_calibration", None)
+    params.pop("power_calibration", None)
     params.pop("validation_status", None)
     return params

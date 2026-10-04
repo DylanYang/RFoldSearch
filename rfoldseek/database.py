@@ -2,6 +2,7 @@
 from __future__ import annotations
 import hashlib
 import json
+import math
 import os
 
 import numpy as np
@@ -11,6 +12,14 @@ from .backbone import extract_backbone_coords
 from .edges import find_base_pair_and_stack_idx
 from .prefilter import KMER_K
 from .tokenizer import encode_entry, load_model
+
+
+def _validate_power_calibration(calibration):
+    if calibration is None:
+        return
+    a, b = float(calibration["a"]), float(calibration["b"])
+    if not math.isfinite(a) or not math.isfinite(b) or a <= 0 or b <= 0:
+        raise ValueError("power E-value calibration requires positive finite a and b")
 
 
 def database_fingerprint(entries, clusters, n_codes: int = 80) -> str:
@@ -192,15 +201,16 @@ def build_database(checkpoint: str, data_paths: list[str], output: str,
         fitted_target = embedded_evalue_params.get("target_database_fingerprint")
         if fitted_target is not None and fitted_target != target_fingerprint:
             raise ValueError("E-value parameters were fitted for a different target database")
-        empirical = embedded_evalue_params.get("empirical_calibration")
-        if empirical is not None:
-            fitted_n = empirical.get("n_clusters", embedded_evalue_params.get("n_clusters"))
+        power = embedded_evalue_params.get("power_calibration")
+        if power is not None:
+            _validate_power_calibration(power)
+            fitted_n = power.get("n_clusters", embedded_evalue_params.get("n_clusters"))
             if fitted_n is None:
-                raise ValueError("empirical E-value calibration needs a cluster count")
+                raise ValueError("power E-value calibration needs a cluster count")
             fitted_n = int(fitted_n)
             if fitted_n != n_clusters:
                 raise ValueError(
-                    f"empirical E-value calibration has {fitted_n} clusters, "
+                    f"power E-value calibration has {fitted_n} clusters, "
                     f"but the database has {n_clusters}"
                 )
     db = {"n_codes": int(n_codes), "entries": entries, "checkpoint": checkpoint,
@@ -260,9 +270,10 @@ def attach_evalue_calibration(database: str, clusters: str,
     if query_model is not None and "training_domain" not in query_model:
         raise ValueError("query-conditional E-value model needs a training_domain")
     fitted_n = params.get("n_clusters")
-    empirical = params.get("empirical_calibration")
-    if empirical is not None:
-        fitted_n = empirical.get("n_clusters", fitted_n)
+    power = params.get("power_calibration")
+    if power is not None:
+        _validate_power_calibration(power)
+        fitted_n = power.get("n_clusters", fitted_n)
     if fitted_n is None or int(fitted_n) != n_clusters:
         raise ValueError(
             f"E-value parameters have {fitted_n} clusters, "

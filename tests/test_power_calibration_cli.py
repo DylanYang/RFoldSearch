@@ -1,4 +1,4 @@
-"""Argument combinations for empirical E-value fitting."""
+"""Argument combinations for power-law E-value fitting."""
 
 import json
 import subprocess
@@ -6,7 +6,7 @@ import sys
 from pathlib import Path
 
 
-SCRIPT = Path(__file__).resolve().parents[1] / "scripts/fit_empirical_evalue_calibration.py"
+SCRIPT = Path(__file__).resolve().parents[1] / "scripts/fit_power_evalue_calibration.py"
 
 
 def test_query_panel_rejects_explicit_weight_column(tmp_path):
@@ -27,10 +27,11 @@ def test_query_panel_rejects_explicit_weight_column(tmp_path):
     assert "explicit weights cannot be combined" in rejected.stderr
     assert not output.exists()
 
-    background.write_text("query_id\tfamily\traw_evalue\nq1\tF1\t0.1\n")
+    background.write_text(
+        "query_id\tfamily\traw_evalue\nq1\tF1\t0.1\nq2\tF1\t1.0\n")
     accepted = subprocess.run(command, capture_output=True, text=True)
     assert accepted.returncode == 0, accepted.stderr
-    fitted = json.loads(output.read_text())["empirical_calibration"]
+    fitted = json.loads(output.read_text())["power_calibration"]
     assert fitted["n_calibration_queries"] == 2
     assert fitted["weighting"] == "equal-family, equal-query-within-family"
 
@@ -63,8 +64,9 @@ def test_annotated_background_scaling_uses_family_balanced_nd_over_bq(tmp_path):
         "--output", str(output),
     ], capture_output=True, text=True)
     assert result.returncode == 0, result.stderr
-    fitted = json.loads(output.read_text())["empirical_calibration"]
-    assert fitted["calibrated_evalues"] == [0.5, 0.75]
+    fitted = json.loads(output.read_text())["power_calibration"]
+    assert fitted["a"] > 0
+    assert fitted["b"] > 0
     assert fitted["total_weight"] == 0.75
     assert fitted["background_scaling"] == "annotated-to-full"
     assert fitted["validation_status"] == "background-audit-complete"
