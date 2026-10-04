@@ -67,7 +67,7 @@ function renderDbs() {
         <div class="name">${esc(d.label)}</div>
         <div class="meta">${d.n_chains.toLocaleString()} chains${d.built ? ` · built ${esc(d.built)}` : ""}
           ${d.evalue_calibrated ? "" : '<span class="badge warn" title="This database has no empirical E-value calibration yet; E-values rank hits but are not calibrated significance.">E-value uncalibrated</span>'}</div>
-        ${d.source ? `<div class="meta">${esc(d.source)}</div>` : ""}
+        ${d.source ? `<div class="meta">${esc(d.source)}${d.url ? ` · <a href="${esc(d.url)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">website ↗</a>` : ""}</div>` : ""}
         ${d.notice ? `<div class="notice">${esc(d.notice)}</div>` : ""}
       </div>
     </label>`).join("");
@@ -284,6 +284,8 @@ function covBar(a, qlen) {
 // NuFold / RNAcentral models are named URS<id>_<taxid>_rank_<n>
 const URS = /^(URS[0-9A-F]{10})_(\d+)(?:_rank_(\d+))?/;
 
+const rfamOf = (h) => (h.rfam && h.rfam !== "N/A" ? h.rfam : null);
+
 function shortTarget(h) {
   const u = !h.pdb && h.target.match(URS);
   if (u) return u[1];
@@ -295,11 +297,21 @@ function noSequence(res) {
   return !!h && h.aln.t_seq_known === false;
 }
 
+// NuFold models are named URS<id>_<taxid>_rank_<n>; the NuFold database page of an
+// entry is /rna/URS<id>_<taxid>, RNAcentral's is /rna/URS<id>/<taxid>
+function nufoldLink(u, text) {
+  return `<a href="https://nufold.kiharalab.org/rna/${u[1]}_${u[2]}" target="_blank" rel="noopener"
+    onclick="event.stopPropagation()">${text}</a>`;
+}
+function rnacentralLink(u, text) {
+  return `<a href="https://rnacentral.org/rna/${u[1]}/${u[2]}" target="_blank" rel="noopener"
+    onclick="event.stopPropagation()">${text}</a>`;
+}
+
 function targetCell(h) {
   const u = !h.pdb && h.target.match(URS);
   if (u) {
-    return `<a class="tgt" href="https://rnacentral.org/rna/${u[1]}/${u[2]}" target="_blank"
-      onclick="event.stopPropagation()">${u[1]}</a><span class="tgt"> · taxon ${u[2]}${u[3] ? ` · model ${u[3]}` : ""}</span>`;
+    return `<span class="tgt">${nufoldLink(u, u[1])} · taxon ${u[2]}${u[3] ? ` · model ${u[3]}` : ""}</span>`;
   }
   if (h.pdb) {
     const chain = h.auth_asym && h.auth_asym !== h.chain ? `${h.chain} (auth ${h.auth_asym})` : h.chain;
@@ -316,6 +328,7 @@ function renderTable() {
   $("tab-meta").innerHTML = esc(`${res.database.n_chains.toLocaleString()} chains searched in ` +
     `${res.seconds.toFixed(2)} s` + (res.database.source ? ` · ${res.database.source}` : "") +
     (res.database.built ? ` · built ${res.database.built}` : "")) +
+    (res.database.url ? ` · <a href="${esc(res.database.url)}" target="_blank" rel="noopener">${esc(res.database.url.replace(/^https?:\/\//, ""))}</a>` : "") +
     (res.database.notice ? `<div class="notice">${esc(res.database.notice)}</div>` : "");
   const noSeq = noSequence(res);
   const ncol = (tm ? 7 : 8) + (noSeq ? 1 : 0);
@@ -332,7 +345,7 @@ function renderTable() {
       <td>${targetCell(h)}</td>
       <td class="desc"><div class="t" title="${esc(h.title || "")}">${esc(h.desc || h.title || (URS.test(h.target) ? "Predicted structure (NuFold)" : "—"))}</div>
         ${h.organism ? `<div class="o">${esc(h.organism)}</div>` : ""}
-        ${h.rfam || h.plddt != null ? `<div class="o plain">${[h.rfam && `Rfam ${esc(h.rfam)}`, h.plddt != null && `pLDDT ${h.plddt.toFixed(1)}`, h.msa_depth != null && `MSA ${h.msa_depth.toLocaleString()}`].filter(Boolean).join(" · ")}</div>` : ""}</td>
+        ${rfamOf(h) || h.plddt != null ? `<div class="o plain">${[rfamOf(h) && `Rfam ${esc(rfamOf(h))}`, h.plddt != null && `pLDDT ${h.plddt.toFixed(1)}`, h.msa_depth != null && `MSA ${h.msa_depth.toLocaleString()}`].filter(Boolean).join(" · ")}</div>` : ""}</td>
       ${noSeq ? `<td class="num">${a.n_aligned ?? "—"}</td><td class="num">${pct(a.token_identity)}</td>`
               : `<td class="num">${pct(a.seq_identity)}</td>`}
       <td class="num">${a.rmsd == null ? "—" : a.rmsd.toFixed(2) + " Å"}</td>
@@ -399,11 +412,13 @@ function alignmentHtml(h, a) {
     }
   }
   const structure = h.title ? `<div class="r"><span>Structure</span><span>${esc(h.title)}</span></div>` : "";
-  const model = h.plddt != null || h.rfam ? `<div class="r"><span>Model</span><span>${[h.rfam && `<a href="https://rfam.org/family/${esc(h.rfam)}" target="_blank">Rfam ${esc(h.rfam)}</a>`, h.plddt != null && `mean pLDDT <b>${h.plddt.toFixed(1)}</b>`, h.msa_depth != null && `MSA depth ${h.msa_depth.toLocaleString()}`].filter(Boolean).join(" · ")}</span></div>` : "";
+  const urs = !h.pdb && h.target.match(URS);
+  const links = urs ? `<div class="r"><span>Links</span><span>${nufoldLink(urs, "NuFold entry ↗")} · ${rnacentralLink(urs, "RNAcentral ↗")}</span></div>` : "";
+  const model = h.plddt != null || rfamOf(h) ? `<div class="r"><span>Model</span><span>${[rfamOf(h) && `<a href="https://rfam.org/family/${esc(rfamOf(h))}" target="_blank">Rfam ${esc(rfamOf(h))}</a>`, h.plddt != null && `mean pLDDT <b>${h.plddt.toFixed(1)}</b>`, h.msa_depth != null && `MSA depth ${h.msa_depth.toLocaleString()}`].filter(Boolean).join(" · ")}</span></div>` : "";
   const method = h.method ? `<div class="r"><span>Method</span><span>${esc(h.method)}${h.resolution ? ` · ${h.resolution} Å` : ""}</span></div>` : "";
   return `<div class="summary">
       <div class="r"><span>Alignment</span><span><b>${a.n_aligned} nt</b> · Query ${a.q_start}–${a.q_end}/${a.q_len} · Target ${a.t_start}–${a.t_end}/${a.t_len} · 3Dr identity <b>${pct(a.token_identity)}</b></span></div>
-      ${structure}${method}${model}</div>
+      ${structure}${method}${model}${links}</div>
     <div class="stats">${stats}</div>
     ${lines.length ? `<pre class="aln">${lines.join("\n")}</pre>`
       : '<div class="hint">No sequence available for this database.</div>'}

@@ -7,7 +7,7 @@ length, the MSA depth and the mean pLDDT of every entry; this joins it onto the
 search database and writes ``<db>.meta.json`` next to it, in the format
 ``app/engine.py`` reads:
 
-    {"source": ..., "built": ..., "notice": ...,
+    {"source": ..., "built": ..., "url": ..., "notice": ...,
      "entries": {id: {"desc": "Homo sapiens tRNA", "rfam": "RF00005",
                       "plddt": 78.0, "msa_depth": 836}}}
 
@@ -51,13 +51,14 @@ def main() -> None:
             entries[i] = {}
             continue
         hit += 1
-        entries[i] = {"desc": r["description"], "rfam": r["rfam_family"],
+        entries[i] = {"desc": r["description"], **({"rfam": r["rfam_family"]} if r["rfam_family"] not in ("", "N/A") else {}),
                       "plddt": float(r["avg_plddt"]),
                       "msa_depth": int(r["msa_depth"])}
     out = args.out or args.db.rsplit(".", 1)[0] + ".meta.json"
     with open(out, "w") as fh:
         json.dump({"source": f"NuFold predicted structures ({args.release})",
                    "built": dt.date.today().isoformat(),
+                   "url": "https://nufold.kiharalab.org",
                    **({"notice": args.notice} if args.notice else {}),
                    "entries": entries}, fh, separators=(",", ":"))
     print(f"{len(ids):,} models, {hit:,} found in the table -> {out}")

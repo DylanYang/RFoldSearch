@@ -69,6 +69,7 @@ class DatabaseHandle:
     source: Optional[str] = None
     built: Optional[str] = None
     notice: Optional[str] = None
+    url: Optional[str] = None
     lock: threading.Lock = field(default_factory=threading.Lock)
 
     def info(self) -> dict:
@@ -76,6 +77,7 @@ class DatabaseHandle:
                 "n_chains": self.n_chains, "source": self.source,
                 "built": self.built,
                 "notice": self.notice,
+                "url": self.url,
                 "evalue_calibrated": bool(
                     (self.searcher.ev_par or {}).get("empirical_calibration")
                     and self.searcher.db.get("clustered"))}
@@ -141,6 +143,7 @@ class Engine:
                     side = json.load(fh)
                 h.source, h.built = side.get("source"), side.get("built")
                 h.notice = side.get("notice")
+                h.url = side.get("url")
                 h.meta = {short_id(k, i): v
                           for i, (k, v) in enumerate(side["entries"].items())}
                 missing = sum(cid not in h.meta for cid in h.searcher.ids)
