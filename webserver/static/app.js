@@ -228,8 +228,10 @@ function renderResult() {
   const q = job.query;
   $("res-title").textContent = q.filename;
   const p = job.params;
+  const mode = p.rerank === "tm" ? "RFoldseek-TM"
+    : p.rerank === "tm_a" ? "RFoldseek structure score" : "RFoldseek SW";
   $("res-sub").textContent = `${q.n_tokens} nucleotides encoded · ` +
-    `${p.rerank === "tm" ? "RFoldseek-TM" : "RFoldseek"} · searched ${job.created.replace("T", " ").slice(0, 16)}`;
+    `${mode} · searched ${job.created.replace("T", " ").slice(0, 16)}`;
   $("dl-tsv").href = `/api/result/${job.id}/download?format=tsv`;
   $("dl-json").href = `/api/result/${job.id}/download?format=json`;
   const keys = Object.keys(job.results);
@@ -251,13 +253,15 @@ function renderBest() {
   const h = res.hits[0];
   if (!h) { $("best").innerHTML = ""; return; }
   const tm = res.rerank === "tm";
+  const tmA = res.rerank === "tm_a";
   const a = h.aln || {};
   const kv = [
     ["Aligned", a.n_aligned == null ? "—" : `${a.n_aligned} nt`],
     ["3Dr identity", pct(a.token_identity)],
     ...(noSequence(res) ? [] : [["Seq. identity", pct(a.seq_identity)]]),
     ["RMSD", a.rmsd == null ? "—" : `${a.rmsd.toFixed(2)} Å`],
-    tm ? ["Symmetric TM", h.tm_mean.toFixed(3)] : ["E-value", fmtE(h.evalue)],
+    tm ? ["Symmetric TM", h.tm_mean.toFixed(3)]
+       : tmA ? ["TM_a", h.tm_a.toFixed(3)] : ["E-value", fmtE(h.evalue)],
   ].map(([k, v]) => `<div>${k}<b>${v}</b></div>`).join("");
   $("best").innerHTML = `<div class="best">
     <div><div class="tag">Best hit</div>
@@ -324,6 +328,7 @@ function targetCell(h) {
 function renderTable() {
   const res = job.results[activeDb];
   const tm = res.rerank === "tm";
+  const tmA = res.rerank === "tm_a";
   const cal = res.database.evalue_calibrated;
   $("tab-meta").innerHTML = esc(`${res.database.n_chains.toLocaleString()} chains searched in ` +
     `${res.seconds.toFixed(2)} s` + (res.database.source ? ` · ${res.database.source}` : "") +
@@ -331,12 +336,13 @@ function renderTable() {
     (res.database.url ? ` · <a href="${esc(res.database.url)}" target="_blank" rel="noopener">${esc(res.database.url.replace(/^https?:\/\//, ""))}</a>` : "") +
     (res.database.notice ? `<div class="notice">${esc(res.database.notice)}</div>` : "");
   const noSeq = noSequence(res);
-  const ncol = (tm ? 7 : 8) + (noSeq ? 1 : 0);
+  const ncol = (tm ? 7 : tmA ? 9 : 8) + (noSeq ? 1 : 0);
   const head = `<tr><th>#</th><th>Target</th><th>Description</th>
     ${noSeq ? '<th class="num" title="Aligned nucleotides">Aligned nt</th><th class="num" title="Fraction of aligned pairs with the same 3Dr structural token">3Dr id.</th>'
             : '<th class="num">Seq. id.</th>'}<th class="num">RMSD</th>
     ${tm ? '<th class="num" title="Mean of the query- and target-normalised US-align TM-scores over the whole chains">Symmetric TM-score</th>'
-         : `<th class="num">E-value${cal ? "" : "*"}</th><th class="num">Bits</th>`}
+         : tmA ? `<th class="num" title="S_SW × TM_a">R_str</th><th class="num">TM_a</th><th class="num">E-value${cal ? "" : "*"}</th>`
+               : `<th class="num">E-value${cal ? "" : "*"}</th><th class="num">Bits</th>`}
     <th>Query coverage</th></tr>`;
   const rows = res.hits.map((h) => {
     const a = h.aln || {};
@@ -350,7 +356,8 @@ function renderTable() {
               : `<td class="num">${pct(a.seq_identity)}</td>`}
       <td class="num">${a.rmsd == null ? "—" : a.rmsd.toFixed(2) + " Å"}</td>
       ${tm ? `<td class="num">${h.tm_mean.toFixed(3)}</td>`
-           : `<td class="num">${fmtE(h.evalue)}</td><td class="num">${h.bits == null ? h.sw_score.toFixed(1) : h.bits.toFixed(1)}</td>`}
+           : tmA ? `<td class="num">${h.structure_score.toFixed(2)}</td><td class="num">${h.tm_a.toFixed(3)}</td><td class="num">${fmtE(h.evalue)}</td>`
+                 : `<td class="num">${fmtE(h.evalue)}</td><td class="num">${h.bits == null ? h.sw_score.toFixed(1) : h.bits.toFixed(1)}</td>`}
       <td class="cov">${covBar(h.aln, job.query.n_tokens)}</td></tr>
       ${h.rank === openRank ? `<tr><td class="detail" colspan="${ncol}">${detailHtml(h)}</td></tr>` : ""}`;
   }).join("");
@@ -362,7 +369,8 @@ function renderTable() {
     renderTable();
   }));
   $("foot").textContent = tm ? "Ranked by the symmetric TM-score: the mean of the query- and target-normalised US-align TM-scores over the whole chains."
-    : `Ranked by 3Dr Smith–Waterman score.${cal ? "" : " * E-values for this database are not yet empirically calibrated; use them to rank hits, not as significance."}`;
+    : tmA ? `Ranked by R_str = S_SW × TM_a. E-values are derived from S_SW, not R_str.${cal ? "" : " * E-values for this database are not yet empirically calibrated."}`
+          : `Ranked by 3Dr Smith–Waterman score.${cal ? "" : " * E-values for this database are not yet empirically calibrated; use them to rank hits, not as significance."}`;
   if (openRank != null) openDetail(res.hits[openRank - 1]);
 }
 

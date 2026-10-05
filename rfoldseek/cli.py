@@ -8,7 +8,8 @@ import numpy as np
 import torch
 
 from .database import build_database, short_id, structure_to_entry
-from .search import (DEFAULT_MIN_DIAG, DEFAULT_TOP_N, Searcher, asset)
+from .search import (DEFAULT_MIN_DIAG, DEFAULT_RERANK, DEFAULT_TOP_N, RERANKERS,
+                     Searcher, asset)
 from .tokenizer import encode_entry, load_model
 from .usalign import USalignFailed, USalignNotFound
 
@@ -79,6 +80,8 @@ def cmd_search(a):
         head += "   E-values: database-calibrated"
     if a.rerank == "tm":
         head += "   rerank: RFoldseek-TM"
+    elif a.rerank == "tm_a":
+        head += "   rerank: R_str = S_SW x TM_a"
     print(head)
     if not hits:
         print("# no candidates passed the prefilter (try lowering --min_diag)")
@@ -95,6 +98,20 @@ def cmd_search(a):
                   f"  {h['length']:>5}")
         return
     has_ev = "evalue" in hits[0]
+    if "structure_score" in hits[0]:
+        header = (f"{'rank':>4}  {'target':<24}{'R_str':>10}{'TM_a':>9}"
+                  f"{'S_SW':>10}")
+        if has_ev:
+            header += f"{'E-value':>11}"
+        print(header + f"{'aligned':>10}  {'len':>5}")
+        for h in hits:
+            line = (f"{h['rank']:>4}  {h['target']:<24}"
+                    f"{h['structure_score']:>10.2f}{h['tm_a']:>9.4f}"
+                    f"{h['sw_score']:>10.2f}")
+            if has_ev:
+                line += f"{h['evalue']:>11.2g}"
+            print(line + f"{h['aligned']:>10}  {h['length']:>5}")
+        return
     header = f"{'rank':>4}  {'target':<24}{'SW_score':>10}"
     if has_ev:
         header += f"{'bits':>8}{'E-value':>11}"
@@ -145,9 +162,9 @@ def main(argv=None):
     p.add_argument("--top_k", type=int, default=10)
     p.add_argument("--top_n", type=int, default=DEFAULT_TOP_N)
     p.add_argument("--min_diag", type=int, default=DEFAULT_MIN_DIAG)
-    p.add_argument("--rerank", choices=("sw", "tm"), default="sw",
-                   help="rerank the candidate pool by token Smith-Waterman "
-                        "(default) or by US-align TM-score (RFoldseek-TM)")
+    p.add_argument("--rerank", choices=RERANKERS, default=DEFAULT_RERANK,
+                   help="rerank by R_str = S_SW x TM_a (tm_a, default), "
+                        "token Smith-Waterman (sw), or US-align TM-score (tm)")
     p.add_argument("--usalign", default=None,
                    help="path to the USalign binary (default: $USALIGN, then PATH)")
     p.add_argument("--tie_seed", type=int, default=None,

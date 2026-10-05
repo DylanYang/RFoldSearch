@@ -145,7 +145,7 @@ async def search(
     top_k: int = Form(50),
     top_n: int = Form(200),
     min_diag: int = Form(2),
-    rerank: str = Form("sw"),
+    rerank: str = Form("tm_a"),
     tie_seed: Optional[int] = Form(None),
 ):
     if not engine.ready:
@@ -157,8 +157,8 @@ async def search(
     if unknown:
         raise HTTPException(400, f"unknown database {unknown[0]!r}; choose from "
                                  f"{sorted(engine.databases)}")
-    if rerank not in ("sw", "tm"):
-        raise HTTPException(400, "rerank must be 'sw' or 'tm'")
+    if rerank not in ("tm_a", "sw", "tm"):
+        raise HTTPException(400, "rerank must be 'tm_a', 'sw', or 'tm'")
     if not 1 <= top_k <= 1000:
         raise HTTPException(400, "top_k must be between 1 and 1000")
     if not 1 <= top_n <= TOP_N_CAP:
@@ -257,7 +257,8 @@ def hit_structure(job_id: str, db: str, rank: int):
 
 TSV_FIELDS = ["database", "rank", "target", "pdb", "chain", "auth_asym", "desc",
               "organism", "method", "resolution", "sw_score", "bits", "evalue",
-              "raw_evalue", "tm_mean", "tm_query", "tm_target", "q_start", "q_end",
+              "raw_evalue", "structure_score", "tm_a", "aligned", "tm_mean",
+              "tm_query", "tm_target", "q_start", "q_end",
               "t_start", "t_end", "q_len", "t_len", "n_aligned", "seq_identity",
               "rmsd", "tm_aln"]
 

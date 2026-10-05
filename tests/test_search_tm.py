@@ -66,12 +66,15 @@ def test_tm_hits_carry_both_components_and_no_evalue(db_path, monkeypatch):
     assert "evalue" not in hit and "bits" not in hit and "sw_score" not in hit
 
 
-def test_sw_rerank_is_still_the_default(db_path):
+def test_tm_a_rerank_is_the_default(db_path):
     s = Searcher(db_path)
 
     hit = s.search_id("chain_000", top_k=1)[0]
 
-    assert "sw_score" in hit and "tm_mean" not in hit
+    assert {"structure_score", "tm_a", "sw_score"} <= set(hit)
+    assert hit["structure_score"] == pytest.approx(
+        hit["sw_score"] * hit["tm_a"])
+    assert "tm_mean" not in hit
 
 
 def test_unknown_rerank_backend_is_rejected(db_path):
@@ -98,10 +101,22 @@ def test_cli_prints_the_tm_table_and_names_the_backend(db_path, monkeypatch, cap
 def test_cli_sw_output_is_unchanged(db_path, capsys):
     from rfoldseek import cli
 
-    cli.main(["search", "--query", "chain_000", "--db", db_path, "--top_k", "2"])
+    cli.main(["search", "--query", "chain_000", "--db", db_path,
+              "--top_k", "2", "--rerank", "sw"])
 
     out = capsys.readouterr().out
     assert "SW_score" in out and "rerank:" not in out
+
+
+def test_cli_default_prints_structure_score_table(db_path, capsys):
+    from rfoldseek import cli
+
+    cli.main(["search", "--query", "chain_000", "--db", db_path,
+              "--top_k", "2"])
+
+    out = capsys.readouterr().out
+    assert "rerank: R_str = S_SW x TM_a" in out
+    assert "R_str" in out and "TM_a" in out and "S_SW" in out
 
 
 def test_cli_reports_a_missing_usalign_without_a_traceback(db_path, monkeypatch,
