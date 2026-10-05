@@ -7,7 +7,8 @@ import sys
 import numpy as np
 import torch
 
-from .database import build_database, short_id, structure_to_entry
+from .database import (attach_evalue_calibration, build_database, short_id,
+                       structure_to_entry)
 from .search import (DEFAULT_MIN_DIAG, DEFAULT_RERANK, DEFAULT_TOP_N, RERANKERS,
                      Searcher, asset)
 from .tokenizer import encode_entry, load_model
@@ -33,7 +34,15 @@ def cmd_preprocess(a):
 
 def cmd_build(a):
     build_database(a.checkpoint, a.data, a.output, min_len=a.min_len,
-                   clusters=a.clusters)
+                   clusters=a.clusters, evalue_params=a.evalue_params)
+
+
+def cmd_attach_calibration(a):
+    result = attach_evalue_calibration(
+        a.db, a.clusters, a.evalue_params, a.output,
+        index_prefix=a.index_prefix)
+    print(f"Saved: {result['output']}  ({result['n_chains']} chains, "
+          f"{result['n_clusters']} clusters)")
 
 
 def cmd_search(a):
@@ -76,8 +85,8 @@ def cmd_search(a):
     if a.rerank != "tm" and s.ev_par is not None:
         size += f", {s.n_clusters} clusters"
     head = f"# query: {qname}  ({qlen} tokens)   database: {a.db}  ({size})"
-    if a.rerank != "tm" and s.empirical_ev is not None:
-        head += "   E-values: database-calibrated"
+    if a.rerank != "tm" and s.power_ev is not None:
+        head += "   E-values: power-calibrated"
     if a.rerank == "tm":
         head += "   rerank: RFoldseek-TM"
     elif a.rerank == "tm_a":
@@ -148,7 +157,22 @@ def main(argv=None):
                         "near-duplicate chains; E-values are counted in "
                         "clusters, so without it a redundant database "
                         "reports E-values that are too small")
+    p.add_argument("--evalue_params", default=None,
+                   help="matching database-specific E-value parameter JSON")
     p.set_defaults(fn=cmd_build)
+
+    p = sub.add_parser("attach-calibration",
+                       help="add cluster labels and E-value parameters to an existing database")
+    p.add_argument("--db", required=True, help="existing encoded database")
+    p.add_argument("--clusters", required=True,
+                   help="CD-HIT .clstr or id/cluster TSV")
+    p.add_argument("--evalue_params", required=True,
+                   help="database-specific E-value parameter JSON")
+    p.add_argument("--output", required=True,
+                   help="new calibrated database path")
+    p.add_argument("--index-prefix", default=None,
+                   help="CD-HIT IDs based on database row positions, e.g. t for t0, t1, ...")
+    p.set_defaults(fn=cmd_attach_calibration)
 
     p = sub.add_parser("search", help="search a query against a token database")
     p.add_argument("--query", required=True,
