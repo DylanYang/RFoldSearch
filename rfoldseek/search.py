@@ -9,11 +9,13 @@ its two length-normalised TM-scores; that backend reports no E-value.
 """
 import json
 import os
+import warnings
 
 import numpy as np
 import torch
 
-from .database import load_database, short_id
+from .database import (calibration_context_fingerprint, database_fingerprint,
+                       load_database, short_id)
 from .prefilter import KMER_K, KmerPrefilter
 from .smith_waterman import smith_waterman_numba
 from . import structure_score as _ss
@@ -56,18 +58,115 @@ class Searcher:
         # held four hundred times poses one question of the database.
         self.n_clusters = len(set(self.clusters))
         ev_path = evalue_params_path or asset("evalue_params.json")
-        if evalue_params_path is None and self.db.get("evalue_params") is not None:
+        embedded_params = self.db.get("evalue_params") is not None
+        using_packaged_default = evalue_params_path is None and not embedded_params
+        if evalue_params_path is None and embedded_params:
             self.ev_par = self.db["evalue_params"]
         else:
-            self.ev_par = json.load(open(ev_path)) if os.path.exists(ev_path) else None
-        self.empirical_ev = (self.ev_par or {}).get("empirical_calibration")
-        if self.empirical_ev is not None:
-            fitted_n = self.empirical_ev.get("n_clusters")
-            if fitted_n is not None and int(fitted_n) != self.n_clusters:
+            if os.path.exists(ev_path):
+                with open(ev_path) as handle:
+                    self.ev_par = json.load(handle)
+            else:
+                self.ev_par = None
+        target_fingerprint = database_fingerprint(
+            self.ents, self.clusters, self.n_codes)
+        stored_fingerprint = self.db.get("database_fingerprint")
+        if (stored_fingerprint is not None
+                and stored_fingerprint != target_fingerprint):
+            raise ValueError("stored database fingerprint does not match its contents")
+        score_fingerprint = calibration_context_fingerprint(
+            target_fingerprint, self.sub, GAP_OPEN, GAP_EXTEND)
+        if (self.ev_par is not None
+                and self.ev_par.get("validation_status") ==
+                "provisional-incomplete-structural-audit"):
+            warnings.warn(
+                "The E-value parameters are provisional because their "
+                "structural-background audit is incomplete; this search "
+                "will not report an E-value.",
+                stacklevel=2,
+            )
+            self.ev_par = None
+        if self.ev_par is not None:
+            fitted_target = self.ev_par.get("target_database_fingerprint")
+            fitted_context = self.ev_par.get("calibration_context_fingerprint")
+            mismatch = ((fitted_target is not None
+                         and fitted_target != target_fingerprint)
+                        or (fitted_context is not None
+                            and fitted_context != score_fingerprint))
+            if mismatch and using_packaged_default:
+                warnings.warn(
+                    "The packaged E-value parameters belong to a different target "
+                    "database or scoring context; this search will not report an "
+                    "E-value. Attach parameters fitted for the loaded database.",
+                    stacklevel=2,
+                )
+                self.ev_par = None
+            elif mismatch:
                 raise ValueError(
-                    "empirical E-value calibration was fitted for "
-                    f"{int(fitted_n)} clusters, but the loaded database has "
-                    f"{self.n_clusters}; recalibrate for this database"
+                    "E-value parameters were fitted for a different target database "
+                    "or scoring context"
+                )
+        if (self.ev_par is not None
+                and self.ev_par.get("query_parameter_model") is not None
+                and "training_domain" not in self.ev_par["query_parameter_model"]):
+            raise ValueError("query-conditional E-value model needs a training_domain")
+        fitted_clusters = (self.ev_par or {}).get("n_clusters")
+        if (fitted_clusters is not None
+                and self.db.get("n_clusters") is not None
+                and int(fitted_clusters) != self.n_clusters):
+            raise ValueError(
+                "E-value parameters were fitted for "
+                f"{int(fitted_clusters)} clusters, but the loaded database has "
+                f"{self.n_clusters}; attach parameters fitted for this database"
+            )
+        self.power_ev = (self.ev_par or {}).get("power_calibration")
+        if self.power_ev is not None:
+            _evalue.apply_power_calibration(0.0, self.power_ev)
+            validation_status = self.power_ev.get("validation_status")
+            if validation_status in {
+                    "provisional-incomplete-structural-audit",
+                    "structural-audit-not-recorded"}:
+                warnings.warn(
+                    "The power-law E-value calibration is provisional because "
+                    "a complete structural-background audit is not recorded; "
+                    "reporting the initial parametric E-value only.",
+                    stacklevel=2,
+                )
+                self.power_ev = None
+        if self.power_ev is not None:
+            fitted_n = self.power_ev.get(
+                "n_clusters", self.ev_par.get("n_clusters"))
+            if fitted_n is None:
+                raise ValueError("power E-value calibration needs a cluster count")
+            if int(fitted_n) != self.n_clusters:
+                if using_packaged_default:
+                    warnings.warn(
+                        "The packaged power E-value calibration is for the "
+                        f"{int(fitted_n)}-cluster experimental database, but the "
+                        f"loaded database has {self.n_clusters} clusters; reporting "
+                        "the initial parametric E-value only. Attach this database's "
+                        "own calibration to report a calibrated E-value.",
+                        stacklevel=2,
+                    )
+                    self.power_ev = None
+                else:
+                    raise ValueError(
+                        "power E-value calibration was fitted for "
+                        f"{int(fitted_n)} clusters, but the loaded database has "
+                        f"{self.n_clusters}; recalibrate for this database"
+                    )
+        elif self.ev_par is not None:
+            fitted_n = self.ev_par.get("n_clusters")
+            if (fitted_n and self.n_clusters
+                    and not 0.5 < int(fitted_n) / self.n_clusters < 2.0):
+                warnings.warn(
+                    f"E-value parameters were calibrated on {int(fitted_n)} "
+                    f"clusters but this database has {self.n_clusters} "
+                    "(>2x different); the parametric E-value may be "
+                    "miscalibrated. Fit a database-specific power_calibration "
+                    "(scripts/build_evalue_calibration_background.py + "
+                    "scripts/fit_power_evalue_calibration.py).",
+                    stacklevel=2,
                 )
         self._tie_cache = {}
         self._flat = None
@@ -157,8 +256,7 @@ class Searcher:
             order = np.lexsort((self.tie_keys(tie_seed)[cand], -score))
         hits = []
         if self.ev_par is not None:
-            mu, beta = _evalue.clustermax_params_for_length(self.ev_par,
-                                                            len(qtok))
+            mu, beta = _evalue.clustermax_params_for_query(self.ev_par, qtok)
         for rank, oi in enumerate(order[:top_k], 1):
             t, sc = int(cand[oi]), float(sw[oi])
             hit = {"rank": rank, "target": self.ids[t], "sw_score": sc,
@@ -171,10 +269,10 @@ class Searcher:
                 hit["bits"] = float(_evalue.bit_score_clustermax(sc, mu, beta))
                 raw_evalue = float(_evalue.evalue_clustermax(
                     sc, mu, beta, self.n_clusters))
-                if self.empirical_ev is not None:
+                if self.power_ev is not None:
                     hit["raw_evalue"] = raw_evalue
-                    hit["evalue"] = float(_evalue.apply_empirical_calibration(
-                        raw_evalue, self.empirical_ev))
+                    hit["evalue"] = float(_evalue.apply_power_calibration(
+                        raw_evalue, self.power_ev))
                 else:
                     hit["evalue"] = raw_evalue
             hits.append(hit)

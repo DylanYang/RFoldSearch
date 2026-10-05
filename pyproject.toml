@@ -13,6 +13,7 @@ dependencies = [
     "numpy>=1.21",
     "torch>=2.0",
     "numba>=0.55",
+    "scipy>=1.0",
     "biotite>=0.40",
 ]
 

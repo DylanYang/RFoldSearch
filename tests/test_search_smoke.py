@@ -1,8 +1,11 @@
 """End-to-end search over a synthetic token database."""
+import json
+
 import numpy as np
 import torch
 
 from rfoldseek.search import Searcher
+from helpers import synthetic_evalue_params
 
 
 def test_search_pipeline(tmp_path):
@@ -21,8 +24,10 @@ def test_search_pipeline(tmp_path):
     db_path = tmp_path / "tiny_db.pt"
     torch.save({"n_codes": 80, "entries": entries, "checkpoint": "synthetic"},
                db_path)
+    params_path = tmp_path / "evalue_params.json"
+    params_path.write_text(json.dumps(synthetic_evalue_params()))
 
-    s = Searcher(str(db_path))
+    s = Searcher(str(db_path), evalue_params_path=str(params_path))
     hits = s.search_id("chain_000", top_k=5)
     assert 1 <= len(hits) <= 5
     assert hits[0]["target"] != "chain_000"          # self-hit removed

@@ -26,7 +26,7 @@ RFoldseek enables fast RNA tertiary-structure search with **3Dr**, a learned dis
 pip install .
 ```
 
-Requires Python >= 3.9. Runtime dependencies: `numpy`, `torch`, `numba`, `biotite`.
+Requires Python >= 3.9. Runtime dependencies: `numpy`, `torch`, `numba`, `biotite`, `scipy`.
 
 ## Hardware and memory requirements
 
@@ -158,132 +158,67 @@ rank  target                    TM_mean  TM_query  TM_target    len
 
 ### E-values
 
-RFoldseek reports Smith--Waterman E-values in `tm_a` and `sw` modes. These
-E-values describe `S_SW`; they are not significance estimates for `R_str`.
-The initial
-E-value is obtained from a length-dependent Gumbel distribution fitted to
-cluster-maximum background scores. The search space is the number of independent CD-HIT-EST clusters.
-Because the background score distribution also depends on database
-composition, an optional empirical calibration maps each initial cluster-max
-E-value to the observed mean number of background clusters per query. This
-mapping is fitted once for a database, stored in its E-value parameter.
+RFoldseek reports Smith--Waterman E-values in `tm_a` and `sw` modes. The
+E-value is the expected number of unrelated database clusters (CD-HIT-EST,
+80% identity) reaching a hit's token-alignment score; it is not a significance
+estimate for the structure score `R_str`. It is computed in two steps:
 
-The files in the complete calibration pipeline are:
+1. A Gumbel null of per-cluster maximum scores gives the initial value `E0`.
+   Its parameters follow the database-specific linear query model
+   `(mu_q, log beta_q) = (1, z_log_length, z_token_entropy) B_D`.
+2. A database-specific positive power law,
+   `E_cal = a_D * E0**b_D`, calibrates `E0` to the observed number of
+   structurally unrelated clusters per query.
 
-| File | Produced by |
-| ---- | ----------- |
-| `target_structures.jsonl` | `rfoldseek preprocess` on the target structures |
-| `target_nr80.clstr` | CD-HIT-EST on `target_sequences.fasta` |
-| `target_db.pt` | `rfoldseek build` from the target JSONL and cluster file |
-| `labels.tsv` | Step 0 below |
-| `target_clustermax_params.json` | Step 1 below |
-| `calibration_queries.pt` | Step 2 below |
-| `target_background.tsv` | Step 3 below |
-| `target_evalue_params.json` | Step 4 below |
+Gumbel fitting, calibration, and deployment use the complete target database;
+no query--target length-ratio filter is applied. Parameters are bound to the
+database tokens, clusters, substitution matrix, and gap costs by fingerprints.
 
-`target_sequences.fasta` and `calibration_sequences.fasta` are maintained by
-the web-server ingestion pipeline and use the same chain identifiers as the
-corresponding structure JSONL files. End users of the web server do not create
-any of the calibration files below.
+Calibration is performed once per database:
 
-0. Annotate the target and independent calibration sequences against the same
-Rfam release. The server obtains `Rfam.cm` and `Rfam.clanin` from Rfam, runs
-`cmpress Rfam.cm` once, and then runs Infernal with Rfam gathering thresholds:
+1. Fit the query-conditional cluster-max Gumbel model:
 
 ```bash
-cmscan --cut_ga --rfam --fmt 2 --clanin Rfam.clanin \
-  --tblout target_rfam.tbl Rfam.cm target_sequences.fasta
-
-cmscan --cut_ga --rfam --fmt 2 --clanin Rfam.clanin \
-  --tblout calibration_rfam.tbl Rfam.cm calibration_sequences.fasta
-
-python scripts/build_rfam_labels.py \
-  --fasta target_sequences.fasta \
-  --fasta calibration_sequences.fasta \
-  --tblout target_rfam.tbl \
-  --tblout calibration_rfam.tbl \
-  --output labels.tsv
+python scripts/rebuild_evalue_params.py --db target_db.pt --labels labels.tsv \
+  --query-panel query_panel.tsv --related-pairs adjudication.tsv \
+  --audit-ceiling 100 --output target_clustermax_params.json
 ```
 
-`labels.tsv` is therefore required server-side calibration metadata, not a
-user-supplied search input. It contains `chain_id`, `family`, and `clan`; the
-last two fields are empty when Rfam reports no included hit. The conversion
-script keeps the best included hit for each chain. The calibration scripts
-also accept the synonymous columns `entry_id`/`id`, `rfam_acc`, and
-`clan_acc`.
-
-1. Fit the initial cluster-max Gumbel model for `target_db.pt`:
+2. Generate one observation per calibration query and target cluster:
 
 ```bash
-python scripts/rebuild_evalue_params.py \
-  --db target_db.pt \
-  --labels labels.tsv \
-  --output target_clustermax_params.json
+python scripts/build_evalue_calibration_background.py --db target_db.pt \
+  --queries calibration_queries.pt --params target_clustermax_params.json \
+  --labels labels.tsv --related-pairs adjudication.tsv --audit-ceiling 100 \
+  --background-scope all --output target_background.tsv
 ```
 
-2. Encode an independent calibration panel:
+3. Fit the power-law calibration:
 
 ```bash
-rfoldseek preprocess \
-  --pdb_dir calibration_structures/ \
-  --output calibration_queries.jsonl
-
-rfoldseek build \
-  --data calibration_queries.jsonl \
-  --output calibration_queries.pt
-```
-
-3. Generate one observation per eligible query--cluster pair:
-
-```bash
-python scripts/build_empirical_evalue_background.py \
-  --db target_db.pt \
-  --queries calibration_queries.pt \
-  --params target_clustermax_params.json \
-  --labels labels.tsv \
-  --output target_background.tsv
-```
-
-The generator performs a full token Smith--Waterman scan, excludes the query's
-own cluster and chains from the same annotated family or clan, applies the
-threefold length-ratio filter, and retains only the highest-scoring member of
-each CD-HIT cluster. An optional US-align audit can be supplied with
-`--related-pairs adjudication.tsv`; pairs marked as structurally related, or
-with a symmetric TM-score of at least 0.45, are marked for exclusion from the
-empirical null.
-
-4. Fit the empirical mapping. The script reads the CD-HIT cluster assignments
-stored in `target_db.pt`, so no cluster count is entered manually:
-
-```bash
-python scripts/fit_empirical_evalue_calibration.py \
-  --params target_clustermax_params.json \
-  --background target_background.tsv \
-  --db target_db.pt \
+python scripts/fit_power_evalue_calibration.py \
+  --params target_clustermax_params.json --background target_background.tsv \
+  --query-panel target_background.queries.tsv --background-scaling none \
+  --raw-evalue-ceiling 100 --db target_db.pt \
   --output target_evalue_params.json
 ```
 
-`target_background.tsv` contains the required `raw_evalue` and `query_id`
-columns. It may also contain an explicit
-`weight` column; otherwise `query_id` is required and equal-query weighting is
-used. If a `family` column is also present, families are weighted equally.
-Rows marked `structurally_related=true` are excluded from the empirical null.
-
-5. Search the target database with its matching calibrated parameters:
+4. Attach the parameters to their matching database:
 
 ```bash
-rfoldseek search \
-  --query query_db.pt \
-  --query_id query_chain_id \
-  --db target_db.pt \
-  --evalue_params target_evalue_params.json
+rfoldseek attach-calibration --db target_db.pt \
+  --clusters target_nr80.clstr --evalue_params target_evalue_params.json \
+  --output calibrated_db.pt
 ```
 
-With empirical calibration enabled, `evalue` is the calibrated value and
-`raw_evalue` retains the initial Gumbel cluster-max value in the Python API.
-The bit score remains derived from the initial Gumbel model. RFoldseek checks
-the recorded cluster count and refuses to apply an empirical mapping fitted
-for a different database clustering.
+Every cluster leader with `E0 <= 100` must have a US-align audit result.
+Structurally related leaders are excluded and replaced by the next eligible
+member of the same cluster. Predicted databases use `--background-scope all`
+and `--background-scaling none`; experimental databases use
+`--background-scope annotated` and `--background-scaling annotated-to-full`.
+Calibration should be assessed by leave-one-Rfam-family-out validation. Since
+`a_D > 0` and `b_D > 0`, the correction is monotone and preserves the
+token-score ordering for a fixed query.
 
 ### Python API
 
