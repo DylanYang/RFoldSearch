@@ -125,8 +125,17 @@ def test_shipped_params_are_the_cluster_max_scheme():
     assert par["power_calibration"]["b"] > 0
     assert len(par["target_database_fingerprint"]) == 64
     assert len(par["calibration_context_fingerprint"]) == 64
+    assert par["validation_status"] == "background-audit-complete"
+    assert par["validation"]["status"] == "background-audit-complete"
+    assert par["validation"]["n_usalign_candidates"] == 54843
+    assert par["validation"]["fixed_point_audit"] == {
+        "audited_e0_ceiling": 100.0,
+        "pending_leader_audits_to_fit_maximum": 0,
+        "fit_e0_max": 100.0,
+    }
     assert (par["power_calibration"]["validation_status"] ==
-            "provisional-incomplete-structural-audit")
+            "background-audit-complete")
+    assert par["power_calibration"]["structural_audit_ceiling"] == 100.0
     assert par["length_table"], "no length grid in the packaged parameters"
     for row in par["length_table"]:
         assert {"length", "mu", "beta"} <= set(row)
