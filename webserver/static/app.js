@@ -71,10 +71,10 @@ function shortName(d) {
 function dbLine(d) {
   const n = d.n_chains.toLocaleString();
   const predicted = /predicted|nufold/i.test(`${d.key} ${d.label} ${d.source || ""}`);
-  const bgsu = (d.source || d.label || "").match(/BGSU\s*([\d.]+)/);
-  if (predicted) return `${n} predicted RNA structures · Updated ${updated(d)}`;
-  if (d.key === "rnasolo" || bgsu) return `${n} non-redundant experimental structures${bgsu ? ` · BGSU ${bgsu[1]}` : ""}`;
-  return `${n} experimental RNA chains · Updated ${updated(d)}`;
+  const bgsu = `${d.source || ""} ${d.label || ""}`.match(/BGSU\s*([\d.]+)/);
+  if (predicted) return `${n} predicted RNA structures (Updated ${updated(d)})`;
+  if (d.key === "rnasolo" || bgsu) return `${n} non-redundant experimental structures${bgsu ? ` (BGSU ${bgsu[1]})` : ""}`;
+  return `${n} experimental RNA chains (Updated ${updated(d)})`;
 }
 
 // ---- tidy text coming from the databases
@@ -109,6 +109,10 @@ function rnaName(h) {                                                        // 
   return d || (URS.test(h.target) ? "Predicted structure" : "—");
 }
 
+// source-database logos (from the RNAsolo, RCSB PDB and NuFold sites)
+const LOGOS = { rnasolo: "rnasolo.png", "pdb-rna": "pdb.png", nufold: "nufold.png" };
+const logo = (key, cls) => (LOGOS[key] ? `<img class="${cls}" src="/static/logos/${LOGOS[key]}" alt="">` : "");
+
 function renderDbs() {
   const box = $("dbs");
   if (!health.ready) {
@@ -119,7 +123,7 @@ function renderDbs() {
     <label class="db ${i === 0 ? "on" : ""}">
       <input type="checkbox" value="${esc(d.key)}" ${i === 0 ? "checked" : ""}>
       <div>
-        <div class="name">${esc(shortName(d))}</div>
+        <div class="name">${esc(shortName(d))}${logo(d.key, "dblogo")}</div>
         <div class="meta">${esc(dbLine(d))}</div>
         ${d.notice ? `<div class="notice">${esc(d.notice)}</div>` : ""}
       </div>
@@ -252,6 +256,8 @@ async function submit(e) {
 
 // ---------------------------------------------------------------- results
 function showView(which) {
+  $("nav-search").classList.toggle("on", which !== "tutorial");
+  $("nav-tutorial").classList.toggle("on", which === "tutorial");
   $("view-search").hidden = which !== "search";
   $("view-result").hidden = which !== "result";
   $("view-tutorial").hidden = which !== "tutorial";
@@ -304,7 +310,7 @@ function renderResult() {
   if (!keys.includes(activeDb)) activeDb = keys[0];
   $("tabs").innerHTML = keys.map((k) => {
     const r = job.results[k];
-    return `<button class="tab ${k === activeDb ? "on" : ""}" data-k="${esc(k)}">${esc(shortName(r.database))}<span class="n">${r.hits.length}</span></button>`;
+    return `<button class="tab ${k === activeDb ? "on" : ""}" data-k="${esc(k)}">${logo(k, "tablogo")}${esc(shortName(r.database))}<span class="n">${r.hits.length}</span></button>`;
   }).join("");
   $("tabs").querySelectorAll(".tab").forEach((b) => b.addEventListener("click", () => {
     activeDb = b.dataset.k; openRank = null; sortKey = null; setHash(); renderResult();

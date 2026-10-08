@@ -305,6 +305,108 @@
   .picked { font-size: 14px }
   .viewer-legend { font-size: 13px }
   .tab-meta:empty, .foot:empty { display: none }
+  .dblogo { height: 30px; width: auto; max-width: 92px; object-fit: contain; flex: none; align-self: center }
+  .tablogo { height: 18px; width: auto; max-width: 64px; vertical-align: -4px; margin-right: 7px }
+
+  /* ---- 1008 layout (Ruyi's layout.jpg) ---- */
+  :root { --bg: #f8f5f1 }
+  header.top { background: #fff; border-bottom: 1px solid var(--line) }
+  .bar { padding: 12px 32px }
+  .brand { color: var(--ink); gap: 12px }
+  .brand img { width: 46px; height: 46px }
+  .brand b { color: var(--accent); font-size: 29px }
+  .brand span { color: var(--ink-2); font-size: 19px; border-left: 1.5px solid #d6cec6; padding-left: 18px; margin-left: 6px; line-height: 1.2 }
+  nav.links { gap: 42px; font-size: 17.5px; font-weight: 400 }
+  nav.links a { color: var(--ink-2); padding: 8px 2px; border-bottom: 3px solid transparent }
+  nav.links a:hover { color: var(--ink); border-bottom: 3px solid #f0c9b3 }
+  nav.links a.on { color: var(--ink); font-weight: 600; border-bottom-color: var(--accent) }
+  .ico { width: 22px; height: 22px; stroke: currentColor; fill: none; stroke-width: 1.7;
+         stroke-linecap: round; stroke-linejoin: round; flex: none }
+  main, .bar { max-width: 1440px }
+  .db .meta { font-size: 15px }
+  .s-grid { display: grid; grid-template-columns: minmax(0, 1.62fr) minmax(0, 1fr); gap: 20px; align-items: start; margin-top: 8px }
+  @media (max-width: 900px) { .s-grid { grid-template-columns: 1fr } }
+  .s-head h1 { font-size: 42px; letter-spacing: -.02em; margin: 22px 0 8px; line-height: 1.15 }
+  .s-head .lead { font-size: 18.5px; color: var(--ink-2); margin: 0 0 26px }
+  .card.qcard { padding: 0 }
+  .qcard-h { display: flex; align-items: center; gap: 14px; padding: 16px 24px; border-bottom: 1px solid var(--line) }
+  .qcard-h .t { font-size: 20px; font-weight: 600 }
+  .qcard-h .ico.big { width: 30px; height: 30px; color: var(--accent) }
+  .qcard-h .help { margin-left: auto; color: var(--ink-2); font-size: 16px; display: inline-flex; gap: 8px; align-items: center }
+  .qcard-h .help .ico { width: 24px; height: 24px; color: var(--muted) }
+  .qcard-b { padding: 18px 24px 24px }
+  .drop { border: 1px solid var(--line); border-radius: 10px; background: #fff }
+  .qcol .drop textarea, .drop textarea { min-height: 380px; padding: 30px 30px; font-size: 13px }
+  .drop textarea::placeholder { font-size: 18px; line-height: 1.65; color: #8f8780 }
+  .row.actions { margin-top: 26px; gap: 10px; flex-wrap: nowrap }
+  .row.actions .btn { display: inline-flex; align-items: center; gap: 12px; padding: 11px 16px; font-size: 16px;
+                      font-weight: 600; border-radius: 8px; border-color: #e3ddd7 }
+  .row.actions .btn .ico { width: 24px; height: 24px; color: var(--accent) }
+  .row.actions .btn .chev-s { width: 20px; height: 20px; color: var(--ink); margin-left: 4px }
+  .row.actions #max-upload { font-size: 15.5px; margin-left: 4px; white-space: nowrap }
+  @media (max-width: 1100px) { .row.actions { flex-wrap: wrap } }
+  .btn.primary { display: inline-flex; align-items: center; gap: 12px; padding: 12px 30px !important; font-size: 18px !important; white-space: nowrap;
+                 font-weight: 500 !important; background: #d4613f; border-color: #d4613f }
+  .btn.primary .ico { width: 28px !important; height: 28px !important; color: #fff !important; stroke-width: 2 }
+  .btn.primary:disabled { opacity: .5 }
+  .ocol { gap: 16px }
+  .fold { border-radius: 12px; background: #fff; border-color: var(--line) }
+  .fold > summary { padding: 18px 24px; align-items: center; gap: 16px }
+  .fold > summary::after, .fold[open] > summary::after { content: none }
+  .fold > summary > .ico:first-child { width: 30px; height: 30px; color: var(--accent) }
+  .fold > summary .k { font-size: 21px; font-weight: 600; letter-spacing: 0; text-transform: none; color: var(--ink); min-width: 0 }
+  .fold > summary .sum { font-weight: 400; color: var(--muted); font-size: 14.5px; margin-left: auto; text-align: right }
+  .fold[open] > summary .sum { display: none }
+  .fold > summary .chev { width: 24px; height: 24px; color: var(--ink); stroke-width: 2; margin-left: auto; transition: transform .15s }
+  .fold > summary .sum + .chev { margin-left: 8px }
+  .fold[open] > summary .chev { transform: rotate(180deg); margin-left: auto }
+  .fold[open] > summary { border-bottom: 1px solid var(--line) }
+  .fold-body { padding: 14px 16px 16px }
+  .dbs { gap: 0 }
+  .db { border: 0; border-radius: 8px; padding: 14px 16px; gap: 18px; align-items: center }
+  .db + .db { border-top: 1px solid var(--line-2); border-radius: 0 8px 8px 0 }
+  .db:hover { background: #fcf7f3 }
+  .db.on { background: #fbeee6; border-color: transparent }
+  .db input, .modes input { appearance: none; -webkit-appearance: none; display: block; flex: none; margin: 0;
+                            width: 26px; height: 26px; border: 1.6px solid #8f8780; background: #fff; cursor: pointer }
+  .db input { border-radius: 5px }
+  .db input:checked { background: var(--accent) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m5 12.5 4.5 4.5L19 7.5'/%3E%3C/svg%3E") center / 18px no-repeat;
+                      border-color: var(--accent) }
+  .db .name { font-size: 20px; font-weight: 600; line-height: 1.3 }
+  .db .meta { font-size: 15.5px; color: var(--ink-2) }
+  .db .dblogo { height: 22px; max-width: 70px; vertical-align: -3px; margin-left: 10px }
+  .seg.modes { display: flex; flex-direction: column; border: 0; padding: 0; gap: 0 }
+  .seg.modes label { display: grid; grid-template-columns: 26px 1fr; column-gap: 18px; text-align: left;
+                     padding: 14px 16px; border-radius: 8px; color: var(--ink); font-weight: 400; align-items: center }
+  .seg.modes label + label { margin-top: 6px }
+  .seg.modes label.on { background: #fbeee6; color: var(--ink); font-weight: 400 }
+  .seg.modes input { grid-row: span 2; border-radius: 50% }
+  .seg.modes input:checked { border-color: var(--accent); background: radial-gradient(circle, var(--accent) 0 6px, #fff 7px) }
+  .seg.modes .m-name { font-size: 20px; font-weight: 600 }
+  .seg.modes .m-sub { font-size: 15.5px; color: var(--ink-2) }
+  footer { text-align: center; border-top: 1px solid var(--line); padding: 24px 24px 32px; margin-top: 36px;
+           color: var(--ink-2); font-size: 14.5px; max-width: 1272px }
+  @media (max-width: 700px) {
+    .bar { padding: 10px 16px; gap: 12px; flex-wrap: wrap }
+    .brand img { width: 36px; height: 36px }
+    .brand b { font-size: 23px }
+    .brand span { display: none }
+    nav.links { gap: 18px; font-size: 15.5px; margin-left: auto }
+    main { padding: 16px 16px 12px }
+    .s-head h1 { font-size: 30px; margin-top: 8px }
+    .s-head .lead { font-size: 16px; margin-bottom: 16px }
+    .qcard-h { padding: 14px 16px; flex-wrap: wrap }
+    .qcard-h .help { font-size: 14.5px }
+    .qcard-b { padding: 14px 16px 16px }
+    .qcol .drop textarea, .drop textarea { min-height: 220px; padding: 16px }
+    .drop textarea::placeholder { font-size: 15px }
+    .row.actions { margin-top: 14px }
+    .fold > summary { padding: 14px 16px }
+    .fold-body { padding: 10px 8px 12px }
+    .db, .seg.modes label { padding: 12px 10px; gap: 12px; column-gap: 12px }
+    .db .name, .seg.modes .m-name { font-size: 17.5px }
+    footer { padding: 18px 16px 24px }
+  }
 </style>
 </head>
 <body>
@@ -312,8 +414,8 @@
   <div class="bar">
     <a class="brand" href="/"><img src="/static/logo.png" alt=""><b>RFoldseek</b><span>RNA structure search</span></a>
     <nav class="links">
-      <a href="/">Search</a>
-      <a href="/tutorial">Tutorial</a>
+      <a href="/" id="nav-search">Search</a>
+      <a href="/tutorial" id="nav-tutorial">Tutorial</a>
       <a href="/api/docs" target="_blank">API</a>
       <a href="https://github.com/DylanYang/RFoldseek" target="_blank">GitHub</a>
     </nav>
@@ -325,39 +427,44 @@
 
   <!-- search view -->
   <section id="view-search">
-    <div class="card">
-      <h1>Search RNA structures</h1>
-      <p class="lead">Upload or paste one RNA chain (PDB or mmCIF). It is encoded in the learned 3Dr
-        structural alphabet and searched against the selected databases in seconds.</p>
-      <form id="form" class="search-grid" autocomplete="off">
-        <div class="qcol">
-          <div class="label">Query structure</div>
-          <div class="drop" id="drop">
-            <textarea id="text" spellcheck="false"
-              placeholder="Paste a PDB or mmCIF structure here, or drop a file onto this box.&#10;&#10;The first RNA chain is used; nucleotides need C3′, C4′ and O4′ atoms."></textarea>
-            <div class="file-chip" id="chip" hidden><span id="chip-name"></span><button type="button" id="chip-x" title="Remove">×</button></div>
-          </div>
-          <div class="row actions">
-            <label class="btn">Upload file<input type="file" id="file" accept=".pdb,.cif,.mmcif,.ent" hidden></label>
-            <div class="menu">
-              <button type="button" class="btn" id="ex-btn">Load example ▾</button>
-              <div class="menu-list" id="ex-list" hidden></div>
+    <form id="form" class="s-grid" autocomplete="off">
+      <div class="qcol">
+        <div class="s-head">
+          <h1>Search RNA structures</h1>
+          <p class="lead">Upload or paste one RNA chain (PDB or mmCIF) to search the selected databases.</p>
+        </div>
+        <div class="card qcard">
+          <div class="qcard-h"><svg class="ico big" viewBox="0 0 24 24" aria-hidden="true"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/></svg><span class="t">Query structure</span>
+            <a class="help" href="/tutorial#input"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M9.6 9.4a2.5 2.5 0 1 1 3.4 2.4c-.6.3-1 .8-1 1.5v.4"/><circle cx="12" cy="17" r=".5"/></svg>Input format help</a></div>
+          <div class="qcard-b">
+            <div class="drop" id="drop">
+              <textarea id="text" spellcheck="false"
+                placeholder="Paste a PDB or mmCIF structure here, or drop a file onto this box.&#10;&#10;The first RNA chain is used; nucleotides need C3′, C4′ and O4′ atoms."></textarea>
+              <div class="file-chip" id="chip" hidden><span id="chip-name"></span><button type="button" id="chip-x" title="Remove">×</button></div>
             </div>
-            <span class="hint" id="max-upload"></span>
-            <span class="spacer"></span>
-            <span class="hint" id="go-hint"></span>
-            <button class="btn primary" id="go" type="submit" disabled>Search</button>
+            <div class="row actions">
+              <label class="btn"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15V4M7.5 8.5 12 4l4.5 4.5"/><path d="M5 14v4a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-4"/></svg>Upload file<input type="file" id="file" accept=".pdb,.cif,.mmcif,.ent" hidden></label>
+              <div class="menu">
+                <button type="button" class="btn" id="ex-btn"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/></svg>Load example<svg class="ico chev-s" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></button>
+                <div class="menu-list" id="ex-list" hidden></div>
+              </div>
+              <span class="hint" id="max-upload"></span>
+              <span class="spacer"></span>
+              <span class="hint" id="go-hint"></span>
+              <button class="btn primary" id="go" type="submit" disabled><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.6-3.6"/></svg>Search</button>
+            </div>
           </div>
         </div>
-        <div class="ocol">
-          <details class="fold">
-            <summary><span class="k">Databases</span><span class="sum" id="sum-db">…</span></summary>
-            <div class="fold-body"><div class="dbs" id="dbs"><div class="hint"><span class="spinner"></span>Connecting to the server…</div></div></div>
-          </details>
-          <details class="fold">
-            <summary><span class="k">Mode</span><span class="sum" id="sum-mode">RFoldseek</span></summary>
-            <div class="fold-body">
-              <div class="seg modes" id="mode">
+      </div>
+      <div class="ocol">
+        <details class="fold" open>
+          <summary><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><ellipse cx="12" cy="5.5" rx="7" ry="2.5"/><path d="M5 5.5v13c0 1.4 3.1 2.5 7 2.5s7-1.1 7-2.5v-13"/><path d="M5 12c0 1.4 3.1 2.5 7 2.5s7-1.1 7-2.5"/></svg><span class="k">Databases</span><span class="sum" id="sum-db">…</span><svg class="ico chev" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></summary>
+          <div class="fold-body"><div class="dbs" id="dbs"><div class="hint"><span class="spinner"></span>Connecting to the server…</div></div></div>
+        </details>
+        <details class="fold" open>
+          <summary><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M12 3.5l1.6 2.1 2.6-.6.6 2.6 2.1 1.6-1.2 2.4 1.2 2.4-2.1 1.6-.6 2.6-2.6-.6L12 20.5l-1.6-2.1-2.6.6-.6-2.6-2.1-1.6L6.3 12 5.1 9.6l2.1-1.6.6-2.6 2.6.6z"/></svg><span class="k">Mode</span><span class="sum" id="sum-mode">RFoldseek</span><svg class="ico chev" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></summary>
+          <div class="fold-body">
+            <div class="seg modes" id="mode">
                 <label class="on"><input type="radio" name="rerank" value="tm_a" checked>
                   <span class="m-name">RFoldseek</span>
                   <span class="m-sub">Recommended for most searches</span></label>
@@ -365,21 +472,20 @@
                   <span class="m-name">RFoldseek-TM</span>
                   <span class="m-sub">Better structural ranking</span></label>
               </div>
-            </div>
-          </details>
-          <details class="fold">
-            <summary><span class="k">Settings</span><span class="sum" id="sum-set">50 hits shown</span></summary>
-            <div class="fold-body">
-              <div class="adv-grid">
+          </div>
+        </details>
+        <details class="fold">
+          <summary><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></svg><span class="k">Settings</span><span class="sum" id="sum-set">50 hits shown</span><svg class="ico chev" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></summary>
+          <div class="fold-body">
+            <div class="adv-grid">
                 <label><span class="hint">Hits shown</span><span class="num-step"><input type="number" id="top_k" value="50" min="1" max="1000"><button type="button" data-for="top_k" data-step="50" title="Add 50">+50</button></span></label>
                 <label><span class="hint">Candidate depth</span><span class="num-step"><input type="number" id="top_n" value="200" min="1" max="2000"><button type="button" data-for="top_n" data-step="100" title="Add 100">+100</button></span></label>
                 <label><span class="hint">Min. diagonal k-mers</span><input type="number" id="min_diag" value="2" min="1" max="8"></label>
               </div>
-            </div>
-          </details>
-        </div>
-      </form>
-    </div>
+          </div>
+        </details>
+      </div>
+    </form>
   </section>
 
   <!-- tutorial view -->
@@ -387,6 +493,9 @@
     <div class="card doc">
       <h1>How to read the results</h1>
       <p class="lead">RFoldseek encodes every nucleotide as one of 80 learned 3Dr structural states, aligns the resulting token strings, and reports the closest structures in each database.</p>
+
+      <h2 id="input">Input</h2>
+      <p>Paste or upload one RNA chain as PDB or mmCIF (up to the size shown under the box). The first RNA chain in the file is used. Every nucleotide needs its C3′, C4′ and O4′ atoms; nucleotides without them are skipped, and chains shorter than 20 nucleotides cannot be searched.</p>
 
       <h2>1. Choose a mode</h2>
       <p><b>RFoldseek</b> (recommended for most searches) prefilters with a k-mer index, aligns structural tokens with affine-gap Smith–Waterman, superposes the aligned C4′ atoms, and ranks hits by the <b>structure score</b> S<sub>SW</sub> × TM-score.
