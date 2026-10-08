@@ -22,11 +22,18 @@ RFoldseek enables fast RNA tertiary-structure search with **3Dr**, a learned dis
 
 ## Installation
 
+One command installs RFoldseek together with CD-HIT-EST and US-align:
+
 ```
-pip install .
+git clone https://github.com/DylanYang/RFoldseek.git && cd RFoldseek
+conda env create -f environment.yml
+conda activate rfoldseek
 ```
 
-Requires Python >= 3.9. Runtime dependencies: `numpy`, `torch`, `numba`, `biotite`, `scipy`.
+Without conda, `pip install .` installs RFoldseek alone (Python >= 3.9;
+`numpy`, `torch`, `numba`, `biotite`, `scipy`). CD-HIT-EST and US-align must
+then be installed separately; they are needed only for building clustered
+databases, `--rerank tm` and `rfoldseek calibrate`.
 
 ## Hardware and memory requirements
 
@@ -64,8 +71,8 @@ rfoldseek build \
   --output target_db.pt
 ```
 
-`cd-hit-est` is an external program, neither bundled nor installed by `pip`.
-Build it once from source if your platform has no package for it:
+`cd-hit-est` comes with the conda environment; after a plain `pip install`,
+build it once from source if your platform has no package for it:
 
 ```
 curl -L -O https://github.com/weizhongli/cdhit/releases/download/V4.8.1/cd-hit-v4.8.1-2019-0228.tar.gz
