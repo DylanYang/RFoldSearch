@@ -1,19 +1,13 @@
-"""Load the deployed VQ-VAE tokenizer and encode structures to 3Dr tokens.
+"""Load the deployed 3Dr tokenizer and encode structures to 3Dr tokens.
 
-`load_model` / `prepare_sample` / `encode_entry` are ported unchanged from
-RFoldseek-paper-code src/search/build_database.py; the normalisation
-statistics travel inside the checkpoint and are applied here.
+The normalisation statistics travel inside the checkpoint and are applied
+here.
 """
 import numpy as np
 import torch
 
-from .vqvae import (
-    DescriptorVQVAE,
-    compute_descriptor,
-    infer_decoder_out_dim,
-    infer_n_dec_layers,
-    infer_n_enc_layers,
-)
+from .descriptors import compute_descriptor
+from .encoder import tokenizer_from_checkpoint
 
 # Byte layout of the 49-D descriptor produced by compute_descriptor.
 # See rfoldseek/descriptors/compose.py for the docstring / diagram.
@@ -50,24 +44,11 @@ def active_block_mask(active_blocks, d_descriptor=49, dtype=torch.float32):
 
 
 def load_model(checkpoint_path: str, device: torch.device = torch.device("cpu")):
+    """-> (tokenizer, checkpoint dict, number of states, descriptor width)."""
     ckpt = torch.load(checkpoint_path, map_location=device, weights_only=False)
-    sd = ckpt["model"]
-    d_descriptor = ckpt.get("d_descriptor", infer_decoder_out_dim(sd))
-    d_hidden = ckpt.get("d_hidden", sd["encoder.net.0.weight"].shape[0])
-    d_latent = ckpt.get("d_latent", sd["codebook.embeddings"].shape[1])
-    n_codes = sd["codebook.embeddings"].shape[0]
-    model = DescriptorVQVAE(
-        d_descriptor=d_descriptor,
-        d_hidden=d_hidden,
-        d_latent=d_latent,
-        n_codes=n_codes,
-        n_enc_layers=ckpt.get("n_enc_layers", infer_n_enc_layers(sd)),
-        n_dec_layers=ckpt.get("n_dec_layers", infer_n_dec_layers(sd)),
-        ema_decay=ckpt.get("ema_decay", 0.99),
-    ).to(device)
-    model.load_state_dict(sd)
+    model = tokenizer_from_checkpoint(ckpt).to(device)
     model.eval()
-    return model, ckpt, n_codes, d_descriptor
+    return model, ckpt, model.n_codes, model.encoder.norm.normalized_shape[0]
 
 
 def prepare_sample(entry, device="cpu"):
@@ -110,9 +91,9 @@ def encode_entry(model, entry, device, norm_mean, norm_std, active_blocks=None):
         keep = active_block_mask(active_blocks, descriptor.shape[-1],
                                  dtype=descriptor.dtype).to(device)
         descriptor = descriptor * keep
-    output = model(descriptor)
+    indices = model(descriptor)
     valid_mask = mask[0].cpu()
-    tokens = output["indices"][0].cpu()[valid_mask].numpy().astype(np.int16)
+    tokens = indices[0].cpu()[valid_mask].numpy().astype(np.int16)
     return {
         "id": entry.get("id", ""),
         "tokens": tokens,

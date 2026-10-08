@@ -237,6 +237,25 @@ def build_database(checkpoint: str, data_paths: list[str], output: str,
     return db
 
 
+def strict_cluster_labels(entries, mapping, index_prefix: str | None = None) -> list:
+    """One cluster label per entry; an unmapped entry is an error.
+
+    Unlike ``assign_clusters``, calibration must cover the whole target
+    database, so nothing becomes a singleton silently. ``index_prefix``
+    selects positional CD-HIT names such as ``t0``, ``t1``, ...
+    """
+    labels = []
+    for index, entry in enumerate(entries):
+        raw = str(entry.get("id", ""))
+        key = f"{index_prefix}{index}" if index_prefix is not None else raw
+        if key not in mapping and index_prefix is None:
+            key = short_id(raw, index)
+        if key not in mapping:
+            raise ValueError(f"no cluster assignment for entry {index}: {raw}")
+        labels.append(mapping[key])
+    return labels
+
+
 def attach_evalue_calibration(database: str, clusters: str,
                               evalue_params: str, output: str,
                               index_prefix: str | None = None) -> dict:
@@ -253,16 +272,7 @@ def attach_evalue_calibration(database: str, clusters: str,
         raise FileExistsError(f"output database already exists: {output}")
     db = torch.load(database, map_location="cpu", weights_only=False)
     entries = db["entries"]
-    mapping = read_clusters(clusters)
-    labels = []
-    for index, entry in enumerate(entries):
-        raw = str(entry.get("id", ""))
-        key = f"{index_prefix}{index}" if index_prefix is not None else raw
-        if key not in mapping and index_prefix is None:
-            key = short_id(raw, index)
-        if key not in mapping:
-            raise ValueError(f"no cluster assignment for entry {index}: {raw}")
-        labels.append(mapping[key])
+    labels = strict_cluster_labels(entries, read_clusters(clusters), index_prefix)
     n_clusters = len(set(labels))
     with open(evalue_params) as handle:
         params = json.load(handle)

@@ -1,6 +1,12 @@
 <h1><a name="rfoldseek"></a><img src=".github/header.PNG" alt="RFoldseek" height="88" /></h1>
 
-RFoldseek enables fast RNA tertiary-structure search with **3Dr**, a learned discrete structural alphabet. Each nucleotide's local geometry is quantised into one of 80 states by a VQ-VAE, converting RNA chains into token strings that are searched with an inverted-index k-mer prefilter. The default mode aligns candidates by affine-gap token Smith-Waterman, superposes the aligned C4′ atoms, and ranks by the structure score **R<sub>str</sub> = S<sub>SW</sub> × TM<sub>a</sub>**. The reported E-value remains the E-value of S<sub>SW</sub> and counts the search space in CD-HIT-EST sequence clusters. We also provide the legacy token-only `sw` ranking and RFoldseek-TM, an accuracy-oriented mode that reranks candidates by coordinate alignment with US-align.
+<p>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-Apache_2.0-blue.svg" alt="License: Apache 2.0" /></a>
+  <img src="https://img.shields.io/badge/python-%3E%3D3.9-blue.svg" alt="Python >= 3.9" />
+  <a href="#installation"><img src="https://img.shields.io/badge/install-conda-44A833.svg" alt="Install with conda" /></a>
+</p>
+
+RFoldseek enables fast RNA tertiary-structure search with **3Dr**, a learned discrete structural alphabet. Each nucleotide is described by a 17-D vector: the rigid-body transform to its nearest non-sequential spatial neighbour (distance, direction and rotation) and its local context (sequence separations to its neighbour, base-pair and stacking partners, cis/trans base-pair orientation, and contact density within 8 and 12 Å). A VQ-VAE quantises this vector into one of 80 states, converting RNA chains into token strings (**B**). Targets sharing at least two token k-mers on a common diagonal with the query pass the prefilter, and the top N are aligned by affine-gap token Smith-Waterman, which gives the alignment score S<sub>SW</sub> and the nucleotide correspondence. The aligned C4′ atoms are then superposed without changing the alignment, and hits are ranked by the structure score **R<sub>str</sub> = S<sub>SW</sub> × TM<sub>a</sub>**, where TM<sub>a</sub> is the alignment TM-score (**A**). The reported E-value is the E-value of S<sub>SW</sub> and counts the search space in CD-HIT-EST sequence clusters. We also provide the legacy token-only `sw` ranking and RFoldseek-TM, an accuracy-oriented mode that reranks the same top N candidates with US-align by the mean of the two length-normalised TM-scores.
 
 <p align="center"><img src=".github/fig1.jpeg" width="720" /></p>
 
@@ -22,11 +28,18 @@ RFoldseek enables fast RNA tertiary-structure search with **3Dr**, a learned dis
 
 ## Installation
 
+One command installs RFoldseek together with CD-HIT-EST and US-align:
+
 ```
-pip install .
+git clone https://github.com/DylanYang/RFoldseek.git && cd RFoldseek
+conda env create -f environment.yml
+conda activate rfoldseek
 ```
 
-Requires Python >= 3.9. Runtime dependencies: `numpy`, `torch`, `numba`, `biotite`, `scipy`.
+Without conda, `pip install .` installs RFoldseek alone (Python >= 3.9;
+`numpy`, `torch`, `numba`, `biotite`, `scipy`). CD-HIT-EST and US-align must
+then be installed separately; they are needed only for building clustered
+databases, `--rerank tm` and `rfoldseek calibrate`.
 
 ## Hardware and memory requirements
 
@@ -64,8 +77,8 @@ rfoldseek build \
   --output target_db.pt
 ```
 
-`cd-hit-est` is an external program, neither bundled nor installed by `pip`.
-Build it once from source if your platform has no package for it:
+`cd-hit-est` comes with the conda environment; after a plain `pip install`,
+build it once from source if your platform has no package for it:
 
 ```
 curl -L -O https://github.com/weizhongli/cdhit/releases/download/V4.8.1/cd-hit-v4.8.1-2019-0228.tar.gz
@@ -110,10 +123,9 @@ then a reranking of the candidates. What differs is how the candidates are reran
 rfoldseek search --query target_chain_id --db target_db.pt --rerank tm
 ```
 
-TM mode is the one part of RFoldseek that does **not** work straight after
-installation: it needs a `USalign` binary, which is neither bundled nor a pip
-dependency. Build it once from source and either put it on your `PATH`, set
-`$USALIGN`, or pass `--usalign`:
+TM mode needs a `USalign` binary, which the conda environment installs. After
+a plain `pip install`, build it once from source and either put it on your
+`PATH`, set `$USALIGN`, or pass `--usalign`:
 
 ```
 git clone https://github.com/pylelab/USalign && cd USalign && g++ -O3 -o USalign USalign.cpp
@@ -161,64 +173,58 @@ rank  target                    TM_mean  TM_query  TM_target    len
 RFoldseek reports Smith--Waterman E-values in `tm_a` and `sw` modes. The
 E-value is the expected number of unrelated database clusters (CD-HIT-EST,
 80% identity) reaching a hit's token-alignment score; it is not a significance
-estimate for the structure score `R_str`. It is computed in two steps:
+estimate for the structure score R<sub>str</sub>. A Gumbel null of per-cluster
+maximum scores, conditioned on the query's length and token entropy, gives an
+initial value `E0`, and a database-specific power law `E = a_D * E0**b_D`
+calibrates it to the observed number of structurally unrelated clusters.
 
-1. A Gumbel null of per-cluster maximum scores gives the initial value `E0`.
-   Its parameters follow the database-specific linear query model
-   `(mu_q, log beta_q) = (1, z_log_length, z_token_entropy) B_D`.
-2. A database-specific positive power law,
-   `E_cal = a_D * E0**b_D`, calibrates `E0` to the observed number of
-   structurally unrelated clusters per query.
+The parameters belong to one database. Those bundled with RFoldseek were
+fitted for the paper's 885-chain database and are used only
+when searching that database; a search of any other database reports no
+E-value until the database is calibrated. Their power-law correction was
+fitted after a US-align audit of every background cluster leader with
+`E0 <= 100`; in leave-one-Rfam-family-out validation the observed number of
+unrelated clusters is 0.95, 0.89 and 0.99 times the nominal E-value at
+E = 1, 10 and 100. The calibration holds on average over families: most
+families see fewer unrelated hits than nominal and a few see many more, and
+below E = 0.1 there are too few events to check it.
 
-Gumbel fitting, calibration, and deployment use the complete target database;
-no query--target length-ratio filter is applied. Parameters are bound to the
-database tokens, clusters, substitution matrix, and gap costs by fingerprints.
+To calibrate your own database, run once:
 
-Calibration is performed once per database:
-
-1. Fit the query-conditional cluster-max Gumbel model:
-
-```bash
-python scripts/rebuild_evalue_params.py --db target_db.pt --labels labels.tsv \
-  --query-panel query_panel.tsv --related-pairs adjudication.tsv \
-  --audit-ceiling 100 --output target_clustermax_params.json
 ```
-
-2. Generate one observation per calibration query and target cluster:
-
-```bash
-python scripts/build_evalue_calibration_background.py --db target_db.pt \
-  --queries calibration_queries.pt --params target_clustermax_params.json \
-  --labels labels.tsv --related-pairs adjudication.tsv --audit-ceiling 100 \
-  --background-scope all --output target_background.tsv
-```
-
-3. Fit the power-law calibration:
-
-```bash
-python scripts/fit_power_evalue_calibration.py \
-  --params target_clustermax_params.json --background target_background.tsv \
-  --query-panel target_background.queries.tsv --background-scaling none \
-  --raw-evalue-ceiling 100 --db target_db.pt \
-  --output target_evalue_params.json
-```
-
-4. Attach the parameters to their matching database:
-
-```bash
-rfoldseek attach-calibration --db target_db.pt \
-  --clusters target_nr80.clstr --evalue_params target_evalue_params.json \
+rfoldseek calibrate \
+  --db target_db.pt \
+  --clusters target_nr80.clstr \
+  --labels labels.tsv \
+  --queries calibration_queries.pt \
+  --db_type predicted \
   --output calibrated_db.pt
 ```
 
-Every cluster leader with `E0 <= 100` must have a US-align audit result.
-Structurally related leaders are excluded and replaced by the next eligible
-member of the same cluster. Predicted databases use `--background-scope all`
-and `--background-scaling none`; experimental databases use
-`--background-scope annotated` and `--background-scaling annotated-to-full`.
-Calibration should be assessed by leave-one-Rfam-family-out validation. Since
-`a_D > 0` and `b_D > 0`, the correction is monotone and preserves the
-token-score ordering for a fixed query.
+and search `calibrated_db.pt` as usual. The command fits the Gumbel model,
+scores the calibration queries against every target cluster, fits the power
+law, and attaches the result to a new database file.
+
+| Option            | Description                                                               |
+| ----------------- | ------------------------------------------------------------------------- |
+| `--labels`        | TSV of `chain_id`, `family`, `clan` (Rfam) for every chain in `--db` and `--queries`; `scripts/build_rfam_labels.py` makes it from `cmscan --fmt 2` output |
+| `--queries`       | Independent database of calibration queries, built with `rfoldseek build` |
+| `--db_type`       | `predicted` uses every eligible cluster as background; `experimental` uses Rfam-annotated targets, reweighted to the full database |
+| `--related_pairs` | Existing US-align results (`query_id`, `target_id`, `tm_query`, `tm_target`) |
+| `--usalign`       | Path to the `USalign` binary (default: `$USALIGN`, then `PATH`)           |
+| `--query_panel`   | TSV of `query_id` choosing the chains of `--db` that fit the Gumbel model (default: all) |
+| `--workdir`       | Intermediate files (default: `calibrated_db.calibration/`)                |
+
+Pairs with the same Rfam family or clan, and pairs US-align finds
+structurally related (mean TM-score >= 0.45), are excluded from the
+background. Every cluster leader with `E0 <= 100` needs a US-align result;
+those not in `--related_pairs` are aligned automatically and cached in the
+work directory, so a rerun does not align them again. Calibration should be
+assessed by leave-one-Rfam-family-out validation. Since `a_D > 0` and
+`b_D > 0`, the correction is monotone and preserves the token-score ordering
+for a fixed query. To run the stages separately, use
+`scripts/rebuild_evalue_params.py`, `scripts/build_evalue_calibration_background.py`
+and `scripts/fit_power_evalue_calibration.py`, then `rfoldseek attach-calibration`.
 
 ### Python API
 
@@ -285,11 +291,12 @@ command line, the corresponding options are `--model`, `--matrix`,
 
 ## Third-party components
 
-No third-party source is vendored. Runtime dependencies are `numpy`, `torch`, `numba` and `biotite`, each
-under its own license. `--rerank tm` calls US-align (Zhang et al., *Nat. Methods* 2022) as an external
+No third-party source is vendored. Runtime dependencies are `numpy`, `torch`, `numba`, `biotite` and `scipy`,
+each under its own license. `--rerank tm` calls US-align (Zhang et al., *Nat. Methods* 2022) as an external
 program, and `--clusters` consumes the output of CD-HIT-EST (Fu et al.,
-*Bioinformatics* 2012). Neither source is vendored and neither is installed by
-`pip`; users supply their own binaries.
+*Bioinformatics* 2012). Neither source is vendored; both are installed from
+bioconda by `environment.yml`, and after a plain `pip install` users supply
+their own binaries.
 
 ## License
 
