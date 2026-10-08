@@ -6,19 +6,14 @@ Calibration has three stages, each of which used to be a separate script:
 2. score independent calibration queries against every target cluster to
    collect one background observation per query and cluster;
 3. fit the power law ``E_cal = a_D * E0**b_D`` to that background.
-
-``calibrate`` runs all three and attaches the result to the database. Every
-cluster leader with ``E0 <= audit_ceiling`` must be adjudicated by US-align;
-leaders nobody has adjudicated yet are aligned on the spot (when US-align is
-available) and the stage is repeated, since excluding a related leader
-promotes the next member of its cluster. Intermediate files are kept in a
-work directory, and US-align results there are reused by a later run.
 """
 from __future__ import annotations
 
 import csv
 import json
+import os
 from collections import defaultdict
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import numpy as np
@@ -545,47 +540,62 @@ def fit_power_params(params, rows, n_clusters, *, panel=None,
 AUDIT_FIELDS = ("query_id", "target_id", "tm_query", "tm_target")
 
 
+def _pool_for(query_id, target_list, query_entries, target_entries):
+    query = query_entries[query_id]
+    if query.get("coords") is None or query.get("mask") is None:
+        raise ValueError(
+            f"{query_id} has no coordinates to align; rebuild the "
+            "database from structures or pass --related_pairs")
+    pool = []
+    for target_id in dict.fromkeys(target_list):
+        target = target_entries[target_id]
+        if target.get("coords") is None or target.get("mask") is None:
+            raise ValueError(
+                f"{target_id} has no coordinates to align; rebuild the "
+                "database from structures or pass --related_pairs")
+        pool.append((target_id, target["coords"], target["mask"]))
+    return query, pool
+
+
 def audit_pairs(binary, pairs, query_entries, target_entries, path, audited,
-                related, tm_threshold=TM_THRESHOLD):
+                related, tm_threshold=TM_THRESHOLD, workers=None):
     """Align each (query_id, target_id) with US-align and record the result.
 
     Results are appended to ``path`` and added to ``audited``/``related``. A
     chain with too few resolved residues to align scores zero, i.e. it is
-    counted as unrelated.
+    counted as unrelated. Queries are aligned in ``workers`` concurrent
+    US-align processes (default: one per CPU).
     """
     by_query = defaultdict(list)
     for query_id, target_id in pairs:
         by_query[query_id].append(target_id)
+    jobs = [(query_id,) + _pool_for(query_id, target_list, query_entries,
+                                    target_entries)
+            for query_id, target_list in by_query.items()]
+
+    def align(job):
+        query_id, query, pool = job
+        try:
+            scores, _ = score_pool(binary, query["coords"], query["mask"], pool)
+        except ValueError:
+            scores = {}              # query too short to superpose
+        return query_id, pool, scores
+
     path = Path(path)
     new_file = not path.exists()
-    with path.open("a", newline="") as handle:
+    with path.open("a", newline="") as handle, ThreadPoolExecutor(
+            workers or os.cpu_count() or 1) as executor:
         writer = csv.DictWriter(handle, fieldnames=AUDIT_FIELDS, delimiter="\t")
         if new_file:
             writer.writeheader()
-        for query_id, target_list in by_query.items():
-            query = query_entries[query_id]
-            if query.get("coords") is None or query.get("mask") is None:
-                raise ValueError(
-                    f"{query_id} has no coordinates to align; rebuild the "
-                    "database from structures or pass --related_pairs")
-            pool = []
-            for target_id in dict.fromkeys(target_list):
-                target = target_entries[target_id]
-                if target.get("coords") is None or target.get("mask") is None:
-                    raise ValueError(
-                        f"{target_id} has no coordinates to align; rebuild the "
-                        "database from structures or pass --related_pairs")
-                pool.append((target_id, target["coords"], target["mask"]))
-            try:
-                scores, _ = score_pool(binary, query["coords"], query["mask"], pool)
-            except ValueError:
-                scores = {}              # query too short to superpose
+        for query_id, pool, scores in executor.map(align, jobs):
             for target_id, _, _ in pool:
                 tm_query, tm_target = scores.get(target_id, (0.0, 0.0))
                 writer.writerow({"query_id": query_id, "target_id": target_id,
                                  "tm_query": tm_query, "tm_target": tm_target})
                 add_adjudication(audited, related, query_id, target_id,
                                  0.5 * (tm_query + tm_target) >= tm_threshold)
+            handle.flush()
 
 
 # -------------------------------------------------------------- pipeline
