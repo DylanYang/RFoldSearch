@@ -1,5 +1,11 @@
 <h1><a name="rfoldseek"></a><img src=".github/header.PNG" alt="RFoldseek" height="88" /></h1>
 
+<p>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-Apache_2.0-blue.svg" alt="License: Apache 2.0" /></a>
+  <img src="https://img.shields.io/badge/python-%3E%3D3.9-blue.svg" alt="Python >= 3.9" />
+  <a href="#installation"><img src="https://img.shields.io/badge/install-conda-44A833.svg" alt="Install with conda" /></a>
+</p>
+
 RFoldseek enables fast RNA tertiary-structure search with **3Dr**, a learned discrete structural alphabet. Each nucleotide is described by a 17-D vector: the rigid-body transform to its nearest non-sequential spatial neighbour (distance, direction and rotation) and its local context (sequence separations to its neighbour, base-pair and stacking partners, cis/trans base-pair orientation, and contact density within 8 and 12 Å). A VQ-VAE quantises this vector into one of 80 states, converting RNA chains into token strings (**B**). Targets sharing at least two token k-mers on a common diagonal with the query pass the prefilter, and the top N are aligned by affine-gap token Smith-Waterman, which gives the alignment score S<sub>SW</sub> and the nucleotide correspondence. The aligned C4′ atoms are then superposed without changing the alignment, and hits are ranked by the structure score **R<sub>str</sub> = S<sub>SW</sub> × TM<sub>a</sub>**, where TM<sub>a</sub> is the alignment TM-score (**A**). The reported E-value is the E-value of S<sub>SW</sub> and counts the search space in CD-HIT-EST sequence clusters. We also provide the legacy token-only `sw` ranking and RFoldseek-TM, an accuracy-oriented mode that reranks the same top N candidates with US-align by the mean of the two length-normalised TM-scores.
 
 <p align="center"><img src=".github/fig1.jpeg" width="720" /></p>
@@ -275,11 +281,12 @@ command line, the corresponding options are `--model`, `--matrix`,
 
 ## Third-party components
 
-No third-party source is vendored. Runtime dependencies are `numpy`, `torch`, `numba` and `biotite`, each
-under its own license. `--rerank tm` calls US-align (Zhang et al., *Nat. Methods* 2022) as an external
+No third-party source is vendored. Runtime dependencies are `numpy`, `torch`, `numba`, `biotite` and `scipy`,
+each under its own license. `--rerank tm` calls US-align (Zhang et al., *Nat. Methods* 2022) as an external
 program, and `--clusters` consumes the output of CD-HIT-EST (Fu et al.,
-*Bioinformatics* 2012). Neither source is vendored and neither is installed by
-`pip`; users supply their own binaries.
+*Bioinformatics* 2012). Neither source is vendored; both are installed from
+bioconda by `environment.yml`, and after a plain `pip install` users supply
+their own binaries.
 
 ## License
 
