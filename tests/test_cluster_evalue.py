@@ -126,7 +126,10 @@ def test_shipped_params_are_the_cluster_max_scheme():
     assert len(par["target_database_fingerprint"]) == 64
     assert len(par["calibration_context_fingerprint"]) == 64
     assert (par["power_calibration"]["validation_status"] ==
-            "provisional-incomplete-structural-audit")
+            "background-audit-complete")
+    assert par["power_calibration"]["structural_audit_ceiling"] == 100.0
+    assert (par["power_calibration"]["fit_raw_evalue_ceiling"]
+            <= par["power_calibration"]["structural_audit_ceiling"])
     assert par["length_table"], "no length grid in the packaged parameters"
     for row in par["length_table"]:
         assert {"length", "mu", "beta"} <= set(row)

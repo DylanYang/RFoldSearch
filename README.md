@@ -123,10 +123,9 @@ then a reranking of the candidates. What differs is how the candidates are reran
 rfoldseek search --query target_chain_id --db target_db.pt --rerank tm
 ```
 
-TM mode is the one part of RFoldseek that does **not** work straight after
-installation: it needs a `USalign` binary, which is neither bundled nor a pip
-dependency. Build it once from source and either put it on your `PATH`, set
-`$USALIGN`, or pass `--usalign`:
+TM mode needs a `USalign` binary, which the conda environment installs. After
+a plain `pip install`, build it once from source and either put it on your
+`PATH`, set `$USALIGN`, or pass `--usalign`:
 
 ```
 git clone https://github.com/pylelab/USalign && cd USalign && g++ -O3 -o USalign USalign.cpp
@@ -179,7 +178,18 @@ maximum scores, conditioned on the query's length and token entropy, gives an
 initial value `E0`, and a database-specific power law `E = a_D * E0**b_D`
 calibrates it to the observed number of structurally unrelated clusters.
 
-The parameters belong to one database, so calibrate each database once:
+The parameters belong to one database. Those bundled with RFoldseek were
+fitted for the paper's 885-chain database and are used only
+when searching that database; a search of any other database reports no
+E-value until the database is calibrated. Their power-law correction was
+fitted after a US-align audit of every background cluster leader with
+`E0 <= 100`; in leave-one-Rfam-family-out validation the observed number of
+unrelated clusters is 0.95, 0.89 and 0.99 times the nominal E-value at
+E = 1, 10 and 100. The calibration holds on average over families: most
+families see fewer unrelated hits than nominal and a few see many more, and
+below E = 0.1 there are too few events to check it.
+
+To calibrate your own database, run once:
 
 ```
 rfoldseek calibrate \
