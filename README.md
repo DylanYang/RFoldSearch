@@ -161,64 +161,47 @@ rank  target                    TM_mean  TM_query  TM_target    len
 RFoldseek reports Smith--Waterman E-values in `tm_a` and `sw` modes. The
 E-value is the expected number of unrelated database clusters (CD-HIT-EST,
 80% identity) reaching a hit's token-alignment score; it is not a significance
-estimate for the structure score `R_str`. It is computed in two steps:
+estimate for the structure score R<sub>str</sub>. A Gumbel null of per-cluster
+maximum scores, conditioned on the query's length and token entropy, gives an
+initial value `E0`, and a database-specific power law `E = a_D * E0**b_D`
+calibrates it to the observed number of structurally unrelated clusters.
 
-1. A Gumbel null of per-cluster maximum scores gives the initial value `E0`.
-   Its parameters follow the database-specific linear query model
-   `(mu_q, log beta_q) = (1, z_log_length, z_token_entropy) B_D`.
-2. A database-specific positive power law,
-   `E_cal = a_D * E0**b_D`, calibrates `E0` to the observed number of
-   structurally unrelated clusters per query.
+The parameters belong to one database, so calibrate each database once:
 
-Gumbel fitting, calibration, and deployment use the complete target database;
-no query--target length-ratio filter is applied. Parameters are bound to the
-database tokens, clusters, substitution matrix, and gap costs by fingerprints.
-
-Calibration is performed once per database:
-
-1. Fit the query-conditional cluster-max Gumbel model:
-
-```bash
-python scripts/rebuild_evalue_params.py --db target_db.pt --labels labels.tsv \
-  --query-panel query_panel.tsv --related-pairs adjudication.tsv \
-  --audit-ceiling 100 --output target_clustermax_params.json
 ```
-
-2. Generate one observation per calibration query and target cluster:
-
-```bash
-python scripts/build_evalue_calibration_background.py --db target_db.pt \
-  --queries calibration_queries.pt --params target_clustermax_params.json \
-  --labels labels.tsv --related-pairs adjudication.tsv --audit-ceiling 100 \
-  --background-scope all --output target_background.tsv
-```
-
-3. Fit the power-law calibration:
-
-```bash
-python scripts/fit_power_evalue_calibration.py \
-  --params target_clustermax_params.json --background target_background.tsv \
-  --query-panel target_background.queries.tsv --background-scaling none \
-  --raw-evalue-ceiling 100 --db target_db.pt \
-  --output target_evalue_params.json
-```
-
-4. Attach the parameters to their matching database:
-
-```bash
-rfoldseek attach-calibration --db target_db.pt \
-  --clusters target_nr80.clstr --evalue_params target_evalue_params.json \
+rfoldseek calibrate \
+  --db target_db.pt \
+  --clusters target_nr80.clstr \
+  --labels labels.tsv \
+  --queries calibration_queries.pt \
+  --db_type predicted \
   --output calibrated_db.pt
 ```
 
-Every cluster leader with `E0 <= 100` must have a US-align audit result.
-Structurally related leaders are excluded and replaced by the next eligible
-member of the same cluster. Predicted databases use `--background-scope all`
-and `--background-scaling none`; experimental databases use
-`--background-scope annotated` and `--background-scaling annotated-to-full`.
-Calibration should be assessed by leave-one-Rfam-family-out validation. Since
-`a_D > 0` and `b_D > 0`, the correction is monotone and preserves the
-token-score ordering for a fixed query.
+and search `calibrated_db.pt` as usual. The command fits the Gumbel model,
+scores the calibration queries against every target cluster, fits the power
+law, and attaches the result to a new database file.
+
+| Option            | Description                                                               |
+| ----------------- | ------------------------------------------------------------------------- |
+| `--labels`        | TSV of `chain_id`, `family`, `clan` (Rfam) for every chain in `--db` and `--queries`; `scripts/build_rfam_labels.py` makes it from `cmscan --fmt 2` output |
+| `--queries`       | Independent database of calibration queries, built with `rfoldseek build` |
+| `--db_type`       | `predicted` uses every eligible cluster as background; `experimental` uses Rfam-annotated targets, reweighted to the full database |
+| `--related_pairs` | Existing US-align results (`query_id`, `target_id`, `tm_query`, `tm_target`) |
+| `--usalign`       | Path to the `USalign` binary (default: `$USALIGN`, then `PATH`)           |
+| `--query_panel`   | TSV of `query_id` choosing the chains of `--db` that fit the Gumbel model (default: all) |
+| `--workdir`       | Intermediate files (default: `calibrated_db.calibration/`)                |
+
+Pairs with the same Rfam family or clan, and pairs US-align finds
+structurally related (mean TM-score >= 0.45), are excluded from the
+background. Every cluster leader with `E0 <= 100` needs a US-align result;
+those not in `--related_pairs` are aligned automatically and cached in the
+work directory, so a rerun does not align them again. Calibration should be
+assessed by leave-one-Rfam-family-out validation. Since `a_D > 0` and
+`b_D > 0`, the correction is monotone and preserves the token-score ordering
+for a fixed query. To run the stages separately, use
+`scripts/rebuild_evalue_params.py`, `scripts/build_evalue_calibration_background.py`
+and `scripts/fit_power_evalue_calibration.py`, then `rfoldseek attach-calibration`.
 
 ### Python API
 
