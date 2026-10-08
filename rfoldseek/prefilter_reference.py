@@ -1,9 +1,4 @@
-"""Reference prefilter: the paper pipeline's implementation, kept verbatim.
-
-Ported from the RFoldseek CLI in RFoldseek-paper-code. It is the semantic
-ground truth the compiled kernel in `prefilter.py` must match; the
-equivalence test runs both and demands identical output.
-"""
+"""Reference prefilter"""
 from collections import defaultdict
 
 import numpy as np

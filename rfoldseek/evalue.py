@@ -1,4 +1,3 @@
-# Ported from RFoldseek-paper-code src/search/evalue.py; only imports adjusted.
 """Cluster-maximum Gumbel E-values for RFoldseek token Smith-Waterman scores."""
 
 from __future__ import annotations
@@ -506,16 +505,15 @@ def bit_score_clustermax(score, mu: float, beta: float):
 
 
 if __name__ == "__main__":
-    # Sanity on synthetic "chains" with local structure: unrelated pairs should
-    # be unremarkable, a self-alignment overwhelming.
+
     rng = np.random.default_rng(0)
     n_codes = 80
     sub = rng.standard_normal((n_codes, n_codes)).astype(np.float32) * 0.4
     sub = (sub + sub.T) / 2
     np.fill_diagonal(sub, 1.0)
     chains = []
-    for _ in range(60):                     # runs of repeated tokens, as real
-        out = []                            # token strings are autocorrelated
+    for _ in range(60):
+        out = []
         while len(out) < 200:
             out += [int(rng.integers(n_codes))] * int(rng.integers(1, 5))
         chains.append(np.asarray(out[:200], dtype=np.int64))

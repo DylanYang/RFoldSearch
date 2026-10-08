@@ -1,4 +1,3 @@
-# Ported from RFoldseek-paper-code preprocessing/extract_backbone.py; only imports adjusted.
 import json
 import os
 import warnings

@@ -6,7 +6,7 @@
   <a href="#installation"><img src="https://img.shields.io/badge/install-conda-44A833.svg" alt="Install with conda" /></a>
 </p>
 
-RFoldseek enables fast RNA tertiary-structure search with **3Dr**, a learned discrete structural alphabet. Each nucleotide is described by a 17-D vector: the rigid-body transform to its nearest non-sequential spatial neighbour (distance, direction and rotation) and its local context (sequence separations to its neighbour, base-pair and stacking partners, cis/trans base-pair orientation, and contact density within 8 and 12 Å). A VQ-VAE quantises this vector into one of 80 states, converting RNA chains into token strings (**B**). Targets sharing at least two token k-mers on a common diagonal with the query pass the prefilter, and the top N are aligned by affine-gap token Smith-Waterman, which gives the alignment score S<sub>SW</sub> and the nucleotide correspondence. The aligned C4′ atoms are then superposed without changing the alignment, and hits are ranked by the structure score **R<sub>str</sub> = S<sub>SW</sub> × TM<sub>a</sub>**, where TM<sub>a</sub> is the alignment TM-score (**A**). The reported E-value is the E-value of S<sub>SW</sub> and counts the search space in CD-HIT-EST sequence clusters. We also provide the legacy token-only `sw` ranking and RFoldseek-TM, an accuracy-oriented mode that reranks the same top N candidates with US-align by the mean of the two length-normalised TM-scores.
+RFoldseek enables fast RNA tertiary-structure search with 3Dr, a learned discrete structural alphabet. Each nucleotide is described by a 17-D vector: the rigid-body transform to its nearest non-sequential spatial neighbour and its local context. A VQ-VAE quantises this vector into one of 80 states, converting RNA chains into token strings. Targets sharing at least two token k-mers on a common diagonal with the query pass the prefilter, and the top N are aligned by affine-gap token Smith-Waterman, which gives the alignment score and the nucleotide correspondence. For the default search mode, RFoldseek estimates token-alignment E-values using a query-conditional Gumbel model followed by database-specific power-law calibration. Hits are ranked by a structure score that combines the token-alignment score with the structural similarity of the aligned nucleotides, independently of the reported E-value. RFoldseek-TM instead ranks candidates by US-align TM-score and does not report token-alignment E-values.
 
 <p align="center"><img src=".github/fig1.jpeg" width="720" /></p>
 
@@ -36,10 +36,9 @@ conda env create -f environment.yml
 conda activate rfoldseek
 ```
 
-Without conda, `pip install .` installs RFoldseek alone (Python >= 3.9;
-`numpy`, `torch`, `numba`, `biotite`, `scipy`). CD-HIT-EST and US-align must
-then be installed separately; they are needed only for building clustered
-databases, `--rerank tm` and `rfoldseek calibrate`.
+Without conda, `pip install .` installs RFoldseek alone. CD-HIT-EST and US-align must
+then be installed separately and they are needed only for building clustered databases,
+`--rerank tm` and `rfoldseek calibrate`.
 
 ## Hardware and memory requirements
 
@@ -113,7 +112,7 @@ then a reranking of the candidates. What differs is how the candidates are reran
   **R<sub>str</sub> = S<sub>SW</sub> × TM<sub>a</sub>**. `TM_a` is the mean of
   query- and target-length-normalised TM terms for the fixed token alignment.
   The E-value is still calculated from `S_SW`, not from `R_str`.
-- **`sw`**: legacy token-only Smith-Waterman ranking. It can search databases
+- **`sw`**: token-only Smith-Waterman ranking. It can search databases
   without coordinates and reports the same Smith-Waterman E-value.
 - **`tm`** (RFoldseek-TM): the candidate pool is handed to
   [US-align](https://github.com/pylelab/USalign) and ranked by the mean of its two length-normalised TM-scores. 
@@ -161,7 +160,7 @@ rank  target                    TM_mean  TM_query  TM_target    len
 | `--top_k`    | Output      | Number of top hits to return (default: 10)                                         |
 | `--rerank`   | Scoring     | `tm_a` (default), `sw`, or `tm`                                                    |
 | `--top_n`    | Sensitivity | Candidate-pool depth passed to the reranker (default: 200) |
-| `--min_diag` | Sensitivity | k-mer hits required on a common diagonal to admit a target (default: 2, Foldseek's double-match rule) |
+| `--min_diag` | Sensitivity | k-mer hits required on a common diagonal to admit a target (default: 2) |
 | `--query_id` | Input       | Chain id to look up inside `--query` when it is a database file                    |
 | `--model`    | Input       | VQ-VAE tokenizer for the query (default: the bundled one)                          |
 | `--matrix`   | Scoring     | Substitution matrix (default: the bundled Structure-BLOSUM)                        |
@@ -172,7 +171,7 @@ rank  target                    TM_mean  TM_query  TM_target    len
 
 RFoldseek reports Smith--Waterman E-values in `tm_a` and `sw` modes. The
 E-value is the expected number of unrelated database clusters (CD-HIT-EST,
-80% identity) reaching a hit's token-alignment score; it is not a significance
+80% identity) reaching a hit's token-alignment score and it is not a significance
 estimate for the structure score R<sub>str</sub>. A Gumbel null of per-cluster
 maximum scores, conditioned on the query's length and token entropy, gives an
 initial value `E0`, and a database-specific power law `E = a_D * E0**b_D`
@@ -183,9 +182,7 @@ fitted for the paper's 885-chain database and are used only
 when searching that database; a search of any other database reports no
 E-value until the database is calibrated. Their power-law correction was
 fitted after a US-align audit of every background cluster leader with
-`E0 <= 100`; in leave-one-Rfam-family-out validation the observed number of
-unrelated clusters is 0.95, 0.89 and 0.99 times the nominal E-value at
-E = 1, 10 and 100. The calibration holds on average over families: most
+`E0 <= 100`. The calibration holds on average over families: most
 families see fewer unrelated hits than nominal and a few see many more, and
 below E = 0.1 there are too few events to check it.
 
@@ -277,8 +274,7 @@ hits = s.search(np.asarray(enc["tokens"], np.int64), query_entry=enc, top_k=10)
 
 `query_entry` is required by the default `rerank="tm_a"` and by `rerank="tm"`,
 because both use query coordinates. Plain `rerank="sw"` can leave it out.
-`search_id`
-forwards its keyword arguments to `search`, so `top_n`, `min_diag`, `rerank`
+`search_id` forwards its keyword arguments to `search`, so `top_n`, `min_diag`, `rerank`
 and `tie_seed` are available from both. `bits` and `evalue` are present when
 E-value parameters are loaded, which they are by default.
 
