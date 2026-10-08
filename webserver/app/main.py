@@ -37,6 +37,7 @@ from fastapi.responses import (FileResponse, JSONResponse, PlainTextResponse,
                                Response)
 from fastapi.staticfiles import StaticFiles
 
+from . import remote
 from .engine import Engine
 
 HERE = Path(__file__).resolve().parent
@@ -121,7 +122,8 @@ def health():
     return {
         "ready": engine.ready,
         "error": engine.error,
-        "databases": [h.info() for h in engine.databases.values()],
+        "databases": [h.info() for h in engine.databases.values()]
+                     + [d for d in (remote.info(k) for k in remote.REMOTE) if d],
         "max_concurrent": MAX_CONCURRENT,
         "top_n_cap": TOP_N_CAP,
         "max_upload_mb": MAX_UPLOAD // (1024 * 1024),
@@ -153,7 +155,8 @@ async def search(
     keys = [k.strip() for k in (databases or database or "").split(",") if k.strip()]
     if not keys:
         keys = list(engine.databases)[:1]
-    unknown = [k for k in keys if k not in engine.databases]
+    unknown = [k for k in keys if k not in engine.databases
+               and not (k in remote.REMOTE and remote.info(k))]
     if unknown:
         raise HTTPException(400, f"unknown database {unknown[0]!r}; choose from "
                                  f"{sorted(engine.databases)}")
@@ -193,9 +196,19 @@ async def search(
         results = {}
         for key in keys:
             try:
+                if key in remote.REMOTE:
+                    results[key] = await loop.run_in_executor(
+                        pool, remote.search, key, data, name, top_k,
+                        min(top_n, TOP_N_CAP), min_diag, rerank, tie_seed)
+                    continue
                 results[key] = await loop.run_in_executor(
                     pool, engine.search, key, enc, top_k,
                     min(top_n, TOP_N_CAP), min_diag, rerank, tie_seed)
+            except remote.Offline:
+                raise HTTPException(502, f"the {key!r} database server is "
+                                         f"offline; try again later")
+            except remote.RemoteError as exc:
+                raise HTTPException(exc.status if exc.status < 500 else 502, exc.detail)
             except FileNotFoundError as exc:      # US-align absent
                 raise HTTPException(501, f"TM reranking unavailable on this "
                                          f"server: {exc}")
@@ -231,11 +244,25 @@ def _hit(job: dict, db: str, rank: int) -> dict:
     return res["hits"][rank - 1]
 
 
+def _remote_hit(job: dict, db: str, rank: int, what: str) -> bytes:
+    rid = job["results"][db].get("remote_job")
+    if not rid:
+        raise HTTPException(410, "the remote result is no longer available")
+    try:
+        return remote.fetch(db, rid, rank, what)
+    except remote.Offline:
+        raise HTTPException(502, f"the {db!r} database server is offline")
+    except remote.RemoteError as exc:
+        raise HTTPException(exc.status if exc.status < 500 else 502, exc.detail)
+
+
 @app.get("/api/result/{job_id}/{db}/{rank}/alignment")
 def hit_alignment(job_id: str, db: str, rank: int):
     """Alignment for a hit beyond RFOLDSEEK_ALIGN_MAX (computed on demand)."""
     job = _load_job(job_id)
     hit = _hit(job, db, rank)
+    if db in remote.REMOTE:
+        return JSONResponse(json.loads(_remote_hit(job, db, rank, "alignment")))
     if db not in engine.databases:
         raise HTTPException(410, "database no longer served")
     return engine.alignment(engine.databases[db], _query_entry(job), hit["target"])
@@ -247,6 +274,8 @@ def hit_structure(job_id: str, db: str, rank: int):
     """PDB text: query as chain A, the hit superposed onto it as chain B."""
     job = _load_job(job_id)
     hit = _hit(job, db, rank)
+    if db in remote.REMOTE:
+        return _remote_hit(job, db, rank, "structure").decode()
     if db not in engine.databases:
         raise HTTPException(410, "database no longer served")
     try:
