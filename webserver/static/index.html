@@ -42,7 +42,7 @@
   nav.links a { color: #f1ebe5 }
   nav.links a:hover { color: #fff; text-decoration: none; border-bottom: 2px solid var(--accent) }
 
-  main { max-width: 1320px; margin: 0 auto; padding: 28px 24px 80px }
+  main { max-width: 1320px; margin: 0 auto; padding: 28px 24px 20px }
   .card { background: var(--card); border: 1px solid var(--line);
           border-radius: var(--radius); padding: 22px 24px }
   h1 { font-size: 26px; letter-spacing: -.015em; margin: 0 0 4px }
@@ -235,6 +235,76 @@
   .aln-note { color: var(--muted); font-size: 11.5px; margin-top: 6px }
   .foot { color: var(--muted); font-size: 12px; margin-top: 12px }
   footer { max-width: 1320px; margin: 0 auto; padding: 0 24px 40px; color: var(--muted); font-size: 12.5px }
+
+  /* ---- 1006 review: layout of the search form, larger type, calmer results ---- */
+  body { font-size: 16.5px }
+  .lead { font-size: 16px }
+  .search-grid { align-items: stretch }
+  .qcol { display: flex; flex-direction: column }
+  .qcol .drop { flex: 1; display: flex }
+  .qcol .drop textarea { height: auto; min-height: 160px; flex: 1 }
+  .row.actions { margin-top: 12px }
+  .row .spacer { flex: 1 }
+  .ocol { display: flex; flex-direction: column; gap: 10px }
+  .fold { border: 1px solid var(--line); border-radius: 10px; background: var(--card) }
+  .fold > summary { list-style: none; cursor: pointer; padding: 14px 16px; display: flex; align-items: baseline; gap: 14px }
+  .fold > summary::-webkit-details-marker { display: none }
+  .fold > summary .k { font-size: 12px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase;
+                       color: var(--muted); min-width: 86px }
+  .fold > summary .sum { font-weight: 600; color: var(--ink) }
+  .fold > summary::after { content: "▾"; margin-left: auto; color: var(--muted) }
+  .fold[open] > summary::after { content: "▴" }
+  .fold[open] > summary { border-bottom: 1px solid var(--line-2) }
+  .fold-body { padding: 14px 16px 16px }
+  .db .name { font-size: 16.5px }
+  .db .meta { font-size: 14px }
+  .hint { font-size: 13.5px }
+  .modes .m-name { font-size: 16px }
+  .modes .m-sub { font-size: 14px }
+
+  .best { background: #fffaf6; border-color: #f6e8dc; padding: 28px 32px; gap: 32px; margin-bottom: 20px }
+  .best .tag { font-size: 15px; letter-spacing: .08em }
+  .best .main { font-size: 26px }
+  .best .sub { font-size: 17px }
+  .best .kv { gap: 26px }
+  .best .kv div { font-size: 13px; letter-spacing: .05em }
+  .best .kv b { font-size: 28px; margin-top: 3px }
+
+  table.hits { font-size: 15.5px }
+  table.hits th { font-size: 12px; padding: 12px 9px; white-space: normal; line-height: 1.25; vertical-align: bottom }
+  table.hits td { padding: 12px 10px }
+  table.hits th.num, table.hits td.num { padding-left: 10px; padding-right: 12px }
+  table.hits th:first-child, table.hits td.rank { padding-right: 2px; width: 28px }
+  table.hits td:nth-child(3), table.hits th:nth-child(3) { padding-right: 18px }
+  table.hits th.sortable { cursor: pointer; user-select: none }
+  table.hits th.sortable:hover { color: var(--ink) }
+  table.hits th .arrow { margin-left: 4px; color: var(--accent-ink) }
+  td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap }
+  .tgt { font-size: 14.5px }
+  .chain { color: #a09a93; font-size: 12.5px; margin-left: 8px; white-space: nowrap }
+  td:nth-child(2) { white-space: nowrap }
+  .desc { max-width: 240px; min-width: 170px }
+  .desc .t { white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden }
+  .desc .o { font-size: 13.5px }
+  .tags { margin-top: 4px }
+  .pill { display: inline-block; background: var(--line-2); color: var(--ink-2); border-radius: 6px;
+          padding: 1px 8px; font-size: 12px; margin-right: 6px }
+  .covbar { display: inline-flex; align-items: center; gap: 8px }
+  .covbar .cbar { display: inline-block; width: 64px; height: 6px; border-radius: 3px; background: #efebe6; overflow: hidden }
+  .covbar .cbar i { display: block; height: 100%; background: #d9703a; border-radius: 3px }
+  .covbar .pc { min-width: 3.1em; text-align: right }
+  .summary { font-size: 15px }
+  .stat .k { font-size: 12px }
+  .stat .v { font-size: 20px }
+  .stats { grid-template-columns: repeat(2, 1fr) }
+  .stat .s { font-size: 12.5px; color: var(--muted); margin-top: 2px }
+  .nt { cursor: pointer; border-radius: 2px }
+  .nt:hover { background: #ffe3d2 }
+  .nt.sel { background: #e5322d; color: #fff }
+  .aln { font-size: 13.5px }
+  .picked { font-size: 14px }
+  .viewer-legend { font-size: 13px }
+  .tab-meta:empty, .foot:empty { display: none }
 </style>
 </head>
 <body>
@@ -260,55 +330,55 @@
       <p class="lead">Upload or paste one RNA chain (PDB or mmCIF). It is encoded in the learned 3Dr
         structural alphabet and searched against the selected databases in seconds.</p>
       <form id="form" class="search-grid" autocomplete="off">
-        <div>
+        <div class="qcol">
           <div class="label">Query structure</div>
           <div class="drop" id="drop">
             <textarea id="text" spellcheck="false"
               placeholder="Paste a PDB or mmCIF structure here, or drop a file onto this box.&#10;&#10;The first RNA chain is used; nucleotides need C3′, C4′ and O4′ atoms."></textarea>
             <div class="file-chip" id="chip" hidden><span id="chip-name"></span><button type="button" id="chip-x" title="Remove">×</button></div>
           </div>
-          <div class="row">
+          <div class="row actions">
             <label class="btn">Upload file<input type="file" id="file" accept=".pdb,.cif,.mmcif,.ent" hidden></label>
             <div class="menu">
               <button type="button" class="btn" id="ex-btn">Load example ▾</button>
               <div class="menu-list" id="ex-list" hidden></div>
             </div>
             <span class="hint" id="max-upload"></span>
+            <span class="spacer"></span>
+            <span class="hint" id="go-hint"></span>
+            <button class="btn primary" id="go" type="submit" disabled>Search</button>
           </div>
         </div>
-        <div>
-          <div class="label">Databases</div>
-          <div class="dbs" id="dbs"><div class="hint"><span class="spinner"></span>Connecting to the server…</div></div>
-          <div class="label" style="margin-top:18px">Mode</div>
-          <div class="seg modes" id="mode">
-            <label class="on"><input type="radio" name="rerank" value="tm_a" checked>
-              <span class="m-name">Structure-score search</span>
-              <span class="m-sub">RFoldseek · R<sub>str</sub> = S<sub>SW</sub> × TM<sub>a</sub></span>
-              <span class="m-speed">Default, structure-aware candidate ranking</span></label>
-            <label id="mode-tm"><input type="radio" name="rerank" value="tm">
-              <span class="m-name">Accurate reranking</span>
-              <span class="m-sub">RFoldseek-TM · coordinate refinement</span>
-              <span class="m-speed">Slower, improved structural ranking</span></label>
-          </div>
-          <details class="adv">
-            <summary>Advanced options</summary>
-            <div class="adv-grid">
-              <label><span class="hint">Hits shown</span><span class="num-step"><input type="number" id="top_k" value="50" min="1" max="1000"><button type="button" data-for="top_k" data-step="50" title="Add 50">+50</button></span></label>
-              <label><span class="hint">Candidate depth</span><span class="num-step"><input type="number" id="top_n" value="200" min="1" max="2000"><button type="button" data-for="top_n" data-step="100" title="Add 100">+100</button></span></label>
-              <label><span class="hint">Min. diagonal k-mers</span><input type="number" id="min_diag" value="2" min="1" max="8"></label>
+        <div class="ocol">
+          <details class="fold">
+            <summary><span class="k">Databases</span><span class="sum" id="sum-db">…</span></summary>
+            <div class="fold-body"><div class="dbs" id="dbs"><div class="hint"><span class="spinner"></span>Connecting to the server…</div></div></div>
+          </details>
+          <details class="fold">
+            <summary><span class="k">Mode</span><span class="sum" id="sum-mode">RFoldseek</span></summary>
+            <div class="fold-body">
+              <div class="seg modes" id="mode">
+                <label class="on"><input type="radio" name="rerank" value="tm_a" checked>
+                  <span class="m-name">RFoldseek</span>
+                  <span class="m-sub">Recommended for most searches</span></label>
+                <label id="mode-tm"><input type="radio" name="rerank" value="tm">
+                  <span class="m-name">RFoldseek-TM</span>
+                  <span class="m-sub">Better structural ranking</span></label>
+              </div>
             </div>
           </details>
-          <div class="submit-row">
-            <button class="btn primary" id="go" type="submit" disabled>Search</button>
-            <span class="hint" id="go-hint"></span>
-          </div>
+          <details class="fold">
+            <summary><span class="k">Settings</span><span class="sum" id="sum-set">50 hits shown</span></summary>
+            <div class="fold-body">
+              <div class="adv-grid">
+                <label><span class="hint">Hits shown</span><span class="num-step"><input type="number" id="top_k" value="50" min="1" max="1000"><button type="button" data-for="top_k" data-step="50" title="Add 50">+50</button></span></label>
+                <label><span class="hint">Candidate depth</span><span class="num-step"><input type="number" id="top_n" value="200" min="1" max="2000"><button type="button" data-for="top_n" data-step="100" title="Add 100">+100</button></span></label>
+                <label><span class="hint">Min. diagonal k-mers</span><input type="number" id="min_diag" value="2" min="1" max="8"></label>
+              </div>
+            </div>
+          </details>
         </div>
       </form>
-    </div>
-    <div class="about">
-      <div class="card"><h3>3Dr alphabet</h3><p>Each nucleotide's local geometry is quantised into one of 80 learned states, turning an RNA chain into a token string.</p></div>
-      <div class="card"><h3>Structure score</h3><p>Affine-gap Smith–Waterman defines the token alignment; aligned C4′ atoms then yield TM<sub>a</sub>, and candidates rank by S<sub>SW</sub> × TM<sub>a</sub>.</p></div>
-      <div class="card"><h3>RFoldseek-TM</h3><p>Optionally reranks the same candidates by US-align TM-score for higher sensitivity at a higher cost.</p></div>
     </div>
   </section>
 
@@ -319,31 +389,33 @@
       <p class="lead">RFoldseek encodes every nucleotide as one of 80 learned 3Dr structural states, aligns the resulting token strings, and reports the closest structures in each database.</p>
 
       <h2>1. Choose a mode</h2>
-      <p><b>Structure-score search</b> (RFoldseek) prefilters with a k-mer index, aligns structural tokens with affine-gap Smith–Waterman, superposes the aligned C4′ atoms, and ranks by R<sub>str</sub> = S<sub>SW</sub> × TM<sub>a</sub>. It is the default mode.
-         <b>Accurate reranking</b> (RFoldseek-TM) re-scores the same candidates with US-align on the coordinates; it is slower and can improve the structural ranking.</p>
+      <p><b>RFoldseek</b> (recommended for most searches) prefilters with a k-mer index, aligns structural tokens with affine-gap Smith–Waterman, superposes the aligned C4′ atoms, and ranks hits by the <b>structure score</b> S<sub>SW</sub> × TM-score.
+         <b>RFoldseek-TM</b> re-scores the same candidates with US-align on the coordinates, which improves the structural ranking at a higher cost.</p>
 
       <h2>2. The hit table</h2>
+      <p>Click a column heading to sort by it, and a row to open the hit.</p>
       <table>
         <tr><th>Column</th><th>Meaning</th></tr>
-        <tr><td>Target</td><td>The matched chain: PDB id and chain, or a predicted-model id.</td></tr>
-        <tr><td>Seq. id.</td><td>Nucleotide identity over the aligned positions. Hidden for databases without sequences.</td></tr>
-        <tr><td>Aligned nt / 3Dr id.</td><td>Number of aligned nucleotides and the fraction of aligned pairs with the same structural token. Shown for databases without sequences.</td></tr>
-        <tr><td>RMSD</td><td>Root-mean-square deviation of the superposed aligned nucleotides, in Å.</td></tr>
-        <tr><td>R<sub>str</sub>, TM<sub>a</sub></td><td>The default ranking score S<sub>SW</sub> × TM<sub>a</sub>, and the query/target length-normalised TM-score of the fixed token alignment.</td></tr>
-        <tr><td>E-value, Bits</td><td>Expected number of chance Smith–Waterman hits at least this good, and the normalised token-alignment score. These are derived from S<sub>SW</sub>, not R<sub>str</sub>. Databases marked <i>uncalibrated</i> have no empirical E-value calibration yet.</td></tr>
-        <tr><td>Symmetric TM-score</td><td>Accurate reranking only. The mean of the query-normalised and target-normalised US-align TM-scores over the whole chains.</td></tr>
-        <tr><td>Query coverage</td><td>The part of your query that is aligned; darker means higher identity.</td></tr>
+        <tr><td>Target</td><td>The matched chain: the PDB entry with its chain, or the RNAcentral id of a predicted model (it links to the entry page).</td></tr>
+        <tr><td>RNA / organism</td><td>The name of the RNA and its source organism. Predicted models also show their Rfam family when one is assigned.</td></tr>
+        <tr><td>pLDDT</td><td>Predicted databases only: the mean pLDDT of the model, a measure of its quality (higher is better, 100 is the maximum).</td></tr>
+        <tr><td>Seq identity</td><td>Nucleotide identity over the aligned positions. Databases without sequences show <i>3Dr identity</i> instead: the fraction of aligned pairs with the same structural token.</td></tr>
+        <tr><td>RMSD (Å)</td><td>Root-mean-square deviation of the superposed aligned nucleotides.</td></tr>
+        <tr><td>Structure score</td><td>The ranking score, S<sub>SW</sub> × TM-score. A hit has to match locally and in the arrangement of its aligned segments.</td></tr>
+        <tr><td>TM-score</td><td>The TM-score of the token alignment after superposition, normalised by the query and by the target length and averaged. In RFoldseek-TM it is the US-align TM-score of the two whole chains.</td></tr>
+        <tr><td>E-value</td><td>The expected number of unrelated hits at least this good by chance. It is calibrated for each query (its length and token composition) against the database it is searched in, and is computed from S<sub>SW</sub>, so it does not always increase down the list. Databases that have not been calibrated yet report no E-value.</td></tr>
+        <tr><td>Query cov, Target cov</td><td>The share of the query and of the target that the alignment spans.</td></tr>
       </table>
 
       <h2>3. Inside a hit</h2>
-      <p>Click a row to open it. The summary line gives the alignment length, the query and target ranges, and the 3Dr identity. <b>Aligned-region TM-score</b> is the TM-score computed over the aligned nucleotides only, so it can differ from the symmetric whole-chain TM-score in the table.</p>
+      <p>Click a row to open it. Four numbers describe the alignment: the <b>Aligned-region TM-score</b>, the RMSD, the query and target coverage (with the aligned ranges underneath) and the sequence identity (with the 3Dr identity underneath; for databases without sequences only the 3Dr identity). The <b>Aligned-region TM-score</b> is the TM-score computed over the aligned nucleotides only, so it can differ from the TM-score in the table.</p>
       <h3>The 3Dr line</h3>
       <p>Between the query and target sequences, <code>|</code> marks the same structural token, <code>+</code> a positive Structure-BLOSUM substitution and <code>.</code> any other aligned pair. Positions count nucleotides with a complete C3′, C4′, O4′ backbone. Databases without sequences show the target residues as <code>·</code>.</p>
       <h3>The 3D view</h3>
-      <p>The query is orange and the hit is blue after superposition on the aligned nucleotides; pale colours are unaligned. Rotate and zoom with the mouse, and click a nucleotide to see which nucleotide of the other structure it is aligned to.</p>
+      <p>The query is orange and the hit is blue after superposition on the aligned nucleotides; pale colours are unaligned. Rotate and zoom with the mouse, and click a nucleotide, in the 3D view or in the alignment, to see which nucleotide of the other structure it is aligned to. Clicking in the alignment also centres the 3D view on it.</p>
 
       <h2>4. Databases</h2>
-      <p>PDB-RNA (all RCSB RNA chains) and RNAsolo (a non-redundant representative set) hold experimental structures. NuFold holds predicted structures, which carry no sequence, so 3Dr identity is the main measure of agreement there.</p>
+      <p>PDB-RNA (all RCSB RNA chains) and RNAsolo 2.0 (a non-redundant representative set) hold experimental structures. NuFold holds predicted structures, which carry no sequence, so 3Dr identity is the main measure of agreement there.</p>
     </div>
   </section>
 

@@ -78,9 +78,7 @@ class DatabaseHandle:
                 "built": self.built,
                 "notice": self.notice,
                 "url": self.url,
-                "evalue_calibrated": bool(
-                    (self.searcher.ev_par or {}).get("empirical_calibration")
-                    and self.searcher.db.get("clustered"))}
+                "evalue_calibrated": self.searcher.power_ev is not None}
 
 
 class Engine:
