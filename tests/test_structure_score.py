@@ -3,9 +3,9 @@ import numpy as np
 import pytest
 import torch
 
-from rfoldseek import structure_score as ss
-from rfoldseek.search import GAP_EXTEND, GAP_OPEN, Searcher, load_matrix
-from rfoldseek.smith_waterman import smith_waterman_numba
+from rfoldsearch import structure_score as ss
+from rfoldsearch.search import GAP_EXTEND, GAP_OPEN, Searcher, load_matrix
+from rfoldsearch.smith_waterman import smith_waterman_numba
 
 GO, GE = np.float32(GAP_OPEN), np.float32(GAP_EXTEND)
 

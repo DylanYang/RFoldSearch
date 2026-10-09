@@ -1,6 +1,6 @@
 """US-align TM-score reranking: the only module that knows US-align exists.
 
-RFoldseek-TM keeps the token prefilter and replaces the Smith-Waterman
+RFoldSearch-TM keeps the token prefilter and replaces the Smith-Waterman
 reranking stage with a real structural superposition.
 
 The binary is invoked once for the whole candidate pool via ``-dir2``, so
@@ -99,7 +99,7 @@ def score_pool(binary: str, query_coords, query_mask, candidates,
     ``({id: (tm_query, tm_target)}, [skipped ids])``; a candidate is skipped
     when it has fewer than ``min_residues`` valid residues.
     """
-    with tempfile.TemporaryDirectory(prefix="rfoldseek_tm_") as tmp:
+    with tempfile.TemporaryDirectory(prefix="rfoldsearch_tm_") as tmp:
         qpath = os.path.join(tmp, "query.pdb")
         if write_c3_pdb(query_coords, query_mask, qpath) < min_residues:
             raise ValueError(

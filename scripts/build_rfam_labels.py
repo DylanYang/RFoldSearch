@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build RFoldseek calibration labels from Rfam cmscan output."""
+"""Build RFoldSearch calibration labels from Rfam cmscan output."""
 
 from __future__ import annotations
 

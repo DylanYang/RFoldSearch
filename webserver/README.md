@@ -1,7 +1,7 @@
-# RFoldseek search server
+# RFoldSearch web server
 
 Upload or paste an RNA structure, get the ranked hits from one or more
-resident RFoldseek databases, with a per-hit alignment (sequence and 3Dr
+resident RFoldSearch databases, with a per-hit alignment (sequence and 3Dr
 lines) and a 3D superposition. Every search is stored under a short id, so
 `/result/<id>` is a shareable page that survives a restart;
 `/result/<id>#<db>/<rank>` opens one hit. FastAPI backend, one static page
@@ -14,7 +14,7 @@ whose `APP` setting selects `mmseqs` or `foldseek`, and which starts one
 CLI process per job. That design works because those binaries memory-map
 their index and are useful a millisecond after exec.
 
-RFoldseek is not that shape. A database is a torch archive that has to be
+RFoldSearch is not that shape. A database is a torch archive that has to be
 deserialised, and the k-mer inverted index is then built in process —
 about 20 s for half a million chains, on top of several GB resident. Per
 request that is unusable, so this server loads each database once at
@@ -26,7 +26,7 @@ worker behind it; the whole of this server is smaller than that adapter.
 
 ```
 pip install -r requirements.txt
-export RFOLDSEEK_DBS="rnasolo=RNAsolo experimental (885 chains):/path/to/db.pt"
+export RFOLDSEARCH_DBS="rnasolo=RNAsolo experimental (885 chains):/path/to/db.pt"
 uvicorn app.main:app --port 8000
 ```
 
@@ -59,14 +59,14 @@ one takes minutes, which is why the healthcheck has a long start period.
 
 | Variable | Meaning |
 |---|---|
-| `RFOLDSEEK_DBS` | Pipe-separated `key=Label:path` entries. The separator is `|`, not a comma, because labels carry commas; the path is taken from the last colon, so paths may contain colons too. Every entry is loaded at startup and appears in the database menu. |
-| `RFOLDSEEK_MODEL` | Tokeniser checkpoint. Defaults to the one bundled with the package. |
-| `RFOLDSEEK_MAX_CONCURRENT` | Searches allowed to run at once (default: cores − 1). Over the limit the API returns 503 rather than queueing. |
-| `RFOLDSEEK_TOP_N_CAP` | Largest candidate depth a request may ask for (default 2000). |
-| `RFOLDSEEK_MAX_UPLOAD_MB` | Upload size limit (default 32). |
+| `RFOLDSEARCH_DBS` | Pipe-separated `key=Label:path` entries. The separator is `|`, not a comma, because labels carry commas; the path is taken from the last colon, so paths may contain colons too. Every entry is loaded at startup and appears in the database menu. |
+| `RFOLDSEARCH_MODEL` | Tokeniser checkpoint. Defaults to the one bundled with the package. |
+| `RFOLDSEARCH_MAX_CONCURRENT` | Searches allowed to run at once (default: cores − 1). Over the limit the API returns 503 rather than queueing. |
+| `RFOLDSEARCH_TOP_N_CAP` | Largest candidate depth a request may ask for (default 2000). |
+| `RFOLDSEARCH_MAX_UPLOAD_MB` | Upload size limit (default 32). |
 | `USALIGN` | Path to the `USalign` binary. Without it `rerank=tm` returns 501 and the rest of the server works normally. |
-| `RFOLDSEEK_JOBS_DIR` | Where search records are stored as JSON (default `./jobs`). Nothing expires them yet. |
-| `RFOLDSEEK_ALIGN_MAX` | Hits per database that get an alignment and superposition up front (default 100); later hits are aligned on demand. |
+| `RFOLDSEARCH_JOBS_DIR` | Where search records are stored as JSON (default `./jobs`). Nothing expires them yet. |
+| `RFOLDSEARCH_ALIGN_MAX` | Hits per database that get an alignment and superposition up front (default 100); later hits are aligned on demand. |
 
 ### Display sidecar
 
@@ -81,7 +81,7 @@ database without a sidecar still works: hits show their ids and the
 target line of the alignment shows placeholders.
 
 Run **one** worker process. Each would load its own copy of every
-database; concurrency is meant to come from `RFOLDSEEK_MAX_CONCURRENT`
+database; concurrency is meant to come from `RFOLDSEARCH_MAX_CONCURRENT`
 threads inside a single process.
 
 ## API
@@ -113,7 +113,7 @@ curl -sF structure=@query.cif -F databases=pdb-rna,rnasolo -F top_k=5 \
 and `evalue`; the E-value is derived from `sw_score`, not `structure_score`.
 `sw` hits carry `sw_score`, `bits` and `evalue`; `tm` hits carry
 `tm_mean`, `tm_query` and `tm_target` and no E-value, because TM-scores
-have no Karlin-Altschul statistics. Hits within `RFOLDSEEK_ALIGN_MAX` carry
+have no Karlin-Altschul statistics. Hits within `RFOLDSEARCH_ALIGN_MAX` carry
 `aln`: aligned ranges, sequence and 3Dr alignment lines, sequence and 3Dr
 identity, and the C4' RMSD and TM-score of the superposition over the
 aligned pairs. The alignment is recomputed with a full traceback
@@ -126,12 +126,12 @@ Resident memory is dominated by the database. The 885-chain experimental
 set is tens of MB; the 531,888-chain NuFold set is several GB and needs
 minutes to load and index at startup. A search holds one core for its
 duration — a median NuFold query is tens of milliseconds, the slowest
-a few seconds — so `RFOLDSEEK_MAX_CONCURRENT` is what bounds tail
+a few seconds — so `RFOLDSEARCH_MAX_CONCURRENT` is what bounds tail
 latency under load, not the queue depth.
 
 `rerank=tm` is far more expensive than the default: it runs up to `top_n`
 coordinate alignments, which at the published settings costs seconds to
-tens of seconds per query. Offer it only with `RFOLDSEEK_MAX_CONCURRENT`
+tens of seconds per query. Offer it only with `RFOLDSEARCH_MAX_CONCURRENT`
 set deliberately low, or not at all.
 
 ## Status
@@ -152,7 +152,7 @@ parameters and a missing `USalign` binary each return a useful message
 rather than a traceback.
 
 One packaging note found while testing: on Python 3.9, `pip install
-rfoldseek` resolves `biotite` to 0.40, which is built against numpy 1.x,
+rfoldsearch` resolves `biotite` to 0.40, which is built against numpy 1.x,
 while `torch` pulls numpy 2. The import then fails inside biotite. The
 `python:3.11-slim` base image in the Dockerfile avoids this; a 3.9
 install needs `numpy<2` pinned. The package declares `>=3.9`, so this is

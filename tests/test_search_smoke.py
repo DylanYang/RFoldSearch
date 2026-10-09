@@ -4,7 +4,7 @@ import json
 import numpy as np
 import torch
 
-from rfoldseek.search import Searcher
+from rfoldsearch.search import Searcher
 from helpers import synthetic_evalue_params
 
 

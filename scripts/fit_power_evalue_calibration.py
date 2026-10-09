@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Attach a database-specific power-law correction to E-value parameters.
 
-Stage 3 of ``rfoldseek calibrate``; run it on its own to inspect or rerun
+Stage 3 of ``rfoldsearch calibrate``; run it on its own to inspect or rerun
 this stage.
 
 The input TSV is produced by a calibration benchmark and must contain
@@ -17,8 +17,8 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from rfoldseek import calibrate as C
-from rfoldseek.database import load_database
+from rfoldsearch import calibrate as C
+from rfoldsearch.database import load_database
 
 
 def main():

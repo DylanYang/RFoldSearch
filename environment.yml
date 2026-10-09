@@ -1,9 +1,9 @@
 # One-step install: conda env create -f environment.yml
-# Installs RFoldseek with CD-HIT-EST (database clustering) and US-align
-# (RFoldseek-TM and E-value calibration), which pip cannot provide.
+# Installs RFoldSearch with CD-HIT-EST (database clustering) and US-align
+# (RFoldSearch-TM and E-value calibration), which pip cannot provide.
 # The numerical stack comes from conda-forge so torch and numba share one
 # OpenMP runtime; mixing their pip wheels aborts numba's thread pool on macOS.
-name: rfoldseek
+name: rfoldsearch
 channels:
   - conda-forge
   - bioconda

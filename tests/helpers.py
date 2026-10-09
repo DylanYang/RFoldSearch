@@ -23,7 +23,7 @@ def synthetic_evalue_params():
     These tests exercise E-value arithmetic, not database identity. Production
     assets carry target/scoring fingerprints and must not be reused here.
     """
-    from rfoldseek.search import asset
+    from rfoldsearch.search import asset
 
     with open(asset("evalue_params.json")) as handle:
         params = json.load(handle)

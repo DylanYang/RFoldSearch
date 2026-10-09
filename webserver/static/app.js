@@ -1,4 +1,4 @@
-// RFoldseek search page: form -> POST /api/search -> /result/<id>.
+// RFoldSearch web page: form -> POST /api/search -> /result/<id>.
 "use strict";
 
 const $ = (id) => document.getElementById(id);
@@ -141,7 +141,7 @@ function updateSummaries() {
   const names = health.databases.filter((d) => selectedDbs().includes(d.key)).map(shortName);
   $("sum-db").textContent = names.length ? names.join(", ") : "none selected";
   const mode = document.querySelector("#mode input:checked");
-  $("sum-mode").textContent = mode && mode.value === "tm" ? "RFoldseek-TM" : "RFoldseek";
+  $("sum-mode").textContent = mode && mode.value === "tm" ? "RFoldSearch-TM" : "RFoldSearch";
   $("sum-set").textContent = `${$("top_k").value} hits shown`;
 }
 
@@ -301,7 +301,7 @@ function renderResult() {
   const q = job.query;
   $("res-title").textContent = q.filename;
   const p = job.params;
-  const mode = p.rerank === "tm" ? "RFoldseek-TM" : "RFoldseek";
+  const mode = p.rerank === "tm" ? "RFoldSearch-TM" : "RFoldSearch";
   $("res-sub").textContent = `${q.n_tokens} nucleotides encoded · ` +
     `${mode} · searched ${job.created.replace("T", " ").slice(0, 16)}`;
   $("dl-tsv").href = `/api/result/${job.id}/download?format=tsv`;

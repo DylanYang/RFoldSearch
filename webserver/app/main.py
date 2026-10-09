@@ -1,4 +1,4 @@
-"""RFoldseek search server.
+"""RFoldSearch web server.
 
 A structure is uploaded (or pasted), tokenised with the deployed VQ-VAE and
 searched against one or more resident databases. Each search is stored
@@ -6,7 +6,7 @@ under a short id, so ``/result/<id>`` is a shareable page and survives a
 restart; the hit tables, alignments and superpositions are served from
 that record by the JSON API and rendered by static/index.html.
 
-Databases are declared in RFOLDSEEK_DBS as pipe-separated key=label:path
+Databases are declared in RFOLDSEARCH_DBS as pipe-separated key=label:path
 entries, so the same server can hold the experimental sets and a
 half-million predicted one.
 
@@ -44,18 +44,18 @@ HERE = Path(__file__).resolve().parent
 STATIC = HERE.parent / "static"
 EXAMPLES = STATIC / "examples"
 
-MAX_UPLOAD = int(os.environ.get("RFOLDSEEK_MAX_UPLOAD_MB", "32")) * 1024 * 1024
-MAX_CONCURRENT = int(os.environ.get("RFOLDSEEK_MAX_CONCURRENT",
+MAX_UPLOAD = int(os.environ.get("RFOLDSEARCH_MAX_UPLOAD_MB", "32")) * 1024 * 1024
+MAX_CONCURRENT = int(os.environ.get("RFOLDSEARCH_MAX_CONCURRENT",
                                     str(max(1, (os.cpu_count() or 2) - 1))))
-TOP_N_CAP = int(os.environ.get("RFOLDSEEK_TOP_N_CAP", "2000"))
-JOBS_DIR = Path(os.environ.get("RFOLDSEEK_JOBS_DIR", HERE.parent / "jobs"))
+TOP_N_CAP = int(os.environ.get("RFOLDSEARCH_TOP_N_CAP", "2000"))
+JOBS_DIR = Path(os.environ.get("RFOLDSEARCH_JOBS_DIR", HERE.parent / "jobs"))
 JOB_CACHE = 200                         # records kept in memory
 JOB_ID = re.compile(r"^[A-Za-z0-9_-]{8,32}$")
 
-app = FastAPI(title="RFoldseek search", docs_url="/api/docs",
+app = FastAPI(title="RFoldSearch", docs_url="/api/docs",
               openapi_url="/api/openapi.json")
-engine = Engine(spec=os.environ.get("RFOLDSEEK_DBS", ""),
-                model=os.environ.get("RFOLDSEEK_MODEL") or None)
+engine = Engine(spec=os.environ.get("RFOLDSEARCH_DBS", ""),
+                model=os.environ.get("RFOLDSEARCH_MODEL") or None)
 pool = ThreadPoolExecutor(max_workers=MAX_CONCURRENT,
                           thread_name_prefix="rfsearch")
 slots = asyncio.Semaphore(MAX_CONCURRENT)
@@ -258,7 +258,7 @@ def _remote_hit(job: dict, db: str, rank: int, what: str) -> bytes:
 
 @app.get("/api/result/{job_id}/{db}/{rank}/alignment")
 def hit_alignment(job_id: str, db: str, rank: int):
-    """Alignment for a hit beyond RFOLDSEEK_ALIGN_MAX (computed on demand)."""
+    """Alignment for a hit beyond RFOLDSEARCH_ALIGN_MAX (computed on demand)."""
     job = _load_job(job_id)
     hit = _hit(job, db, rank)
     if db in remote.REMOTE:
@@ -299,7 +299,7 @@ def download(job_id: str, format: str = "tsv"):
         return Response(json.dumps(_public(job), indent=1),
                         media_type="application/json",
                         headers={"Content-Disposition":
-                                 f'attachment; filename="rfoldseek_{job_id}.json"'})
+                                 f'attachment; filename="rfoldsearch_{job_id}.json"'})
     buf = io.StringIO()
     w = csv.DictWriter(buf, TSV_FIELDS, delimiter="\t", extrasaction="ignore")
     w.writeheader()
@@ -309,7 +309,7 @@ def download(job_id: str, format: str = "tsv"):
             w.writerow({k: row.get(k, "") for k in TSV_FIELDS})
     return Response(buf.getvalue(), media_type="text/tab-separated-values",
                     headers={"Content-Disposition":
-                             f'attachment; filename="rfoldseek_{job_id}.tsv"'})
+                             f'attachment; filename="rfoldsearch_{job_id}.tsv"'})
 
 
 # ---- pages ------------------------------------------------------------------
