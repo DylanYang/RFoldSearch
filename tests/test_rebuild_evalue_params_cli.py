@@ -63,8 +63,10 @@ def test_rebuild_command_writes_query_conditional_model(tmp_path):
     assert params["structural_audit_ceiling"] == 100.0
     assert len(params["target_database_fingerprint"]) == 64
     assert len(params["calibration_context_fingerprint"]) == 64
-    assert np.asarray(params["query_parameter_model"][
-        "coefficients_mu_logbeta"]).shape == (3, 2)
+    model = params["query_parameter_model"]
+    # three queries are too few for the length spline: the linear model is used
+    assert "length_basis" not in model
+    assert np.asarray(model["coefficients_mu_logbeta"]).shape == (3, 2)
     assert "length_table" not in params
     assert len(fits.read_text().splitlines()) == 4
     assert not output.with_name("params.missing-audit.tsv").exists()

@@ -7,7 +7,8 @@ import sys
 import numpy as np
 import torch
 
-from .calibrate import AuditIncomplete, calibrate
+from .calibrate import AuditIncomplete, CalibrationInputError, calibrate
+from .compbias import DEFAULT_WINDOW
 from .database import (attach_evalue_calibration, build_database, short_id,
                        structure_to_entry)
 from .search import (DEFAULT_MIN_DIAG, DEFAULT_RERANK, DEFAULT_TOP_N, RERANKERS,
@@ -52,14 +53,17 @@ def cmd_calibrate(a):
                   db_type=a.db_type, related_pairs=a.related_pairs,
                   query_panel=a.query_panel, usalign=a.usalign,
                   workdir=a.workdir, index_prefix=a.index_prefix,
-                  matrix=a.matrix, log=lambda m: print(m, flush=True))
-    except (AuditIncomplete, FileExistsError) as e:
+                  matrix=a.matrix, comp_bias_window=a.comp_bias_window,
+                  length_bins=a.length_bins,
+                  log=lambda m: print(m, flush=True))
+    except (AuditIncomplete, CalibrationInputError, FileExistsError) as e:
         raise SystemExit(str(e))
 
 
 def cmd_search(a):
     s = Searcher(a.db, matrix_path=a.matrix,
-                 evalue_params_path=a.evalue_params)
+                 evalue_params_path=a.evalue_params,
+                 comp_bias_window=a.comp_bias_window)
     kw = dict(top_k=a.top_k, top_n=a.top_n, min_diag=a.min_diag,
               rerank=a.rerank, usalign=a.usalign, tie_seed=a.tie_seed)
     if a.query in s.id2i:
@@ -99,6 +103,9 @@ def cmd_search(a):
     head = f"# query: {qname}  ({qlen} tokens)   database: {a.db}  ({size})"
     if a.rerank != "tm" and s.power_ev is not None:
         head += "   E-values: power-calibrated"
+    if a.rerank != "tm" and s.ev_par is not None and s.comp_bias_window:
+        head += (f"   E-values from composition-corrected S_SW (window "
+                 f"{s.comp_bias_window}, column S_SW*)")
     if a.rerank == "tm":
         head += "   rerank: RFoldseek-TM"
     elif a.rerank == "tm_a":
@@ -119,9 +126,12 @@ def cmd_search(a):
                   f"  {h['length']:>5}")
         return
     has_ev = "evalue" in hits[0]
+    has_cb = "evalue_sw_score" in hits[0]
     if "structure_score" in hits[0]:
         header = (f"{'rank':>4}  {'target':<24}{'R_str':>10}{'TM_a':>9}"
                   f"{'S_SW':>10}")
+        if has_cb:
+            header += f"{'S_SW*':>10}"
         if has_ev:
             header += f"{'E-value':>11}"
         print(header + f"{'aligned':>10}  {'len':>5}")
@@ -129,16 +139,22 @@ def cmd_search(a):
             line = (f"{h['rank']:>4}  {h['target']:<24}"
                     f"{h['structure_score']:>10.2f}{h['tm_a']:>9.4f}"
                     f"{h['sw_score']:>10.2f}")
+            if has_cb:
+                line += f"{h['evalue_sw_score']:>10.2f}"
             if has_ev:
                 line += f"{h['evalue']:>11.2g}"
             print(line + f"{h['aligned']:>10}  {h['length']:>5}")
         return
     header = f"{'rank':>4}  {'target':<24}{'SW_score':>10}"
+    if has_cb:
+        header += f"{'S_SW*':>10}"
     if has_ev:
         header += f"{'bits':>8}{'E-value':>11}"
     print(header + f"  {'len':>5}")
     for h in hits:
         line = f"{h['rank']:>4}  {h['target']:<24}{h['sw_score']:>10.2f}"
+        if has_cb:
+            line += f"{h['evalue_sw_score']:>10.2f}"
         if has_ev:
             line += f"{h['bits']:>8.1f}{h['evalue']:>11.2g}"
         print(line + f"  {h['length']:>5}")
@@ -215,6 +231,13 @@ def main(argv=None):
     p.add_argument("--index_prefix", default=None,
                    help="CD-HIT IDs based on database row positions, e.g. t for t0, t1, ...")
     p.add_argument("--matrix", default=None)
+    p.add_argument("--comp_bias_window", type=int, default=0,
+                   help="calibrate composition-bias-corrected scores with this "
+                        f"half-width (0 = off; {DEFAULT_WINDOW} when enabled); search "
+                        "of the calibrated database then uses the same correction")
+    p.add_argument("--length_bins", type=int, default=1,
+                   help="fit the power-law correction separately in this many "
+                        "query-length bins (default 1; 4 for predicted databases)")
     p.set_defaults(fn=cmd_calibrate)
 
     p = sub.add_parser("search", help="search a query against a token database")
@@ -234,6 +257,10 @@ def main(argv=None):
                         "token Smith-Waterman (sw), or US-align TM-score (tm)")
     p.add_argument("--usalign", default=None,
                    help="path to the USalign binary (default: $USALIGN, then PATH)")
+    p.add_argument("--comp_bias_window", type=int, default=None,
+                   help="composition-bias correction half-width for low-complexity "
+                        f"queries (0 = off, {DEFAULT_WINDOW} recommended); default: "
+                        "whatever the database's E-value parameters were fitted with")
     p.add_argument("--tie_seed", type=int, default=None,
                    help="break equal scores by a hash of the chain id seeded "
                         "with this integer, instead of by database order; "

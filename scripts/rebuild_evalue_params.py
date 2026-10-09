@@ -46,6 +46,8 @@ def main():
     parser.add_argument("--allow-unreviewed", action="store_true",
                         help="write provisional parameters without enforcing structural audit coverage")
     parser.add_argument("--ridge", default=1e-3, type=float)
+    parser.add_argument("--comp-bias-window", default=0, type=int,
+                        help="composition-bias correction half-width (0 = off)")
     parser.add_argument(
         "--query-fits-output", default=None,
         help="optional TSV of the per-query Gumbel fits used by the regression",
@@ -73,7 +75,8 @@ def main():
             audit_ceiling=args.audit_ceiling,
             allow_unreviewed=args.allow_unreviewed, ridge=args.ridge,
             lengths=[int(value) for value in args.lengths.split(",") if value],
-            n_queries=args.n_queries, seed=args.seed, len_ratio=args.len_ratio)
+            n_queries=args.n_queries, seed=args.seed, len_ratio=args.len_ratio,
+            comp_bias_window=args.comp_bias_window)
     except C.CalibrationInputError as error:
         parser.error(str(error))
     if missing:

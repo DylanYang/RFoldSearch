@@ -18,6 +18,7 @@ from .database import (calibration_context_fingerprint, database_fingerprint,
                        load_database, short_id)
 from .prefilter import KMER_K, KmerPrefilter
 from .smith_waterman import smith_waterman_numba
+from .compbias import background_frequencies, query_profile
 from . import structure_score as _ss
 from . import evalue as _evalue
 from . import usalign as _usalign
@@ -48,7 +49,11 @@ def load_matrix(path=None):
 class Searcher:
     """Load a database once, search many queries."""
 
-    def __init__(self, db_path, matrix_path=None, evalue_params_path=None):
+    def __init__(self, db_path, matrix_path=None, evalue_params_path=None,
+                 comp_bias_window=None):
+        """``comp_bias_window`` is the composition-bias correction half-width
+        (0 = off). ``None`` follows the E-value parameters, whose scores it
+        must match; parameters that do not record one were fitted without."""
         (self.db, self.ents, self.toks, self.ids, self.n_codes,
          self.clusters) = load_database(db_path)
         self.id2i = {cid: i for i, cid in enumerate(self.ids)}
@@ -74,8 +79,14 @@ class Searcher:
         if (stored_fingerprint is not None
                 and stored_fingerprint != target_fingerprint):
             raise ValueError("stored database fingerprint does not match its contents")
+        self.comp_bias_window = int(
+            comp_bias_window if comp_bias_window is not None
+            else (self.ev_par or {}).get("comp_bias_window", 0))
+        self.background = (background_frequencies(self.toks, self.n_codes)
+                           if self.comp_bias_window else None)
         score_fingerprint = calibration_context_fingerprint(
-            target_fingerprint, self.sub, GAP_OPEN, GAP_EXTEND)
+            target_fingerprint, self.sub, GAP_OPEN, GAP_EXTEND,
+            self.comp_bias_window)
         if (self.ev_par is not None
                 and self.ev_par.get("validation_status") ==
                 "provisional-incomplete-structural-audit"):
@@ -121,7 +132,7 @@ class Searcher:
             )
         self.power_ev = (self.ev_par or {}).get("power_calibration")
         if self.power_ev is not None:
-            _evalue.apply_power_calibration(0.0, self.power_ev)
+            _evalue.validate_power_calibration(self.power_ev)
             validation_status = self.power_ev.get("validation_status")
             if validation_status in {
                     "provisional-incomplete-structural-audit",
@@ -257,6 +268,12 @@ class Searcher:
         hits = []
         if self.ev_par is not None:
             mu, beta = _evalue.clustermax_params_for_query(self.ev_par, qtok)
+            # Composition correction is an E-value null-model correction only:
+            # ranking keeps the plain SW score and alignment, and the corrected
+            # score is computed just for the hits whose E-value is reported.
+            if self.comp_bias_window:
+                qpos, qprof = query_profile(qtok, self.sub, self.background,
+                                            self.comp_bias_window)
         for rank, oi in enumerate(order[:top_k], 1):
             t, sc = int(cand[oi]), float(sw[oi])
             hit = {"rank": rank, "target": self.ids[t], "sw_score": sc,
@@ -266,13 +283,18 @@ class Searcher:
                 hit["tm_a"] = float(tm_a[oi])
                 hit["aligned"] = int(aligned[oi])
             if self.ev_par is not None:
-                hit["bits"] = float(_evalue.bit_score_clustermax(sc, mu, beta))
+                ev_sc = sc
+                if self.comp_bias_window:
+                    ev_sc = float(smith_waterman_numba(qpos, self.toks[t], qprof,
+                                                       GAP_OPEN, GAP_EXTEND))
+                    hit["evalue_sw_score"] = ev_sc
+                hit["bits"] = float(_evalue.bit_score_clustermax(ev_sc, mu, beta))
                 raw_evalue = float(_evalue.evalue_clustermax(
-                    sc, mu, beta, self.n_clusters))
+                    ev_sc, mu, beta, self.n_clusters))
                 if self.power_ev is not None:
                     hit["raw_evalue"] = raw_evalue
                     hit["evalue"] = float(_evalue.apply_power_calibration(
-                        raw_evalue, self.power_ev))
+                        raw_evalue, self.power_ev, query_length=len(qtok)))
                 else:
                     hit["evalue"] = raw_evalue
             hits.append(hit)

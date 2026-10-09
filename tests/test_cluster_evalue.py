@@ -105,6 +105,87 @@ def test_power_calibration_fits_and_applies_a_monotone_map():
     assert np.all(np.diff(mapped) > 0)
 
 
+def test_length_binned_power_calibration_interpolates_and_caps():
+    calibration = {
+        "scheme": "power-law-by-length", "n_clusters": 100,
+        "tail_rule": EV.TAIL_RULE,
+        "length_bins": [
+            {"log_length_centre": np.log(50), "a": 0.1, "b": 2.0},
+            {"log_length_centre": np.log(200), "a": 1.0, "b": 1.0},
+        ],
+    }
+    EV.validate_power_calibration(calibration)
+    # at a bin centre the bin's own law applies; beyond the ends it is held
+    assert EV.apply_power_calibration(3.0, calibration, query_length=50) == \
+        pytest.approx(0.9)
+    assert EV.apply_power_calibration(3.0, calibration, query_length=20) == \
+        pytest.approx(0.9)
+    assert EV.apply_power_calibration(3.0, calibration, query_length=200) == \
+        pytest.approx(3.0)
+    # halfway in log length: log a and b are averaged
+    mid = float(np.sqrt(50 * 200))
+    assert EV.apply_power_calibration(3.0, calibration, query_length=mid) == \
+        pytest.approx(np.sqrt(0.1) * 3.0 ** 1.5)
+    # an E-value never exceeds the number of clusters
+    assert EV.apply_power_calibration(1e4, calibration, query_length=50) == 100.0
+    with pytest.raises(ValueError, match="query length"):
+        EV.apply_power_calibration(3.0, calibration)
+
+
+def test_power_calibration_is_not_extrapolated_past_its_fitted_range():
+    calibration = {"scheme": "power-law", "a": 0.01, "b": 2.0,
+                   "fit_raw_evalue_ceiling": 100.0, "n_clusters": 10_000,
+                   "tail_rule": EV.TAIL_RULE}
+    at_end = EV.apply_power_calibration(100.0, calibration)
+    assert at_end == pytest.approx(100.0)                      # 0.01 * 100**2
+    # beyond the fitted end the value grows in proportion, not as E0**2
+    assert EV.apply_power_calibration(400.0, calibration) == pytest.approx(400.0)
+    assert EV.apply_power_calibration(50.0, calibration) == pytest.approx(25.0)
+    values = EV.apply_power_calibration(np.geomspace(1, 1e6, 50), calibration)
+    assert np.all(np.diff(values) >= 0) and values.max() == 10_000
+    # calibrations fitted before the rule existed keep the plain power law
+    legacy = {k: v for k, v in calibration.items() if k != "tail_rule"}
+    assert EV.apply_power_calibration(400.0, legacy) == pytest.approx(1600.0)
+
+
+def test_fit_power_params_fits_one_law_per_length_bin():
+    from rfoldseek import calibrate as C
+    rng = np.random.default_rng(2)
+    rows, panel, lengths = [], {}, {}
+    for q in range(40):
+        query_id = f"q{q}"
+        length = 30 + 10 * q
+        steep = q < 20                      # short queries: fewer low-E hits
+        raw = rng.uniform(0, 100, 400)
+        keep = raw ** (2.0 if steep else 1.0) / (100 if steep else 1) < 100
+        for value in raw[keep][:60]:
+            rows.append({"query_id": query_id, "family": f"F{q}",
+                         "raw_evalue": float(value)})
+        panel[query_id] = {"family": f"F{q}", "bq": None, "n_clusters": None,
+                           "background_scope": "all", "audit_complete": None,
+                           "audit_ceiling": None}
+        lengths[query_id] = length
+    fitted = C.fit_power_params({"n_clusters": 500}, rows, 500, panel=panel,
+                                raw_evalue_ceiling=100.0, length_bins=2,
+                                query_lengths=lengths)["power_calibration"]
+    assert fitted["scheme"] == "power-law-by-length"
+    bins = fitted["length_bins"]
+    assert [b["n_calibration_queries"] for b in bins] == [20, 20]
+    assert bins[0]["log_length_centre"] < bins[1]["log_length_centre"]
+    EV.validate_power_calibration(fitted)
+
+    # a bin with no observation in the fitted range is merged, not fatal
+    sparse = [r for r in rows if r["query_id"] not in {f"q{q}" for q in range(10)}]
+    merged = C.fit_power_params({"n_clusters": 500}, sparse, 500, panel=panel,
+                                raw_evalue_ceiling=100.0, length_bins=4,
+                                query_lengths=lengths)["power_calibration"]
+    assert len(merged["length_bins"]) == 3
+    assert sum(b["n_calibration_queries"] for b in merged["length_bins"]) == 40
+    with pytest.raises(C.CalibrationInputError):
+        C.fit_power_params({"n_clusters": 500}, rows, 500, panel=panel,
+                           raw_evalue_ceiling=100.0, length_bins=2)
+
+
 @pytest.mark.parametrize("calibration", [
     {"a": 0.0, "b": 1.0}, {"a": 1.0, "b": 0.0},
     {"a": float("inf"), "b": 1.0},
@@ -191,6 +272,46 @@ def test_fit_query_parameter_model_recovers_linear_mu_and_log_beta():
     assert np.asarray(model["coefficients_mu_logbeta"]) == pytest.approx(expected)
     assert model["feature_order"] == [
         "intercept", "z_log_length", "z_token_entropy"]
+
+
+def test_spline_query_model_follows_a_curve_a_linear_one_misses():
+    # mu rises over short queries and levels off for long ones, as the
+    # per-query fits of the 885-chain database do; entropy is irrelevant.
+    rng = np.random.default_rng(5)
+    lengths = np.exp(np.linspace(np.log(20), np.log(3000), 80))
+    entropies = rng.uniform(2.0, 5.0, 80)
+    mus = 7.0 - 3.0 * np.exp(-(lengths - 20) / 40)
+    betas = np.full(80, 2.0)
+    domain = {"log_length_min": np.log(20), "log_length_max": np.log(3000),
+              "entropy_min": 2.0, "entropy_max": 5.0}
+    models = {}
+    for name, knots in (("linear", None), ("spline", 4)):
+        models[name] = EV.fit_query_parameter_model(
+            lengths, entropies, mus, betas, length_knots=knots)
+        models[name]["training_domain"] = domain
+    short = list(range(11)) * 2             # 22 tokens, entropy log2(11)
+    mu = {name: EV.clustermax_params_for_query(
+              {"query_parameter_model": model}, short)[0]
+          for name, model in models.items()}
+    truth = 7.0 - 3.0 * np.exp(-2 / 40)
+    assert abs(mu["spline"] - truth) < 0.3
+    assert abs(mu["linear"] - truth) > 3 * abs(mu["spline"] - truth)
+    assert np.asarray(models["spline"]["coefficients_mu_logbeta"]).shape == (5, 2)
+
+
+def test_spline_query_model_needs_enough_query_fits():
+    lengths = np.exp(np.linspace(np.log(20), np.log(500), 20))
+    entropies = np.linspace(2.0, 5.0, 20)
+    with pytest.raises(ValueError, match="per-query fits"):
+        EV.fit_query_parameter_model(lengths, entropies, np.full(20, 5.0),
+                                     np.full(20, 2.0), length_knots=4)
+
+
+def test_length_grid_model_rejects_the_composition_correction():
+    from rfoldseek import calibrate as C
+    with pytest.raises(C.CalibrationInputError, match="query-conditional"):
+        C.fit_clustermax_params("db.pt", [], [], [], 80, [], {}, None, set(), set(),
+                                model="length-grid", comp_bias_window=20)
 
 
 def test_query_conditional_clustermax_backfills_excluded_cluster_leader(monkeypatch):

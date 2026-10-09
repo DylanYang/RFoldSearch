@@ -23,6 +23,7 @@ from .database import (attach_evalue_calibration, calibration_context_fingerprin
                        database_fingerprint, load_database, read_clusters,
                        short_id, strict_cluster_labels)
 from .search import GAP_EXTEND, GAP_OPEN, load_matrix
+from .compbias import background_frequencies, query_profile
 from .smith_waterman import smith_waterman_numba
 from .usalign import USalignNotFound, find_usalign, score_pool
 
@@ -35,6 +36,7 @@ DATABASE_TYPES = {
     "experimental": ("annotated", "annotated-to-full"),
 }
 DEFAULT_LENGTHS = (20, 30, 40, 60, 80, 120, 160, 220, 300, 500, 1000, 2000)
+MIN_QUERIES_PER_LENGTH_BIN = 20
 
 
 class CalibrationInputError(ValueError):
@@ -164,8 +166,12 @@ def fit_clustermax_params(db_path, entries, tokens, chain_ids, n_codes, clusters
                           model="query-conditional", audit_ceiling=AUDIT_CEILING,
                           allow_unreviewed=False, ridge=1e-3,
                           lengths=DEFAULT_LENGTHS, n_queries=24, seed=0,
-                          len_ratio=None):
+                          len_ratio=None, comp_bias_window=0):
     """Fit the uncorrected cluster-max model.
+
+    ``comp_bias_window`` is the composition-bias correction half-width the
+    scores use (0 = none); search must use the same, so it is recorded in
+    the parameters and in their scoring-context fingerprint.
 
     Returns ``(params, query_fits, missing)``. When ``missing`` (leaders at
     ``E0 <= audit_ceiling`` without an adjudication) is non-empty, ``params``
@@ -188,6 +194,9 @@ def fit_clustermax_params(db_path, entries, tokens, chain_ids, n_codes, clusters
         pair = (chain_ids[first], chain_ids[second])
         return any(alias in audited for alias in _aliases(*pair))
 
+    if model != "query-conditional" and int(comp_bias_window):
+        raise CalibrationInputError(
+            "--comp-bias-window is only available with the query-conditional model")
     query_fits = []
     if model == "query-conditional":
         if len_ratio is not None:
@@ -212,6 +221,7 @@ def fit_clustermax_params(db_path, entries, tokens, chain_ids, n_codes, clusters
             gap_open=GAP_OPEN, gap_extend=GAP_EXTEND, exclude=exclude, ridge=ridge,
             is_audited=None if allow_unreviewed else is_audited,
             audit_evalue_ceiling=None if allow_unreviewed else audit_ceiling,
+            comp_bias_window=comp_bias_window,
         )
         missing = [{
             "query_id": chain_ids[row["query_index"]],
@@ -238,12 +248,13 @@ def fit_clustermax_params(db_path, entries, tokens, chain_ids, n_codes, clusters
         "gap_extend": GAP_EXTEND,
         "seed": seed,
         "len_ratio": len_ratio,
+        "comp_bias_window": int(comp_bias_window),
         "calibration_database": str(Path(db_path).resolve()),
         "n_clusters": fitted["n_clusters"],
         "n_chains": fitted["n_chains"],
         "target_database_fingerprint": target_fingerprint,
         "calibration_context_fingerprint": calibration_context_fingerprint(
-            target_fingerprint, matrix, GAP_OPEN, GAP_EXTEND),
+            target_fingerprint, matrix, GAP_OPEN, GAP_EXTEND, comp_bias_window),
         "search_scope": ("full_database" if len_ratio is None
                          else f"length_ratio_{len_ratio:g}"),
         "clusters": "stored cluster labels in the RFoldseek database",
@@ -294,10 +305,12 @@ def build_background(params, target_entries, targets, target_ids, n_codes,
     if fitted_target is not None and fitted_target != target_fingerprint:
         raise ValueError("parameter file belongs to a different target database")
     fitted_context = params.get("calibration_context_fingerprint")
+    window = int(params.get("comp_bias_window", 0))
     actual_context = calibration_context_fingerprint(
-        target_fingerprint, matrix, GAP_OPEN, GAP_EXTEND)
+        target_fingerprint, matrix, GAP_OPEN, GAP_EXTEND, window)
     if fitted_context is not None and fitted_context != actual_context:
         raise ValueError("parameter file belongs to a different scoring context")
+    background = background_frequencies(targets, n_codes) if window else None
     target_index = {chain_id: index for index, chain_id in enumerate(target_ids)}
     members = {}
     for index, cluster in enumerate(clusters):
@@ -311,6 +324,7 @@ def build_background(params, target_entries, targets, target_ids, n_codes,
         if query_id in target_index:
             self_cluster = str(clusters[target_index[query_id]])
         mu, beta = EV.clustermax_params_for_query(params, query)
+        qpos, qprof = query_profile(query, matrix, background, window)
         query_rows = []
         before_exclusion = 0
         for cluster, indices in members.items():
@@ -328,7 +342,7 @@ def build_background(params, target_entries, targets, target_ids, n_codes,
                 if known_equal(query_label["clan"], target_label["clan"]):
                     continue
                 score = float(smith_waterman_numba(
-                    query, target, matrix, GAP_OPEN, GAP_EXTEND))
+                    qpos, target, qprof, GAP_OPEN, GAP_EXTEND))
                 scored.append((score, target_id))
             if not scored:
                 continue
@@ -428,8 +442,16 @@ def read_background(path, raw_evalue_ceiling=None):
 
 
 def fit_power_params(params, rows, n_clusters, *, panel=None,
-                     raw_evalue_ceiling=None, background_scaling="none"):
-    """Return a copy of ``params`` carrying the fitted power calibration."""
+                     raw_evalue_ceiling=None, background_scaling="none",
+                     length_bins=1, query_lengths=None):
+    """Return a copy of ``params`` carrying the fitted power calibration.
+
+    With ``length_bins`` > 1 the calibration queries are split into that many
+    equal-count bins by length and a power law is fitted in each; search
+    interpolates ``log a`` and ``b`` between bin centres in log query length.
+    One law for all lengths can leave short queries far too conservative and
+    long ones optimistic. ``query_lengths`` maps query id -> token count.
+    """
     fitted_n = params.get("n_clusters")
     if fitted_n is not None and int(fitted_n) != n_clusters:
         raise ValueError(
@@ -444,6 +466,55 @@ def fit_power_params(params, rows, n_clusters, *, panel=None,
         raise CalibrationInputError(
             "annotated-to-full scaling requires query metadata produced "
             "with --background-scope annotated")
+    calibration = _fit_power_once(rows, n_clusters, panel, raw_evalue_ceiling,
+                                  background_scaling)
+    if int(length_bins) > 1:
+        if panel is None or query_lengths is None:
+            raise CalibrationInputError(
+                "length-binned calibration needs the query panel and query lengths")
+        ordered = sorted(panel, key=lambda query_id: query_lengths[query_id])
+        k = int(length_bins)
+        groups = [ordered[i * len(ordered) // k:(i + 1) * len(ordered) // k]
+                  for i in range(k)]
+        bins = []
+        while True:
+            # A bin with too few low-E0 observations cannot be fitted; merge it
+            # into a neighbour rather than abort the whole calibration.
+            try:
+                fits = [_fit_power_once(
+                    [row for row in rows if row["query_id"] in set(members)],
+                    n_clusters, {q: panel[q] for q in members},
+                    raw_evalue_ceiling, background_scaling) for members in groups]
+                break
+            except ValueError:
+                if len(groups) == 1:
+                    raise
+                sizes = [sum(1 for row in rows if row["query_id"] in set(g)) for g in groups]
+                i = int(np.argmin(sizes))
+                j = i + 1 if i + 1 < len(groups) else i - 1
+                lo, hi = sorted((i, j))
+                groups[lo:hi + 1] = [groups[lo] + groups[hi]]
+        for members, sub in zip(groups, fits):
+            lengths = [query_lengths[q] for q in members]
+            bins.append({
+                "log_length_centre": float(np.mean(np.log(lengths))),
+                "length_min": int(min(lengths)), "length_max": int(max(lengths)),
+                "a": sub["a"], "b": sub["b"],
+                "n_calibration_queries": len(members),
+                "n_observations": sub["n_observations"],
+                "fit_raw_evalue_min": sub["fit_raw_evalue_min"],
+            })
+        calibration["scheme"] = "power-law-by-length"
+        calibration["length_bins"] = bins
+        calibration["note"] = ("a and b at the top level are the pooled fit; search "
+                               "uses length_bins")
+    params = dict(params)
+    params["scheme"] = "cluster-max-query-conditional-power"
+    params["power_calibration"] = calibration
+    return params
+
+
+def _fit_power_once(rows, n_clusters, panel, raw_evalue_ceiling, background_scaling):
     if not rows:
         raise ValueError("no background rows remain after filtering")
 
@@ -529,10 +600,7 @@ def fit_power_params(params, rows, n_clusters, *, panel=None,
         calibration["validation_status"] = "structural-audit-not-recorded"
     if raw_evalue_ceiling is not None:
         calibration["fit_raw_evalue_ceiling"] = raw_evalue_ceiling
-    params = dict(params)
-    params["scheme"] = "cluster-max-query-conditional-power"
-    params["power_calibration"] = calibration
-    return params
+    return calibration
 
 
 # --------------------------------------------------------- US-align audit
@@ -603,7 +671,8 @@ def audit_pairs(binary, pairs, query_entries, target_entries, path, audited,
 def calibrate(db, clusters, labels, queries, output, *, db_type="predicted",
               related_pairs=None, query_panel=None, usalign=None, workdir=None,
               index_prefix=None, matrix=None, audit_ceiling=AUDIT_CEILING,
-              tm_threshold=TM_THRESHOLD, max_rounds=20, log=print):
+              tm_threshold=TM_THRESHOLD, max_rounds=20, comp_bias_window=0,
+              length_bins=1, log=print):
     """Calibrate E-values for ``db`` and write the calibrated database to ``output``.
 
     ``db`` is an encoded database, ``clusters`` its CD-HIT-EST (80%) cluster
@@ -611,9 +680,14 @@ def calibrate(db, clusters, labels, queries, output, *, db_type="predicted",
     independent database of calibration queries. ``db_type`` selects the
     background: every eligible cluster for predicted structures, annotated
     targets reweighted to the full database for experimental ones.
+    ``comp_bias_window`` > 0 calibrates composition-bias-corrected scores;
+    the attached parameters then switch search to the same correction.
+    ``length_bins`` > 1 fits the power law separately per query-length bin.
     """
     if db_type not in DATABASE_TYPES:
         raise ValueError(f"db_type must be one of {sorted(DATABASE_TYPES)}")
+    if int(length_bins) < 1:
+        raise ValueError("length_bins must be at least 1")
     background_scope, background_scaling = DATABASE_TYPES[db_type]
     if Path(db).resolve() == Path(output).resolve():
         raise ValueError("output must differ from the input database")
@@ -628,6 +702,11 @@ def calibrate(db, clusters, labels, queries, output, *, db_type="predicted",
     cluster_labels = strict_cluster_labels(entries, read_clusters(clusters),
                                            index_prefix)
     _, query_entries, query_tokens, query_ids, _, _ = load_database(queries)
+    if (int(length_bins) > 1
+            and len(query_ids) < MIN_QUERIES_PER_LENGTH_BIN * int(length_bins)):
+        raise CalibrationInputError(
+            f"{len(query_ids)} calibration queries are too few for {length_bins} "
+            f"length bins; use at least {MIN_QUERIES_PER_LENGTH_BIN} per bin")
     sub = load_matrix(matrix)
     chain_labels = read_labels(labels)
     panel = read_query_panel(query_panel)
@@ -637,6 +716,10 @@ def calibrate(db, clusters, labels, queries, output, *, db_type="predicted",
     if audit_file.exists():
         read_adjudication(audit_file, tm_threshold, audited, related)
     target_by_id = dict(zip(chain_ids, entries))
+    cluster_of = dict(zip(chain_ids, cluster_labels))
+    cluster_members = defaultdict(list)
+    for chain_id, label in cluster_of.items():
+        cluster_members[label].append(chain_id)
     query_by_id = dict(zip(query_ids, query_entries))
     binary = []
 
@@ -653,19 +736,35 @@ def calibrate(db, clusters, labels, queries, output, *, db_type="predicted",
                     f"US-align adjudication (listed in {path}). {error} "
                     "Alternatively pass --related_pairs with their TM-scores."
                 ) from None
+        # Excluding a related leader promotes the next member of its cluster,
+        # which would need its own round; align the whole cluster at once.
+        pairs = []
+        for row in missing:
+            query_id = row["query_id"]
+            query_label = chain_labels.get(query_id, {})
+            for target_id in cluster_members[cluster_of[row["target_id"]]]:
+                target_label = chain_labels.get(target_id, {})
+                if (target_id == query_id
+                        or known_equal(query_label.get("family", ""),
+                                       target_label.get("family", ""))
+                        or known_equal(query_label.get("clan", ""),
+                                       target_label.get("clan", ""))
+                        or any(pair in audited
+                               for pair in _aliases(query_id, target_id))):
+                    continue
+                pairs.append((query_id, target_id))
+        pairs = list(dict.fromkeys(pairs))
         log(f"  {stage}: aligning {len(missing)} unreviewed cluster leaders "
-            "with US-align")
-        audit_pairs(binary[0], [(row["query_id"], row["target_id"])
-                                for row in missing],
-                    query_source, target_by_id, audit_file, audited, related,
-                    tm_threshold)
+            f"and their cluster members ({len(pairs)} pairs) with US-align")
+        audit_pairs(binary[0], pairs, query_source, target_by_id, audit_file,
+                    audited, related, tm_threshold)
 
     log("[1/4] fitting the query-conditional Gumbel model")
     for _ in range(max_rounds):
         params, query_fits, missing = fit_clustermax_params(
             db, entries, tokens, chain_ids, n_codes, cluster_labels,
             chain_labels, sub, audited, related, query_panel=panel,
-            audit_ceiling=audit_ceiling)
+            audit_ceiling=audit_ceiling, comp_bias_window=comp_bias_window)
         if not missing:
             break
         resolve_missing("gumbel", missing, target_by_id)
@@ -696,7 +795,9 @@ def calibrate(db, clusters, labels, queries, output, *, db_type="predicted",
     fitted = fit_power_params(
         params, read_background(background_path, audit_ceiling),
         len(set(cluster_labels)), panel=read_power_panel(metadata_path),
-        raw_evalue_ceiling=audit_ceiling, background_scaling=background_scaling)
+        raw_evalue_ceiling=audit_ceiling, background_scaling=background_scaling,
+        length_bins=length_bins,
+        query_lengths={q: len(t) for q, t in zip(query_ids, query_tokens)})
     evalue_path = work / "evalue_params.json"
     evalue_path.write_text(json.dumps(fitted, indent=2) + "\n")
 

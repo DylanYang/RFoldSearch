@@ -166,6 +166,7 @@ rank  target                    TM_mean  TM_query  TM_target    len
 | `--matrix`   | Scoring     | Substitution matrix (default: the bundled Structure-BLOSUM)                        |
 | `--evalue_params` | Scoring | Database-specific E-value parameter file for this search |
 | `--usalign`  | Scoring     | Path to the `USalign` binary, `--rerank tm` only (default: `$USALIGN`, then `PATH`) |
+| `--comp_bias_window` | Scoring | Composition-bias correction half-width for low-complexity (e.g. helix-only predicted) queries; 0 is off, 20 recommended. Default: what the database's E-value parameters were fitted with (off for the bundled ones) |
 
 ### E-values
 
@@ -211,6 +212,7 @@ law, and attaches the result to a new database file.
 | `--usalign`       | Path to the `USalign` binary (default: `$USALIGN`, then `PATH`)           |
 | `--query_panel`   | TSV of `query_id` choosing the chains of `--db` that fit the Gumbel model (default: all) |
 | `--workdir`       | Intermediate files (default: `calibrated_db.calibration/`)                |
+| `--comp_bias_window` | Calibrate composition-bias-corrected scores (e.g. `20`); search of the calibrated database then applies the same correction (default: 0, off) |
 
 Pairs with the same Rfam family or clan, and pairs US-align finds
 structurally related (mean TM-score >= 0.45), are excluded from the

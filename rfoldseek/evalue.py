@@ -6,9 +6,12 @@ import math
 import warnings
 import numpy as np
 
+from .compbias import background_frequencies, query_profile
 from .smith_waterman import smith_waterman_numba
 
 EULER_GAMMA = 0.5772156649015329
+TAIL_RULE = "proportional above the fitted range, capped at the cluster count"
+MIN_FITS_PER_FEATURE = 10   # per-query fits needed per non-intercept predictor
 
 
 def _gumbel_mle(scores):
@@ -151,12 +154,63 @@ def calibrate_clustermax_length_dependent(
             "n_chains": len(toks), "skipped_lengths": skipped}
 
 
-def fit_query_parameter_model(lengths, entropies, mus, betas,
-                              ridge: float = 1e-3) -> dict:
-    """Fit ``[1, z(log length), z(token entropy)] -> (mu, log beta)``.
+def _rcs_basis(x, knots):
+    """Restricted cubic spline basis of ``x`` (linear beyond the outer knots).
 
-    The intercept is not penalised. Predictor bounds are stored so deployment
-    can use the same boundary rule as calibration.
+    Returns ``len(knots) - 1`` columns: ``x`` itself and one curvature term
+    per interior knot, scaled by the knot span so the columns are of similar
+    size (Harrell's parametrisation).
+    """
+    x = np.asarray(x, dtype=np.float64)
+    k = np.asarray(knots, dtype=np.float64)
+    last, penultimate = k[-1], k[-2]
+    span = (last - k[0]) ** 2
+
+    def cube(u):
+        return np.maximum(u, 0.0) ** 3
+
+    columns = [x]
+    for knot in k[:-2]:
+        columns.append((cube(x - knot)
+                        - cube(x - penultimate) * (last - knot) / (last - penultimate)
+                        + cube(x - last) * (penultimate - knot) / (last - penultimate))
+                       / span)
+    return np.column_stack(columns)
+
+
+def _query_features(model, log_length, entropy):
+    """Standardised predictors of a query under ``model``, without intercept."""
+    basis = model.get("length_basis")
+    if basis is None:
+        centre = model["centre"]
+        return np.array([
+            (log_length - float(centre["log_length_mean"]))
+            / float(centre["log_length_scale"]),
+            (entropy - float(centre["entropy_mean"]))
+            / float(centre["entropy_scale"]),
+        ])
+    if basis.get("type") != "restricted_cubic_spline":
+        raise ValueError("unsupported query-model length basis")
+    raw = np.append(_rcs_basis([log_length], basis["log_length_knots"])[0], entropy)
+    mean = np.asarray(model["feature_mean"], dtype=np.float64)
+    scale = np.asarray(model["feature_scale"], dtype=np.float64)
+    if raw.shape != mean.shape or mean.shape != scale.shape:
+        raise ValueError("query-model feature statistics do not match its basis")
+    return (raw - mean) / scale
+
+
+def fit_query_parameter_model(lengths, entropies, mus, betas,
+                              ridge: float = 1e-3,
+                              length_knots: int | None = None) -> dict:
+    """Fit query predictors -> ``(mu, log beta)`` by ridge regression.
+
+    With ``length_knots=None`` the predictors are ``[z(log length),
+    z(token entropy)]``. With ``length_knots=k`` log length enters through a
+    restricted cubic spline with ``k`` knots at quantiles of the training
+    lengths, so mu and beta can rise over short queries and level off for
+    long ones; a single linear term cannot, and over-predicts both for short
+    queries. The intercept is not penalised. Predictor bounds are stored so
+    deployment can use the same boundary rule as calibration.
     """
     lengths = np.asarray(lengths, dtype=np.float64).reshape(-1)
     entropies = np.asarray(entropies, dtype=np.float64).reshape(-1)
@@ -185,19 +239,37 @@ def fit_query_parameter_model(lengths, entropies, mus, betas,
         "entropy_mean": float(entropies.mean()),
         "entropy_scale": entropy_scale,
     }
-    design = np.column_stack([
-        np.ones(len(lengths)),
-        (log_length - centre["log_length_mean"]) / length_scale,
-        (entropies - centre["entropy_mean"]) / entropy_scale,
-    ])
+    model = {"distribution": "Gumbel", "centre": centre}
+    if length_knots is None:
+        model["feature_order"] = ["intercept", "z_log_length", "z_token_entropy"]
+    else:
+        if int(length_knots) < 3:
+            raise ValueError("a restricted cubic spline needs at least three knots")
+        if len(lengths) < MIN_FITS_PER_FEATURE * int(length_knots):
+            raise ValueError(
+                f"a {int(length_knots)}-knot spline needs at least "
+                f"{MIN_FITS_PER_FEATURE * int(length_knots)} per-query fits")
+        knots = np.quantile(log_length, np.linspace(0.05, 0.95, int(length_knots)))
+        if np.any(np.diff(knots) <= 0):
+            raise ValueError("query lengths are too concentrated for the spline knots")
+        raw = np.column_stack([_rcs_basis(log_length, knots), entropies])
+        model["length_basis"] = {"type": "restricted_cubic_spline",
+                                 "log_length_knots": knots.tolist()}
+        model["feature_mean"] = raw.mean(axis=0).tolist()
+        model["feature_scale"] = raw.std(axis=0, ddof=0).tolist()
+        model["feature_order"] = (
+            ["intercept"]
+            + [f"z_rcs_log_length_{i}" for i in range(1, int(length_knots))]
+            + ["z_token_entropy"])
+    features = np.array([_query_features(model, a, b)
+                         for a, b in zip(log_length, entropies)])
+    design = np.column_stack([np.ones(len(lengths)), features])
     response = np.column_stack([mus, np.log(betas)])
     gram = design.T @ design
-    gram[1:, 1:] += np.eye(2) * ridge
+    gram[1:, 1:] += np.eye(design.shape[1] - 1) * ridge
     coefficients = np.linalg.solve(gram, design.T @ response)
     return {
-        "distribution": "Gumbel",
-        "feature_order": ["intercept", "z_log_length", "z_token_entropy"],
-        "centre": centre,
+        **model,
         "training_domain": {
             "log_length_min": float(log_length.min()),
             "log_length_max": float(log_length.max()),
@@ -220,6 +292,8 @@ def calibrate_clustermax_query_conditional(
     is_audited=None,
     audit_evalue_ceiling: float | None = None,
     ridge: float = 1e-3,
+    length_knots: int | None = 4,
+    comp_bias_window: int = 0,
 ) -> dict:
     """Fit the deployment query model from full-database cluster maxima.
 
@@ -227,7 +301,9 @@ def calibrate_clustermax_query_conditional(
     database. For every query, all eligible target members are searched; the
     query's own cluster is omitted and exclusions are applied before taking a
     cluster maximum. Consequently, if a cluster's leading member is excluded,
-    its best remaining member is used (cluster backfill).
+    its best remaining member is used (cluster backfill). Scores use the
+    composition-bias correction of ``comp_bias_window`` (0 = none), with the
+    database's own composition as background, as search does.
     """
     sub = np.asarray(sub_matrix, dtype=np.float32)
     toks = [np.asarray(t, dtype=np.int64) for t in token_lists]
@@ -245,6 +321,13 @@ def calibrate_clustermax_query_conditional(
     if any(index < 0 or index >= len(toks) for index in query_indices):
         raise ValueError("query index is outside the target database")
 
+    background = (background_frequencies(toks, sub.shape[0])
+                  if comp_bias_window else None)
+    qpos, qprof = {}, {}
+    for qi in query_indices:
+        qpos[qi], qprof[qi] = query_profile(toks[qi], sub, background,
+                                            comp_bias_window)
+
     rows = []
     for qi in query_indices:
         maxima = []
@@ -256,7 +339,7 @@ def calibrate_clustermax_query_conditional(
             if not eligible:
                 continue
             score = max(
-                smith_waterman_numba(toks[qi], toks[index], sub,
+                smith_waterman_numba(qpos[qi], toks[index], qprof[qi],
                                      gap_open, gap_extend)
                 for index in eligible
             )
@@ -276,12 +359,19 @@ def calibrate_clustermax_query_conditional(
             "beta": beta,
             "n_maxima": len(maxima),
         })
+    if length_knots and len(rows) < MIN_FITS_PER_FEATURE * int(length_knots):
+        warnings.warn(
+            f"{len(rows)} calibration queries are too few for a "
+            f"{int(length_knots)}-knot length spline; fitting the linear query "
+            "model instead", RuntimeWarning, stacklevel=2)
+        length_knots = None
     model = fit_query_parameter_model(
         [row["length"] for row in rows],
         [row["token_entropy"] for row in rows],
         [row["mu"] for row in rows],
         [row["beta"] for row in rows],
         ridge=ridge,
+        length_knots=length_knots,
     )
     result = {
         "query_parameter_model": model,
@@ -306,7 +396,7 @@ def calibrate_clustermax_query_conditional(
                 if not eligible:
                     continue
                 score, leader = max(
-                    (smith_waterman_numba(toks[qi], toks[index], sub,
+                    (smith_waterman_numba(qpos[qi], toks[index], qprof[qi],
                                           gap_open, gap_extend), index)
                     for index in eligible
                 )
@@ -354,7 +444,6 @@ def clustermax_params_for_query(params: dict, tokens):
         return clustermax_params_for_length(params, len(query))
     if model.get("distribution") != "Gumbel":
         raise ValueError("unsupported query-conditional E-value distribution")
-    centre = model["centre"]
     domain = model.get("training_domain")
     if domain is None:
         raise ValueError("query-conditional E-value model needs a training_domain")
@@ -376,14 +465,14 @@ def clustermax_params_for_query(params: dict, tokens):
             "query length or token entropy is outside the E-value model's "
             "training domain; boundary Gumbel parameters are used",
             RuntimeWarning, stacklevel=2)
-    x = ((bounded_log_length - float(centre["log_length_mean"]))
-         / float(centre["log_length_scale"]))
-    h = ((bounded_entropy - float(centre["entropy_mean"]))
-         / float(centre["entropy_scale"]))
+    features = np.append(1.0, _query_features(model, bounded_log_length,
+                                              bounded_entropy))
     coefficients = np.asarray(model["coefficients_mu_logbeta"], dtype=np.float64)
-    if coefficients.shape != (3, 2) or not np.all(np.isfinite(coefficients)):
-        raise ValueError("query-conditional E-value coefficients must be finite 3x2")
-    mu, log_beta = np.asarray([1.0, x, h]) @ coefficients
+    if (coefficients.shape != (len(features), 2)
+            or not np.all(np.isfinite(coefficients))):
+        raise ValueError("query-conditional E-value coefficients must be finite, "
+                         "one row per model feature")
+    mu, log_beta = features @ coefficients
     beta = math.exp(float(log_beta))
     if not math.isfinite(mu) or not math.isfinite(beta) or beta <= 0:
         raise ValueError("query-conditional Gumbel parameters must be finite and positive")
@@ -470,22 +559,79 @@ def fit_power_calibration(raw_evalues, weights=None, n_clusters=None,
         "fit_grid_points": int(len(fit_x)),
         "n_observations": int(values.size),
         "total_weight": float(cumulative[-1]),
+        "tail_rule": TAIL_RULE,
     }
     if n_clusters is not None:
         result["n_clusters"] = int(n_clusters)
     return result
 
 
-def apply_power_calibration(raw_evalue, calibration: dict):
-    """Apply a positive monotone power-law correction to initial E-values."""
-    values = np.asarray(raw_evalue, dtype=np.float64)
-    a, b = float(calibration["a"]), float(calibration["b"])
-    if (not math.isfinite(a) or not math.isfinite(b)
-            or a <= 0 or b <= 0):
+def _check_power_terms(a, b):
+    if not math.isfinite(a) or not math.isfinite(b) or a <= 0 or b <= 0:
         raise ValueError("power calibration requires finite positive a and b")
+
+
+def validate_power_calibration(calibration: dict) -> None:
+    """Raise ValueError unless ``calibration`` is a usable power-law correction."""
+    if calibration.get("scheme") == "power-law-by-length":
+        bins = calibration.get("length_bins") or []
+        if not bins:
+            raise ValueError("length-binned power calibration has no bins")
+        centres = [float(entry["log_length_centre"]) for entry in bins]
+        if any(not math.isfinite(c) for c in centres) or np.any(np.diff(centres) <= 0):
+            raise ValueError("length bins must have increasing finite centres")
+        for entry in bins:
+            _check_power_terms(float(entry["a"]), float(entry["b"]))
+    else:
+        _check_power_terms(float(calibration["a"]), float(calibration["b"]))
+
+
+def power_terms(calibration: dict, query_length=None):
+    """``(a, b)`` of the correction for a query of ``query_length`` tokens.
+
+    A length-binned calibration interpolates ``log a`` and ``b`` linearly in
+    log length between bin centres and holds the outermost bin beyond them.
+    """
+    if calibration.get("scheme") == "power-law-by-length":
+        if query_length is None or query_length <= 0:
+            raise ValueError("a length-binned power calibration needs the query length")
+        bins = calibration["length_bins"]
+        x = math.log(query_length)
+        centres = [float(entry["log_length_centre"]) for entry in bins]
+        log_a = float(np.interp(x, centres, [math.log(float(e["a"])) for e in bins]))
+        b = float(np.interp(x, centres, [float(e["b"]) for e in bins]))
+        a = math.exp(log_a)
+    else:
+        a, b = float(calibration["a"]), float(calibration["b"])
+    _check_power_terms(a, b)
+    return a, b
+
+
+def apply_power_calibration(raw_evalue, calibration: dict, query_length=None):
+    """Apply a positive monotone power-law correction to initial E-values.
+
+    Calibrations that record ``tail_rule`` (all fitted by this version) do
+    not extrapolate the curvature above the largest initial E-value the law
+    was fitted to (``fit_raw_evalue_ceiling``): the corrected value grows in
+    proportion to the initial one from the fitted end point, so a law with
+    ``b > 1`` cannot inflate weak hits, and it never exceeds the number of
+    database clusters, since an E-value counts clusters. Older calibrations
+    keep the plain power law, so their published E-values are unchanged.
+    """
+    values = np.asarray(raw_evalue, dtype=np.float64)
+    a, b = power_terms(calibration, query_length)
     if np.any(~np.isfinite(values)) or np.any(values < 0):
         raise ValueError("raw E-values must be finite and non-negative")
     output = a * np.power(values, b)
+    if calibration.get("tail_rule") != TAIL_RULE:
+        return float(output) if output.ndim == 0 else output
+    ceiling = calibration.get("fit_raw_evalue_ceiling")
+    if ceiling is not None and float(ceiling) > 0:
+        ceiling = float(ceiling)
+        output = np.where(values > ceiling,
+                          a * ceiling ** b * (values / ceiling), output)
+    if calibration.get("n_clusters") is not None:
+        output = np.minimum(output, float(calibration["n_clusters"]))
     if output.ndim == 0:
         return float(output)
     return output

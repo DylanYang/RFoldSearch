@@ -2,7 +2,6 @@
 from __future__ import annotations
 import hashlib
 import json
-import math
 import os
 
 import numpy as np
@@ -11,15 +10,14 @@ import torch
 from .backbone import extract_backbone_coords
 from .edges import find_base_pair_and_stack_idx
 from .prefilter import KMER_K
+from .evalue import validate_power_calibration
 from .tokenizer import encode_entry, load_model
 
 
 def _validate_power_calibration(calibration):
     if calibration is None:
         return
-    a, b = float(calibration["a"]), float(calibration["b"])
-    if not math.isfinite(a) or not math.isfinite(b) or a <= 0 or b <= 0:
-        raise ValueError("power E-value calibration requires positive finite a and b")
+    validate_power_calibration(calibration)
 
 
 def database_fingerprint(entries, clusters, n_codes: int = 80) -> str:
@@ -58,14 +56,21 @@ def database_fingerprint(entries, clusters, n_codes: int = 80) -> str:
 
 
 def calibration_context_fingerprint(database_digest: str, matrix,
-                                    gap_open: float, gap_extend: float) -> str:
-    """Bind E-value parameters to the target, score matrix and gap costs."""
+                                    gap_open: float, gap_extend: float,
+                                    comp_bias_window: int = 0) -> str:
+    """Bind E-value parameters to the target, scoring and gap costs.
+
+    A composition-bias window changes every score, so it is part of the
+    context; window 0 (no correction) keeps the original digest.
+    """
     substitution = np.asarray(matrix, dtype="<f4")
     digest = hashlib.sha256(b"rfoldseek-evalue-context-v1\0")
     digest.update(str(database_digest).encode())
     digest.update(b"\0")
     digest.update(substitution.tobytes())
     digest.update(np.asarray([gap_open, gap_extend], dtype="<f8").tobytes())
+    if int(comp_bias_window):
+        digest.update(f"\0comp-bias-window={int(comp_bias_window)}".encode())
     return digest.hexdigest()
 
 

@@ -93,6 +93,54 @@ def test_calibrate_runs_every_stage_and_attaches_the_result(tmp_path, monkeypatc
     assert rerun.exists()
 
 
+def test_calibrated_comp_bias_window_carries_over_to_search(tmp_path, monkeypatch):
+    from rfoldseek import calibrate as C
+    from rfoldseek.search import Searcher
+
+    monkeypatch.delenv("USALIGN", raising=False)
+    monkeypatch.setattr(C, "MIN_QUERIES_PER_LENGTH_BIN", 5)
+    db, qdb, clusters, labels = write_inputs(tmp_path)
+    output = tmp_path / "calibrated.pt"
+    main(["calibrate", "--db", str(db), "--clusters", str(clusters),
+          "--labels", str(labels), "--queries", str(qdb),
+          "--db_type", "predicted", "--usalign", str(fake_usalign(tmp_path)),
+          "--comp_bias_window", "20", "--length_bins", "2",
+          "--output", str(output)])
+
+    searcher = Searcher(str(output))
+    assert searcher.comp_bias_window == 20
+    assert searcher.power_ev["scheme"] == "power-law-by-length"
+    assert len(searcher.power_ev["length_bins"]) == 2
+    query = searcher.ents[0]
+    hits = searcher.search(np.asarray(query["tokens"]), query_entry=query, top_k=3)
+    assert hits and "evalue" in hits[0] and "evalue_sw_score" in hits[0]
+    # The correction only feeds the E-value: ranking, scores and TM_a are those
+    # of the uncorrected search of the same chains.
+    import warnings
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        plain = Searcher(str(db)).search(np.asarray(query["tokens"]),
+                                         query_entry=query, top_k=3)
+    for key in ("target", "sw_score", "structure_score", "tm_a", "aligned"):
+        assert [h[key] for h in hits] == [h[key] for h in plain], key
+    assert all("evalue_sw_score" in hit for hit in hits)
+
+    # Composition correction belongs only to the E-value score.  Retrieval
+    # must keep the original SW alignment, structure score and ordering.
+    plain = Searcher(str(output), evalue_params_path=str(tmp_path / "none.json"),
+                     comp_bias_window=0)
+    plain_hits = plain.search(np.asarray(query["tokens"]), query_entry=query,
+                              top_k=3)
+    assert [hit["target"] for hit in hits] == [hit["target"] for hit in plain_hits]
+    assert [hit["sw_score"] for hit in hits] == [hit["sw_score"] for hit in plain_hits]
+    assert [hit["structure_score"] for hit in hits] == [
+        hit["structure_score"] for hit in plain_hits]
+    assert any(hit["evalue_sw_score"] != hit["sw_score"] for hit in hits)
+    # Scores made without the correction no longer match the parameters.
+    with pytest.raises(ValueError, match="scoring context"):
+        Searcher(str(output), comp_bias_window=0)
+
+
 def test_calibrate_without_usalign_lists_the_unreviewed_leaders(tmp_path,
                                                                 monkeypatch):
     monkeypatch.delenv("USALIGN", raising=False)
@@ -106,6 +154,15 @@ def test_calibrate_without_usalign_lists_the_unreviewed_leaders(tmp_path,
     assert not output.exists()
     missing = tmp_path / "calibrated.calibration" / "gumbel.missing-audit.tsv"
     assert missing.read_text().startswith("query_id\ttarget_id")
+
+
+def test_calibrate_rejects_too_few_queries_for_the_length_bins(tmp_path):
+    db, qdb, clusters, labels = write_inputs(tmp_path)
+    with pytest.raises(SystemExit, match="too few for 4 length bins"):
+        main(["calibrate", "--db", str(db), "--clusters", str(clusters),
+              "--labels", str(labels), "--queries", str(qdb),
+              "--db_type", "predicted", "--length_bins", "4",
+              "--output", str(tmp_path / "out.pt")])
 
 
 def test_calibrate_refuses_to_overwrite_the_output(tmp_path):
