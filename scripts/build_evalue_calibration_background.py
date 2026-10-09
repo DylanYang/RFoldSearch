@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Build cluster-max background observations for power E-value fitting.
 
-Stage 2 of ``rfoldseek calibrate``; run it on its own to inspect or rerun
+Stage 2 of ``rfoldsearch calibrate``; run it on its own to inspect or rerun
 this stage.
 """
 
@@ -13,16 +13,16 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from rfoldseek import calibrate as C
-from rfoldseek.database import load_database
-from rfoldseek.search import load_matrix
+from rfoldsearch import calibrate as C
+from rfoldsearch.database import load_database
+from rfoldsearch.search import load_matrix
 
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--db", required=True, help="target RFoldseek database")
+    parser.add_argument("--db", required=True, help="target RFoldSearch database")
     parser.add_argument("--queries", required=True,
-                        help="independent calibration-query RFoldseek database")
+                        help="independent calibration-query RFoldSearch database")
     parser.add_argument("--params", required=True,
                         help="uncorrected cluster-max parameter JSON")
     parser.add_argument("--labels", required=True,

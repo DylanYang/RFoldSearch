@@ -3,8 +3,8 @@ import numpy as np
 import pytest
 import torch
 
-from rfoldseek import tiebreak
-from rfoldseek.search import Searcher
+from rfoldsearch import tiebreak
+from rfoldsearch.search import Searcher
 
 
 def test_keys_depend_on_id_not_position():
@@ -93,7 +93,7 @@ def test_tie_seed_orders_equal_tm_scores(db_path, monkeypatch):
     reranks the identical pool in the identical order.
     """
     import numpy as np
-    from rfoldseek import usalign
+    from rfoldsearch import usalign
 
     s = Searcher(db_path)
     monkeypatch.setattr(usalign, "find_usalign", lambda explicit=None: "/fake/USalign")

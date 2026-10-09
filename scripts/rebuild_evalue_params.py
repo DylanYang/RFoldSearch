@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Fit database-specific cluster-max Gumbel parameters for a token database.
 
-Stage 1 of ``rfoldseek calibrate``; run it on its own to inspect or rerun
+Stage 1 of ``rfoldsearch calibrate``; run it on its own to inspect or rerun
 this stage.
 """
 
@@ -15,14 +15,14 @@ import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from rfoldseek import calibrate as C
-from rfoldseek.database import load_database
-from rfoldseek.search import load_matrix
+from rfoldsearch import calibrate as C
+from rfoldsearch.database import load_database
+from rfoldsearch.search import load_matrix
 
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--db", required=True, help="clustered RFoldseek database")
+    parser.add_argument("--db", required=True, help="clustered RFoldSearch database")
     parser.add_argument("--labels", required=True,
                         help="TSV with chain ids and optional family/clan columns")
     parser.add_argument("--output", required=True)

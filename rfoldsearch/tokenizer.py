@@ -10,7 +10,7 @@ from .descriptors import compute_descriptor
 from .encoder import tokenizer_from_checkpoint
 
 # Byte layout of the 49-D descriptor produced by compute_descriptor.
-# See rfoldseek/descriptors/compose.py for the docstring / diagram.
+# See rfoldsearch/descriptors/compose.py for the docstring / diagram.
 _DESCRIPTOR_BLOCK_SPAN = {
     "g_nn1": (0, 10),
     "g_nn2": (10, 20),

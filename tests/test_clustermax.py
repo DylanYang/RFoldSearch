@@ -2,7 +2,7 @@
 import numpy as np
 import pytest
 
-from rfoldseek import evalue
+from rfoldsearch import evalue
 
 
 @pytest.fixture

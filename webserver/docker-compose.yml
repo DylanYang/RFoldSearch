@@ -1,13 +1,13 @@
 services:
-  rfoldseek:
+  rfoldsearch:
     build: .
     ports: ["8000:8000"]
     volumes:
       - ./databases:/data:ro
     environment:
       # key=label:path, comma-separated
-      RFOLDSEEK_DBS: "rnasolo=RNAsolo experimental (885 chains):/data/db.pt"
-      RFOLDSEEK_MAX_CONCURRENT: "2"
+      RFOLDSEARCH_DBS: "rnasolo=RNAsolo experimental (885 chains):/data/db.pt"
+      RFOLDSEARCH_MAX_CONCURRENT: "2"
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "python", "-c",

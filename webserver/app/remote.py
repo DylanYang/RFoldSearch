@@ -1,6 +1,6 @@
-"""Databases that another RFoldseek server holds.
+"""Databases that another RFoldSearch server holds.
 
-RFOLDSEEK_REMOTE_DBS="key=http://host:port|key2=..." makes this server offer
+RFOLDSEARCH_REMOTE_DBS="key=http://host:port|key2=..." makes this server offer
 database ``key`` although it does not hold it: a search of it is forwarded, as
 the original upload, to the server at that address, and the remote hits are
 stored in this server's own result record. The alignment and structure of a
@@ -18,12 +18,12 @@ import urllib.request
 from typing import Optional
 
 REMOTE: dict = {}
-for _item in os.environ.get("RFOLDSEEK_REMOTE_DBS", "").split("|"):
+for _item in os.environ.get("RFOLDSEARCH_REMOTE_DBS", "").split("|"):
     _key, _sep, _url = _item.strip().partition("=")
     if _sep and _key.strip() and _url.strip():
         REMOTE[_key.strip()] = _url.strip().rstrip("/")
 
-TIMEOUT = float(os.environ.get("RFOLDSEEK_REMOTE_TIMEOUT", "600"))
+TIMEOUT = float(os.environ.get("RFOLDSEARCH_REMOTE_TIMEOUT", "600"))
 _INFO_TTL = 30.0
 _info_cache: dict = {}
 

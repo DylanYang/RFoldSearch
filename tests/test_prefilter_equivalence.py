@@ -2,9 +2,9 @@
 import numpy as np
 import pytest
 
-from rfoldseek import load_matrix
-from rfoldseek.prefilter import KMER_K, THRESH_FRAC, KmerPrefilter
-from rfoldseek import prefilter_reference as ref
+from rfoldsearch import load_matrix
+from rfoldsearch.prefilter import KMER_K, THRESH_FRAC, KmerPrefilter
+from rfoldsearch import prefilter_reference as ref
 
 
 @pytest.fixture(scope="module")

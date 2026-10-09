@@ -1,6 +1,6 @@
 """The search engine, loaded once and held resident.
 
-RFoldseek's index is not memory-mapped: a database is a torch archive
+RFoldSearch's index is not memory-mapped: a database is a torch archive
 that must be deserialised, and the k-mer inverted index is then built in
 process (about 20 s for half a million chains). Spawning the CLI per
 request, as the Foldseek web server does with its C++ binary, would pay
@@ -33,7 +33,7 @@ from typing import Optional
 
 from . import align
 
-ALIGN_MAX = int(os.environ.get("RFOLDSEEK_ALIGN_MAX", "100"))
+ALIGN_MAX = int(os.environ.get("RFOLDSEARCH_ALIGN_MAX", "100"))
 URS_ID = re.compile(r"^URS[0-9A-F]{10}_(\d+)")
 # NCBI Taxonomy names for the taxon ids that occur in the NuFold set
 # (app/nufold_taxa.json: id -> {"name", "common"}), so predicted models show
@@ -98,9 +98,9 @@ class Engine:
         """Parse the spec, load the tokeniser and every database."""
         import warnings
 
-        from rfoldseek.database import short_id
-        from rfoldseek.search import Searcher, asset
-        from rfoldseek.tokenizer import load_model
+        from rfoldsearch.database import short_id
+        from rfoldsearch.search import Searcher, asset
+        from rfoldsearch.tokenizer import load_model
 
         t0 = time.time()
         path = self._model_path or asset("desc_vqvae_best.pt")
@@ -160,8 +160,8 @@ class Engine:
     def tokenise(self, data: bytes, filename: str) -> dict:
         """Structure bytes -> the encoded entry, plus its token-aligned seq."""
         import torch
-        from rfoldseek.database import structure_to_entry
-        from rfoldseek.tokenizer import encode_entry
+        from rfoldsearch.database import structure_to_entry
+        from rfoldsearch.tokenizer import encode_entry
 
         suffix = ".cif" if filename.lower().endswith((".cif", ".mmcif")) else ".pdb"
         with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as fh:
