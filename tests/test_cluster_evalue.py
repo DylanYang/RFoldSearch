@@ -4,8 +4,8 @@ import numpy as np
 import pytest
 import torch
 
-from rfoldseek import evalue as EV
-from rfoldseek.database import (assign_clusters, attach_evalue_calibration,
+from rfoldsearch import evalue as EV
+from rfoldsearch.database import (assign_clusters, attach_evalue_calibration,
                                 calibration_context_fingerprint,
                                 database_fingerprint, read_clusters)
 from helpers import add_coords, synthetic_evalue_params
@@ -149,7 +149,7 @@ def test_power_calibration_is_not_extrapolated_past_its_fitted_range():
 
 
 def test_fit_power_params_fits_one_law_per_length_bin():
-    from rfoldseek import calibrate as C
+    from rfoldsearch import calibrate as C
     rng = np.random.default_rng(2)
     rows, panel, lengths = [], {}, {}
     for q in range(40):
@@ -196,7 +196,7 @@ def test_invalid_power_calibration_is_rejected(calibration):
 
 
 def test_shipped_params_are_the_cluster_max_scheme():
-    from rfoldseek.search import asset
+    from rfoldsearch.search import asset
     par = json.load(open(asset("evalue_params.json")))
     assert par["scheme"] == "cluster-max-query-conditional-power"
     assert par["len_ratio"] is None
@@ -308,7 +308,7 @@ def test_spline_query_model_needs_enough_query_fits():
 
 
 def test_length_grid_model_rejects_the_composition_correction():
-    from rfoldseek import calibrate as C
+    from rfoldsearch import calibrate as C
     with pytest.raises(C.CalibrationInputError, match="query-conditional"):
         C.fit_clustermax_params("db.pt", [], [], [], 80, [], {}, None, set(), set(),
                                 model="length-grid", comp_bias_window=20)
@@ -360,7 +360,7 @@ def test_query_conditional_audit_checks_the_backfilled_leader(monkeypatch):
 
 
 def test_predicted_calibration_requires_matching_clustered_database(tmp_path):
-    from rfoldseek.search import Searcher
+    from rfoldsearch.search import Searcher
 
     rng = np.random.default_rng(91)
     entries = add_coords([{"id": f"chain{i}",
@@ -418,7 +418,7 @@ def test_searcher_uses_the_cluster_count_of_the_loaded_database(tmp_path):
     E-values for the same alignment, because fewer independent questions were
     asked of it.
     """
-    from rfoldseek.search import Searcher
+    from rfoldsearch.search import Searcher
 
     rng = np.random.default_rng(0)
     ents = []
@@ -453,13 +453,13 @@ def test_searcher_uses_the_cluster_count_of_the_loaded_database(tmp_path):
 
 
 def test_searcher_applies_matching_embedded_power_calibration(tmp_path):
-    from rfoldseek.search import Searcher
+    from rfoldsearch.search import Searcher
 
     rng = np.random.default_rng(3)
     entries = add_coords([{"id": f"chain{i}",
                            "tokens": rng.integers(0, 80, size=40).tolist(),
                            "cluster": f"c{i}"} for i in range(12)])
-    from rfoldseek.search import asset
+    from rfoldsearch.search import asset
     params = json.load(open(asset("evalue_params.json")))
     params.pop("target_database_fingerprint", None)
     params.pop("calibration_context_fingerprint", None)
@@ -479,7 +479,7 @@ def test_searcher_applies_matching_embedded_power_calibration(tmp_path):
 
 
 def test_searcher_rejects_power_mapping_for_another_database(tmp_path):
-    from rfoldseek.search import Searcher, asset
+    from rfoldsearch.search import Searcher, asset
 
     rng = np.random.default_rng(4)
     entries = [{"id": f"chain{i}",
@@ -498,7 +498,7 @@ def test_searcher_rejects_power_mapping_for_another_database(tmp_path):
 
 
 def test_searcher_rejects_query_model_for_another_database(tmp_path):
-    from rfoldseek.search import Searcher, asset
+    from rfoldsearch.search import Searcher, asset
 
     entries = [{"id": f"chain{i}", "tokens": [i % 80] * 40,
                 "cluster": f"c{i}"} for i in range(12)]
@@ -525,7 +525,7 @@ def test_cli_header_reports_the_cluster_count_when_it_reports_an_evalue(tmp_path
     matters most on the redundant databases where the two numbers differ.
     """
     import numpy as np, torch
-    from rfoldseek import cli
+    from rfoldsearch import cli
 
     rng = np.random.default_rng(0)
     ents = add_coords([{"id": f"chain{i}", "tokens": [int(rng.integers(80)) for _ in range(40)],

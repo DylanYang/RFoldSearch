@@ -1,4 +1,4 @@
-"""One-step E-value calibration: rfoldseek calibrate."""
+"""One-step E-value calibration: rfoldsearch calibrate."""
 import json
 import stat
 import sys
@@ -8,7 +8,7 @@ import pytest
 import torch
 
 from helpers import add_coords
-from rfoldseek.cli import main
+from rfoldsearch.cli import main
 
 N_QUERIES = 10
 
@@ -55,7 +55,7 @@ def fake_usalign(tmp_path):
 
 
 def test_calibrate_runs_every_stage_and_attaches_the_result(tmp_path, monkeypatch):
-    from rfoldseek.search import Searcher
+    from rfoldsearch.search import Searcher
 
     monkeypatch.delenv("USALIGN", raising=False)
     db, qdb, clusters, labels = write_inputs(tmp_path)
@@ -94,8 +94,8 @@ def test_calibrate_runs_every_stage_and_attaches_the_result(tmp_path, monkeypatc
 
 
 def test_calibrated_comp_bias_window_carries_over_to_search(tmp_path, monkeypatch):
-    from rfoldseek import calibrate as C
-    from rfoldseek.search import Searcher
+    from rfoldsearch import calibrate as C
+    from rfoldsearch.search import Searcher
 
     monkeypatch.delenv("USALIGN", raising=False)
     monkeypatch.setattr(C, "MIN_QUERIES_PER_LENGTH_BIN", 5)

@@ -2,11 +2,11 @@
 import numpy as np
 import pytest
 
-from rfoldseek import structure_score as ss
-from rfoldseek.compbias import background_frequencies, query_profile
-from rfoldseek.database import calibration_context_fingerprint
-from rfoldseek.search import GAP_EXTEND, GAP_OPEN, load_matrix
-from rfoldseek.smith_waterman import smith_waterman_numba
+from rfoldsearch import structure_score as ss
+from rfoldsearch.compbias import background_frequencies, query_profile
+from rfoldsearch.database import calibration_context_fingerprint
+from rfoldsearch.search import GAP_EXTEND, GAP_OPEN, load_matrix
+from rfoldsearch.smith_waterman import smith_waterman_numba
 
 
 def test_window_zero_reproduces_the_plain_scores():

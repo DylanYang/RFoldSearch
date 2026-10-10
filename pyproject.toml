@@ -3,7 +3,7 @@ requires = ["setuptools>=64"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "rfoldseek"
+name = "rfoldsearch"
 version = "0.1.0"
 description = "Fast RNA tertiary-structure search with the learned 3Dr structural alphabet"
 readme = "README.md"
@@ -20,10 +20,10 @@ dependencies = [
 ]
 
 [project.scripts]
-rfoldseek = "rfoldseek.cli:main"
+rfoldsearch = "rfoldsearch.cli:main"
 
 [tool.setuptools.packages.find]
-include = ["rfoldseek*"]
+include = ["rfoldsearch*"]
 
 [tool.setuptools.package-data]
-rfoldseek = ["assets/*"]
+rfoldsearch = ["assets/*"]

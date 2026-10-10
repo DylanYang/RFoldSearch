@@ -9,7 +9,7 @@ import shutil
 import numpy as np
 import pytest
 
-from rfoldseek import usalign
+from rfoldsearch import usalign
 
 
 def _coords(rng, n):

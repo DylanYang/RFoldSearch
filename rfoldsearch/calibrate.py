@@ -257,7 +257,7 @@ def fit_clustermax_params(db_path, entries, tokens, chain_ids, n_codes, clusters
             target_fingerprint, matrix, GAP_OPEN, GAP_EXTEND, comp_bias_window),
         "search_scope": ("full_database" if len_ratio is None
                          else f"length_ratio_{len_ratio:g}"),
-        "clusters": "stored cluster labels in the RFoldseek database",
+        "clusters": "stored cluster labels in the RFoldSearch database",
         "null": "cluster maxima over real database chains; same annotated "
                 "family or clan and adjudicated structural relatives excluded; "
                 "cluster leaders are selected after exclusions",

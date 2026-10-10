@@ -1,10 +1,10 @@
-"""RFoldseek-TM: the --rerank tm path through Searcher.search."""
+"""RFoldSearch-TM: the --rerank tm path through Searcher.search."""
 import numpy as np
 import pytest
 import torch
 
-from rfoldseek import usalign
-from rfoldseek.search import Searcher
+from rfoldsearch import usalign
+from rfoldsearch.search import Searcher
 
 
 @pytest.fixture
@@ -85,21 +85,21 @@ def test_unknown_rerank_backend_is_rejected(db_path):
 
 
 def test_cli_prints_the_tm_table_and_names_the_backend(db_path, monkeypatch, capsys):
-    from rfoldseek import cli
+    from rfoldsearch import cli
 
     _fake_scores(monkeypatch, {f"chain_{i:03d}": (0.4, 0.6) for i in range(40)})
     cli.main(["search", "--query", "chain_000", "--db", db_path,
               "--top_k", "2", "--rerank", "tm"])
 
     out = capsys.readouterr().out
-    assert "rerank: RFoldseek-TM" in out
+    assert "rerank: RFoldSearch-TM" in out
     assert "TM_mean" in out and "TM_query" in out and "TM_target" in out
     assert "SW_score" not in out and "E-value" not in out
     assert "0.5000" in out
 
 
 def test_cli_sw_output_is_unchanged(db_path, capsys):
-    from rfoldseek import cli
+    from rfoldsearch import cli
 
     cli.main(["search", "--query", "chain_000", "--db", db_path,
               "--top_k", "2", "--rerank", "sw"])
@@ -109,7 +109,7 @@ def test_cli_sw_output_is_unchanged(db_path, capsys):
 
 
 def test_cli_default_prints_structure_score_table(db_path, capsys):
-    from rfoldseek import cli
+    from rfoldsearch import cli
 
     cli.main(["search", "--query", "chain_000", "--db", db_path,
               "--top_k", "2"])
@@ -122,7 +122,7 @@ def test_cli_default_prints_structure_score_table(db_path, capsys):
 def test_cli_reports_a_missing_usalign_without_a_traceback(db_path, monkeypatch,
                                                            capsys):
     import shutil
-    from rfoldseek import cli
+    from rfoldsearch import cli
 
     monkeypatch.delenv("USALIGN", raising=False)
     monkeypatch.setattr(shutil, "which", lambda name: None)

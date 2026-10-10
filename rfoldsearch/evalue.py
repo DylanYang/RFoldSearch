@@ -1,4 +1,4 @@
-"""Cluster-maximum Gumbel E-values for RFoldseek token Smith-Waterman scores."""
+"""Cluster-maximum Gumbel E-values for RFoldSearch token Smith-Waterman scores."""
 
 from __future__ import annotations
 

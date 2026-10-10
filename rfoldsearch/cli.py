@@ -1,4 +1,4 @@
-"""Command line interface: rfoldseek preprocess | build | calibrate | search."""
+"""Command line interface: rfoldsearch preprocess | build | calibrate | search."""
 import argparse
 import glob
 import json
@@ -107,7 +107,7 @@ def cmd_search(a):
         head += (f"   E-values from composition-corrected S_SW (window "
                  f"{s.comp_bias_window}, column S_SW*)")
     if a.rerank == "tm":
-        head += "   rerank: RFoldseek-TM"
+        head += "   rerank: RFoldSearch-TM"
     elif a.rerank == "tm_a":
         head += "   rerank: R_str = S_SW x TM_a"
     print(head)
@@ -161,7 +161,7 @@ def cmd_search(a):
 
 
 def main(argv=None):
-    ap = argparse.ArgumentParser(prog="rfoldseek",
+    ap = argparse.ArgumentParser(prog="rfoldsearch",
                                  description="Fast RNA structural search with the 3Dr alphabet")
     sub = ap.add_subparsers(dest="cmd", required=True)
 

@@ -46,6 +46,7 @@ def database_fingerprint(entries, clusters, n_codes: int = 80) -> str:
         cluster_signatures[cluster] = digest.hexdigest()
     rows = [identity + (cluster_signatures[str(cluster)],)
             for identity, cluster in zip(identities, clusters)]
+    # The salt keeps the tool's former name so that existing calibrations still match.
     digest = hashlib.sha256(b"rfoldseek-logical-token-db-v1\0")
     digest.update(str(int(n_codes)).encode())
     digest.update(b"\0")

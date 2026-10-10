@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>RFoldseek Search</title>
+<title>RFoldSearch</title>
 <link rel="icon" href="/static/logo.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -412,12 +412,12 @@
 <body>
 <header class="top">
   <div class="bar">
-    <a class="brand" href="/"><img src="/static/logo.png" alt=""><b>RFoldseek</b><span>RNA structure search</span></a>
+    <a class="brand" href="/"><img src="/static/logo.png" alt=""><b>RFoldSearch</b><span>RNA structure search</span></a>
     <nav class="links">
       <a href="/" id="nav-search">Search</a>
       <a href="/tutorial" id="nav-tutorial">Tutorial</a>
       <a href="/api/docs" target="_blank">API</a>
-      <a href="https://github.com/DylanYang/RFoldseek" target="_blank">GitHub</a>
+      <a href="https://github.com/DylanYang/RFoldSearch" target="_blank">GitHub</a>
     </nav>
   </div>
 </header>
@@ -462,14 +462,14 @@
           <div class="fold-body"><div class="dbs" id="dbs"><div class="hint"><span class="spinner"></span>Connecting to the server…</div></div></div>
         </details>
         <details class="fold" open>
-          <summary><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M12 3.5l1.6 2.1 2.6-.6.6 2.6 2.1 1.6-1.2 2.4 1.2 2.4-2.1 1.6-.6 2.6-2.6-.6L12 20.5l-1.6-2.1-2.6.6-.6-2.6-2.1-1.6L6.3 12 5.1 9.6l2.1-1.6.6-2.6 2.6.6z"/></svg><span class="k">Mode</span><span class="sum" id="sum-mode">RFoldseek</span><svg class="ico chev" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></summary>
+          <summary><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M12 3.5l1.6 2.1 2.6-.6.6 2.6 2.1 1.6-1.2 2.4 1.2 2.4-2.1 1.6-.6 2.6-2.6-.6L12 20.5l-1.6-2.1-2.6.6-.6-2.6-2.1-1.6L6.3 12 5.1 9.6l2.1-1.6.6-2.6 2.6.6z"/></svg><span class="k">Mode</span><span class="sum" id="sum-mode">RFoldSearch</span><svg class="ico chev" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></summary>
           <div class="fold-body">
             <div class="seg modes" id="mode">
                 <label class="on"><input type="radio" name="rerank" value="tm_a" checked>
-                  <span class="m-name">RFoldseek</span>
+                  <span class="m-name">RFoldSearch</span>
                   <span class="m-sub">Recommended for most searches</span></label>
                 <label id="mode-tm"><input type="radio" name="rerank" value="tm">
-                  <span class="m-name">RFoldseek-TM</span>
+                  <span class="m-name">RFoldSearch-TM</span>
                   <span class="m-sub">Better structural ranking</span></label>
               </div>
           </div>
@@ -492,14 +492,14 @@
   <section id="view-tutorial" hidden>
     <div class="card doc">
       <h1>How to read the results</h1>
-      <p class="lead">RFoldseek encodes every nucleotide as one of 80 learned 3Dr structural states, aligns the resulting token strings, and reports the closest structures in each database.</p>
+      <p class="lead">RFoldSearch encodes every nucleotide as one of 80 learned 3Dr structural states, aligns the resulting token strings, and reports the closest structures in each database.</p>
 
       <h2 id="input">Input</h2>
       <p>Paste or upload one RNA chain as PDB or mmCIF (up to the size shown under the box). The first RNA chain in the file is used. Every nucleotide needs its C3′, C4′ and O4′ atoms; nucleotides without them are skipped, and chains shorter than 20 nucleotides cannot be searched.</p>
 
       <h2>1. Choose a mode</h2>
-      <p><b>RFoldseek</b> (recommended for most searches) prefilters with a k-mer index, aligns structural tokens with affine-gap Smith–Waterman, superposes the aligned C4′ atoms, and ranks hits by the <b>structure score</b> S<sub>SW</sub> × TM-score.
-         <b>RFoldseek-TM</b> re-scores the same candidates with US-align on the coordinates, which improves the structural ranking at a higher cost.</p>
+      <p><b>RFoldSearch</b> (recommended for most searches) prefilters with a k-mer index, aligns structural tokens with affine-gap Smith–Waterman, superposes the aligned C4′ atoms, and ranks hits by the <b>structure score</b> S<sub>SW</sub> × TM-score.
+         <b>RFoldSearch-TM</b> re-scores the same candidates with US-align on the coordinates, which improves the structural ranking at a higher cost.</p>
 
       <h2>2. The hit table</h2>
       <p>Click a column heading to sort by it, and a row to open the hit.</p>
@@ -511,7 +511,7 @@
         <tr><td>Seq identity</td><td>Nucleotide identity over the aligned positions. Databases without sequences show <i>3Dr identity</i> instead: the fraction of aligned pairs with the same structural token.</td></tr>
         <tr><td>RMSD (Å)</td><td>Root-mean-square deviation of the superposed aligned nucleotides.</td></tr>
         <tr><td>Structure score</td><td>The ranking score, S<sub>SW</sub> × TM-score. A hit has to match locally and in the arrangement of its aligned segments.</td></tr>
-        <tr><td>TM-score</td><td>The TM-score of the token alignment after superposition, normalised by the query and by the target length and averaged. In RFoldseek-TM it is the US-align TM-score of the two whole chains.</td></tr>
+        <tr><td>TM-score</td><td>The TM-score of the token alignment after superposition, normalised by the query and by the target length and averaged. In RFoldSearch-TM it is the US-align TM-score of the two whole chains.</td></tr>
         <tr><td>E-value</td><td>The expected number of unrelated hits at least this good by chance. It is calibrated for each query (its length and token composition) against the database it is searched in, and is computed from S<sub>SW</sub>, so it does not always increase down the list. Databases that have not been calibrated yet report no E-value.</td></tr>
         <tr><td>Query cov, Target cov</td><td>The share of the query and of the target that the alignment spans.</td></tr>
       </table>
@@ -552,7 +552,7 @@
     </div>
   </section>
 </main>
-<footer>RFoldseek · learned 3Dr structural alphabet for fast RNA tertiary-structure search</footer>
+<footer>RFoldSearch · learned 3Dr structural alphabet for fast RNA tertiary-structure search</footer>
 
 <script src="https://cdn.jsdelivr.net/npm/3dmol@2.4.2/build/3Dmol-min.js"></script>
 <script src="/static/app.js"></script>
