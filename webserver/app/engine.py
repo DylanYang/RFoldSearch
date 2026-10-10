@@ -31,7 +31,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
 
-from . import align
+from . import align, fullatom
 
 ALIGN_MAX = int(os.environ.get("RFOLDSEARCH_ALIGN_MAX", "100"))
 URS_ID = re.compile(r"^URS[0-9A-F]{10}_(\d+)")
@@ -230,17 +230,44 @@ class Engine:
             d.pop("_superpose", None)
         return d
 
-    def superposition_pdb(self, db_key: str, enc: dict, target: str) -> str:
-        """Query (chain A) and the target superposed onto it (chain B)."""
+    def superposition_pdb(self, db_key: str, enc: dict, target: str,
+                          query_file: Optional[tuple] = None) -> str:
+        """Query (chain A) and the target superposed onto it (chain B).
+
+        Each chain is written with all its atoms when they can be had (the
+        uploaded query file; a PDB hit from the RCSB) and as the five
+        stored atoms per nucleotide otherwise. A REMARK line names the
+        chains that are full-atom, for the viewer to pick a style.
+        """
         h = self.databases[db_key]
         s = h.searcher
         d = self.alignment(h, enc, target, keep_superposition=True)
-        tseq = h.meta.get(target, {}).get("seq")
+        ann = h.meta.get(target, {})
         if "_superpose" not in d:
             raise ValueError("too few aligned residues to superpose")
         R, tr, pq, pt = d["_superpose"]
-        qtxt, nxt = align.backbone_pdb(enc, enc.get("seq"), "A", highlight=pq)
-        ttxt, _ = align.backbone_pdb(s.ents[s.id2i[target]], tseq, "B",
-                                     rot=R, trans=tr, highlight=pt,
-                                     first_serial=nxt)
-        return qtxt + ttxt + "END\n"
+        tent = s.ents[s.id2i[target]]
+        full = []
+
+        def chain(entry, seq, letter, source, rot=None, trans=None, mark=None, first=1):
+            if source is not None:
+                try:
+                    arr = fullatom.load_atoms(*source())
+                    txt, nxt = fullatom.chain_pdb(
+                        arr, align.masked_coords(entry)[:, 1], letter, rot, trans, mark, first)
+                    full.append(letter)
+                    return txt, nxt
+                except Exception as exc:          # fall back to the stored atoms
+                    print(f"[engine] full-atom chain {letter} unavailable: "
+                          f"{type(exc).__name__}: {exc}", flush=True)
+            return align.backbone_pdb(entry, seq, letter, rot=rot, trans=trans,
+                                      highlight=mark, first_serial=first)
+
+        qsrc = (lambda: query_file) if query_file else None
+        tsrc = None
+        if ann.get("pdb") and ann.get("chain"):
+            tsrc = lambda: (fullatom.rcsb_chain(ann["pdb"], ann["chain"]), "chain.cif")
+        qtxt, nxt = chain(enc, enc.get("seq"), "A", qsrc, mark=pq)
+        ttxt, _ = chain(tent, ann.get("seq"), "B", tsrc, R, tr, pt, nxt)
+        head = f"REMARK   1 FULLATOM {' '.join(full)}\n" if full else ""
+        return head + qtxt + ttxt + "END\n"

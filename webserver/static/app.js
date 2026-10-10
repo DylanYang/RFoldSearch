@@ -557,6 +557,7 @@ async function drawStructure(h) {
   const el = $("viewer");
   if (!window.$3Dmol) { el.innerHTML = '<div class="hint" style="padding:16px">3D viewer unavailable (3Dmol.js did not load).</div>'; return; }
   let pdb;
+  el.innerHTML = '<div class="hint" style="padding:16px">Loading the 3D structures… (a large chain fetched from the RCSB for the first time can take half a minute)</div>';
   try {
     pdb = await (await api(`/api/result/${job.id}/${activeDb}/${h.rank}/structure`)).text();
   } catch (err) {
@@ -570,21 +571,28 @@ async function drawStructure(h) {
   const PAL = { A: { on: "#d9703a", off: "#f0cfb8", base: "#e8955f" }, B: { on: "#3f6fb5", off: "#c4d3ea", base: "#6a93cf" } };
   const col = (chain, atom, kind) =>
     atom.b > 0.5 ? (kind === "base" ? PAL[chain].base : PAL[chain].on) : PAL[chain].off;
-  // the backbone is a smooth tube through the C4' atoms, the base a short stick ending in a bead
+  // Chains the server sent with all their atoms are drawn as a cartoon: a ribbon along the
+  // backbone, the bases as filled rings. The others carry only the five stored atoms per
+  // nucleotide: a smooth tube through the C4' atoms, the base a short stick ending in a bead.
+  const full = new Set(((pdb.match(/^REMARK {3}1 FULLATOM (.*)$/m) || [])[1] || "").trim().split(/\s+/).filter(Boolean));
+  const coarse = ["A", "B"].filter((c) => !full.has(c));
   const baseStyle = () => {
-    for (const chain of ["A", "B"]) {
+    for (const chain of full) {
+      viewer.setStyle({ chain }, { cartoon: { colorfunc: (a) => col(chain, a, "bb"), thickness: 0.6, width: 1.6, ribbon: false, style: "oval" } });
+    }
+    for (const chain of coarse) {
       viewer.setStyle({ chain }, {});
-      viewer.setStyle({ chain, atom: "C4'" }, { sphere: { radius: 0.42, colorfunc: (a) => col(chain, a, "bb") } });
-      viewer.setStyle({ chain, atom: "N1" }, { sphere: { radius: 0.36, colorfunc: (a) => col(chain, a, "base") } });
+      viewer.setStyle({ chain, atom: "C4'" }, { sphere: { radius: 0.62, colorfunc: (a) => col(chain, a, "bb") } });
+      viewer.setStyle({ chain, atom: "N1" }, { sphere: { radius: 0.34, colorfunc: (a) => col(chain, a, "base") } });
     }
   };
   baseStyle();
-  for (const chain of ["A", "B"]) {
+  for (const chain of coarse) {
     const atoms = viewer.selectedAtoms({ chain, atom: "C4'" }).sort((x, y) => x.resi - y.resi);
     let run = [];
     const flush = () => {
       if (run.length > 1) {
-        viewer.addCurve({ points: run.map((x) => ({ x: x.x, y: x.y, z: x.z })), radius: 0.2, smooth: 6,
+        viewer.addCurve({ points: run.map((x) => ({ x: x.x, y: x.y, z: x.z })), radius: 0.6, smooth: 6,
                           fill: true, color: run[0].b > 0.5 ? PAL[chain].on : PAL[chain].off });
       }
       run = [];
@@ -600,7 +608,7 @@ async function drawStructure(h) {
     }
     flush();
   }
-  for (const chain of ["A", "B"]) {                                           // base: C4' -> C1' -> N1
+  for (const chain of coarse) {                                              // base: C4' -> C1' -> N1
     const byRes = {};
     for (const at of viewer.selectedAtoms({ chain })) (byRes[at.resi] ||= {})[at.atom] = at;
     for (const r of Object.values(byRes)) {
@@ -609,12 +617,13 @@ async function drawStructure(h) {
       const colr = c.b > 0.5 ? PAL[chain].base : PAL[chain].off;
       for (const [x, y] of [[c, o], [o, n]]) {
         viewer.addCylinder({ start: { x: x.x, y: x.y, z: x.z }, end: { x: y.x, y: y.y, z: y.z },
-                             radius: 0.09, color: colr, fromCap: 1, toCap: 1 });
+                             radius: 0.32, color: colr, fromCap: 1, toCap: 1 });
       }
     }
   }
   viewer.setViewStyle({ style: "outline", color: "#3a3330", width: 0.025 });
   viewer.zoomTo({ chain: "A" });
+  viewer.zoom(1.1);
   const map = pairMap(h.aln);
   const picked = document.createElement("div");
   picked.className = "picked";
@@ -633,13 +642,16 @@ async function drawStructure(h) {
     baseStyle();
     viewer.addLabel(`${chain === "A" ? "Q" : "T"}${resi}`, { position: atom, fontSize: 12,
       backgroundColor: "#26211d", backgroundOpacity: 0.85, fontColor: "white" });
-    viewer.setStyle({ chain, resi, atom: ["C4'", "N1"] }, { sphere: { radius: 0.62, color: "#e5322d" } });
+    const markStyle = (c, r, radius) => full.has(c)
+      ? viewer.addStyle({ chain: c, resi: r }, { stick: { radius: 0.32, color: "#e5322d" } })
+      : viewer.setStyle({ chain: c, resi: r, atom: ["C4'", "N1"] }, { sphere: { radius, color: "#e5322d" } });
+    markStyle(chain, resi, 0.62);
     if (other) {
       const pa = viewer.selectedAtoms({ chain: otherChain, resi: other, atom: "C4'" })[0];
       if (pa) {
         viewer.addLabel(`${otherChain === "A" ? "Q" : "T"}${other}`, { position: pa, fontSize: 12,
           backgroundColor: "#7a2a27", backgroundOpacity: 0.85, fontColor: "white" });
-        viewer.setStyle({ chain: otherChain, resi: other, atom: ["C4'", "N1"] }, { sphere: { radius: 0.55, color: "#e5322d" } });
+        markStyle(otherChain, other, 0.55);
       }
     }
     if (centre) viewer.center({ chain, resi }, 400);

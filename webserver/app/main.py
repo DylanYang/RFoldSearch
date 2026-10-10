@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import asyncio
 import csv
+import gzip
 import io
 import json
 import os
@@ -35,6 +36,7 @@ import numpy as np
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.responses import (FileResponse, JSONResponse, PlainTextResponse,
                                Response)
+from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from . import remote
@@ -54,6 +56,7 @@ JOB_ID = re.compile(r"^[A-Za-z0-9_-]{8,32}$")
 
 app = FastAPI(title="RFoldSearch", docs_url="/api/docs",
               openapi_url="/api/openapi.json")
+app.add_middleware(GZipMiddleware, minimum_size=4096)   # full-atom PDB text compresses ~10x
 engine = Engine(spec=os.environ.get("RFOLDSEARCH_DBS", ""),
                 model=os.environ.get("RFOLDSEARCH_MODEL") or None)
 pool = ThreadPoolExecutor(max_workers=MAX_CONCURRENT,
@@ -228,6 +231,8 @@ async def search(
         "results": results,
     }
     _save_job(job)
+    # the upload itself, so the 3D view can draw the query with all its atoms
+    (JOBS_DIR / f"{job['id']}.query.gz").write_bytes(gzip.compress(data))
     return JSONResponse(_public(job))
 
 
@@ -278,10 +283,20 @@ def hit_structure(job_id: str, db: str, rank: int):
         return _remote_hit(job, db, rank, "structure").decode()
     if db not in engine.databases:
         raise HTTPException(410, "database no longer served")
+    # a hit drawn with all its atoms is kept: the RCSB fetch is slow for large chains
+    cached = JOBS_DIR / f"{job_id}.{db}.{rank}.pdb.gz"
+    if cached.exists():
+        return gzip.decompress(cached.read_bytes()).decode()
     try:
-        return engine.superposition_pdb(db, _query_entry(job), hit["target"])
+        upload = JOBS_DIR / f"{job_id}.query.gz"
+        qfile = ((gzip.decompress(upload.read_bytes()), job["query"]["filename"])
+                 if upload.exists() else None)
+        text = engine.superposition_pdb(db, _query_entry(job), hit["target"], qfile)
     except ValueError as exc:
         raise HTTPException(422, str(exc))
+    if text.startswith("REMARK   1 FULLATOM") and " B" in text.split("\n", 1)[0]:
+        cached.write_bytes(gzip.compress(text.encode()))
+    return text
 
 
 TSV_FIELDS = ["database", "rank", "target", "pdb", "chain", "auth_asym", "desc",
