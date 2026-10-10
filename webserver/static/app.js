@@ -553,6 +553,51 @@ function pairMap(a) {
   return { q2t, t2q };
 }
 
+// Turn the coordinates so the molecule's long axis lies along the long side of the
+// panel and its thinnest axis points at the viewer, the view a figure would use.
+function orient(atoms, wide) {
+  if (atoms.length < 3) return;
+  const c = [0, 0, 0];
+  for (const a of atoms) { c[0] += a.x; c[1] += a.y; c[2] += a.z; }
+  c.forEach((_, i) => { c[i] /= atoms.length; });
+  const m = [[0, 0, 0], [0, 0, 0], [0, 0, 0]];
+  for (const a of atoms) {
+    const d = [a.x - c[0], a.y - c[1], a.z - c[2]];
+    for (let i = 0; i < 3; i++) for (let j = 0; j < 3; j++) m[i][j] += d[i] * d[j];
+  }
+  // Jacobi rotations: columns of v become the principal axes
+  const v = [[1, 0, 0], [0, 1, 0], [0, 0, 1]];
+  for (let sweep = 0; sweep < 30; sweep++) {
+    for (const [p, q] of [[0, 1], [0, 2], [1, 2]]) {
+      if (Math.abs(m[p][q]) < 1e-9) continue;
+      const t = (m[q][q] - m[p][p]) / (2 * m[p][q]);
+      const tn = Math.sign(t || 1) / (Math.abs(t) + Math.sqrt(t * t + 1));
+      const cs = 1 / Math.sqrt(tn * tn + 1), sn = tn * cs;
+      for (let k = 0; k < 3; k++) {
+        const a = m[k][p], b = m[k][q]; m[k][p] = cs * a - sn * b; m[k][q] = sn * a + cs * b;
+      }
+      for (let k = 0; k < 3; k++) {
+        const a = m[p][k], b = m[q][k]; m[p][k] = cs * a - sn * b; m[q][k] = sn * a + cs * b;
+      }
+      for (let k = 0; k < 3; k++) {
+        const a = v[k][p], b = v[k][q]; v[k][p] = cs * a - sn * b; v[k][q] = sn * a + cs * b;
+      }
+    }
+  }
+  const order = [0, 1, 2].sort((i, j) => m[j][j] - m[i][i]);         // largest spread first
+  const ax = order.map((i) => [v[0][i], v[1][i], v[2][i]]);
+  const z = [ax[0][1] * ax[1][2] - ax[0][2] * ax[1][1],                // right-handed, so no mirror image
+             ax[0][2] * ax[1][0] - ax[0][0] * ax[1][2],
+             ax[0][0] * ax[1][1] - ax[0][1] * ax[1][0]];
+  const [ex, ey] = wide ? [ax[0], ax[1]] : [ax[1], ax[0]];
+  const ez = wide ? z : z.map((x) => -x);
+  for (const a of atoms) {
+    const d = [a.x - c[0], a.y - c[1], a.z - c[2]];
+    const dot = (e) => e[0] * d[0] + e[1] * d[1] + e[2] * d[2];
+    [a.x, a.y, a.z] = [dot(ex), dot(ey), dot(ez)];
+  }
+}
+
 async function drawStructure(h) {
   const el = $("viewer");
   if (!window.$3Dmol) { el.innerHTML = '<div class="hint" style="padding:16px">3D viewer unavailable (3Dmol.js did not load).</div>'; return; }
@@ -567,6 +612,7 @@ async function drawStructure(h) {
   el.innerHTML = "";
   viewer = $3Dmol.createViewer(el, { backgroundColor: "white", antialias: true });
   viewer.addModel(pdb, "pdb");
+  orient(viewer.selectedAtoms({}), el.clientWidth >= el.clientHeight);
   // aligned nucleotides carry B = 1; colours are the query's orange and the hit's blue, pale where unaligned
   const PAL = { A: { on: "#d9703a", off: "#f0cfb8", base: "#e8955f" }, B: { on: "#3f6fb5", off: "#c4d3ea", base: "#6a93cf" } };
   const col = (chain, atom, kind) =>
@@ -622,8 +668,7 @@ async function drawStructure(h) {
     }
   }
   viewer.setViewStyle({ style: "outline", color: "#3a3330", width: 0.025 });
-  viewer.zoomTo({ chain: "A" });
-  viewer.zoom(1.1);
+  viewer.zoomTo();
   const map = pairMap(h.aln);
   const picked = document.createElement("div");
   picked.className = "picked";
