@@ -24,7 +24,7 @@ from pathlib import Path
 
 import numpy as np
 
-MODELSERVER = "https://models.rcsb.org/v1/{pdb}/atoms?label_asym_id={asym}&encoding=cif"
+MODELSERVER = "https://models.rcsb.org/v1/{pdb}/atoms?{field}_asym_id={asym}&encoding=cif"
 CACHE = Path(os.environ.get("RFOLDSEARCH_CIF_CACHE",
                             Path(__file__).resolve().parent.parent / "cif_cache"))
 FETCH_TIMEOUT = float(os.environ.get("RFOLDSEARCH_CIF_TIMEOUT", "20"))
@@ -34,18 +34,19 @@ _ICODES = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
 _SAFE = re.compile(r"^[A-Za-z0-9]{1,12}$")
 
 
-def rcsb_chain(pdb: str, asym: str) -> bytes:
-    """mmCIF text of one label_asym chain, from the cache or the ModelServer."""
-    if not (_SAFE.match(pdb or "") and _SAFE.match(asym or "")):
+def rcsb_chain(pdb: str, asym: str, field: str = "label") -> bytes:
+    """mmCIF text of one chain, named by its label_asym_id or auth_asym_id
+    (``field``), from the cache or the ModelServer."""
+    if not (_SAFE.match(pdb or "") and _SAFE.match(asym or "")) or field not in ("label", "auth"):
         raise ValueError(f"not a PDB chain: {pdb!r} {asym!r}")
-    path = CACHE / f"{pdb.upper()}_{asym}.cif.gz"
+    path = CACHE / f"{pdb.upper()}_{asym}{'' if field == 'label' else '.auth'}.cif.gz"
     if path.exists():
         return gzip.decompress(path.read_bytes())
-    url = MODELSERVER.format(pdb=pdb.lower(), asym=asym)
+    url = MODELSERVER.format(pdb=pdb.lower(), field=field, asym=asym)
     with urllib.request.urlopen(url, timeout=FETCH_TIMEOUT) as r:
         data = r.read()
     if b"_atom_site." not in data:
-        raise ValueError(f"no atoms for {pdb} chain {asym}")
+        raise ValueError(f"no atoms for {pdb} {field}_asym_id {asym}")
     CACHE.mkdir(parents=True, exist_ok=True)
     tmp = path.with_suffix(".tmp")
     tmp.write_bytes(gzip.compress(data))

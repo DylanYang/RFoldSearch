@@ -249,24 +249,27 @@ class Engine:
         tent = s.ents[s.id2i[target]]
         full = []
 
-        def chain(entry, seq, letter, source, rot=None, trans=None, mark=None, first=1):
-            if source is not None:
+        def chain(entry, seq, letter, sources, rot=None, trans=None, mark=None, first=1):
+            for source in sources:
                 try:
                     arr = fullatom.load_atoms(*source())
                     txt, nxt = fullatom.chain_pdb(
                         arr, align.masked_coords(entry)[:, 1], letter, rot, trans, mark, first)
                     full.append(letter)
                     return txt, nxt
-                except Exception as exc:          # fall back to the stored atoms
+                except Exception as exc:          # next source, then the stored atoms
                     print(f"[engine] full-atom chain {letter} unavailable: "
                           f"{type(exc).__name__}: {exc}", flush=True)
             return align.backbone_pdb(entry, seq, letter, rot=rot, trans=trans,
                                       highlight=mark, first_serial=first)
 
-        qsrc = (lambda: query_file) if query_file else None
-        tsrc = None
+        qsrc = [lambda: query_file] if query_file else []
+        # PDB-RNA names chains by label_asym_id, RNAsolo by auth_asym_id
+        tsrc = []
         if ann.get("pdb") and ann.get("chain"):
-            tsrc = lambda: (fullatom.rcsb_chain(ann["pdb"], ann["chain"]), "chain.cif")
+            tsrc.append(lambda: (fullatom.rcsb_chain(ann["pdb"], ann["chain"]), "chain.cif"))
+            tsrc.append(lambda: (fullatom.rcsb_chain(ann["pdb"], ann.get("auth_asym") or ann["chain"],
+                                                     "auth"), "chain.cif"))
         qtxt, nxt = chain(enc, enc.get("seq"), "A", qsrc, mark=pq)
         ttxt, _ = chain(tent, ann.get("seq"), "B", tsrc, R, tr, pt, nxt)
         head = f"REMARK   1 FULLATOM {' '.join(full)}\n" if full else ""
