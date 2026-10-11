@@ -478,9 +478,7 @@ function renderTable() {
 function detailHtml(h) {
   return `<div class="detail-grid">
     <div class="viewer-wrap"><div class="viewer" id="viewer"></div>
-      <div class="viewer-legend"><span><span class="sw" style="background:#d9703a"></span>Query</span>
-        <span title="${esc(h.target)}"><span class="sw" style="background:#3f6fb5"></span>${esc(shortTarget(h))}</span>
-        <span class="hint">pale = unaligned</span></div></div>
+      <div class="viewer-bar"><div class="viewer-legend"></div><div class="view-modes" role="group" aria-label="3D style"></div></div></div>
     <div class="detail-body" id="detail-body"><span class="spinner"></span>Aligning…</div></div>`;
 }
 
@@ -598,23 +596,236 @@ function orient(atoms, wide) {
   }
 }
 
+// The 3D view draws in one of three modes, chosen above it and remembered by the browser:
+// Mol* with the alignment's colours, Mol* with the hit in a rainbow from 5' to 3', or the
+// older 3Dmol.js drawing, which also stands in where the browser lacks WebGL2.
+const MOLSTAR = "https://cdn.jsdelivr.net/npm/molstar@5.10.1/build/viewer/";
+const VIEW_MODES = [["aligned", "Aligned"], ["rainbow", "Rainbow"], ["classic", "Classic"]];
+const PAL = { A: { on: "#d9703a", off: "#f0cfb8", base: "#e8955f" }, B: { on: "#3f6fb5", off: "#c4d3ea", base: "#6a93cf" } };
+let molViewer = null;
+let molLoading = null;
+const hasWebGL2 = (() => { try { return !!document.createElement("canvas").getContext("webgl2"); } catch (_) { return false; } })();
+
+function viewMode() {
+  let m = null;
+  try { m = localStorage.getItem("rfs-3d-mode"); } catch (_) { /* storage blocked */ }
+  if (!VIEW_MODES.some(([k]) => k === m)) m = "aligned";
+  return hasWebGL2 ? m : "classic";
+}
+
+function loadMolstar() {
+  if (window.molstar) return Promise.resolve();
+  molLoading ||= new Promise((resolve, reject) => {
+    const css = document.createElement("link");
+    css.rel = "stylesheet"; css.href = MOLSTAR + "molstar.css";
+    document.head.appendChild(css);
+    const js = document.createElement("script");
+    js.src = MOLSTAR + "molstar.js";
+    js.onload = resolve;
+    js.onerror = () => { molLoading = null; reject(new Error("Mol* did not load")); };
+    document.head.appendChild(js);
+  });
+  return molLoading;
+}
+
+function disposeViewers() {
+  if (molViewer) { try { molViewer.plugin.dispose(); } catch (_) { /* already gone */ } molViewer = null; }
+  if (viewer) { try { viewer.clear(); } catch (_) { /* already gone */ } viewer = null; }
+}
+
+// rotate the PDB text the same way orient() turns 3Dmol's atoms
+function orientPdb(pdb, wide) {
+  const lines = pdb.split("\n"), atoms = [];
+  lines.forEach((l, i) => {
+    if (l.startsWith("ATOM") || l.startsWith("HETATM")) atoms.push({ i, x: +l.slice(30, 38), y: +l.slice(38, 46), z: +l.slice(46, 54) });
+  });
+  orient(atoms, wide);
+  const f = (v) => v.toFixed(3).padStart(8);
+  for (const a of atoms) { const l = lines[a.i]; lines[a.i] = l.slice(0, 30) + f(a.x) + f(a.y) + f(a.z) + l.slice(54); }
+  return lines.join("\n");
+}
+
+// residue numbers of each chain in order, with whether each is aligned (B-factor 1)
+function pdbResidues(pdb) {
+  const out = { A: [], B: [] }, seen = new Set();
+  for (const l of pdb.split("\n")) {
+    if (!l.startsWith("ATOM")) continue;
+    const ch = l[21], num = +l.slice(22, 26), key = l.slice(21, 27);
+    if (!out[ch] || seen.has(key)) continue;
+    seen.add(key);
+    const prev = out[ch][out[ch].length - 1];
+    if (prev && prev.num === num) continue;                       // an insertion code shares its number
+    out[ch].push({ num, on: +l.slice(60, 66) > 0.5 });
+  }
+  return out;
+}
+
+const rainbow = (t) => {                                          // blue at the 5' end to red at the 3'
+  const h = 240 * (1 - t), a = 0.36, l = 0.5;
+  const f = (n) => { const k = (n + h / 30) % 12;
+    return Math.round(255 * (l - a * Math.max(-1, Math.min(k - 3, 9 - k, 1)))).toString(16).padStart(2, "0"); };
+  return "#" + f(0) + f(8) + f(4);
+};
+
+// MolViewSpec colour nodes for one chain, consecutive residues of one colour merged into a range
+function chainColours(list, chain, mode) {
+  const nodes = [];
+  const colour = (r, i) => mode === "rainbow"
+    ? (chain === "B" ? rainbow(Math.round(40 * i / Math.max(1, list.length - 1)) / 40) : "#d6d0ca")
+    : (r.on ? PAL[chain].on : PAL[chain].off);
+  let run = null;
+  list.forEach((r, i) => {
+    const c = colour(r, i);
+    if (run && run.c === c) { run.end = r.num; return; }
+    if (run) nodes.push(run);
+    run = { c, beg: r.num, end: r.num };
+  });
+  if (run) nodes.push(run);
+  return nodes.map((x) => ({ kind: "color", params: { color: x.c,
+    selector: { auth_asym_id: chain, beg_auth_seq_id: x.beg, end_auth_seq_id: x.end } } }));
+}
+
 async function drawStructure(h) {
   const el = $("viewer");
-  if (!window.$3Dmol) { el.innerHTML = '<div class="hint" style="padding:16px">3D viewer unavailable (3Dmol.js did not load).</div>'; return; }
-  let pdb;
-  el.innerHTML = '<div class="hint" style="padding:16px">Loading the 3D structures… (a large chain fetched from the RCSB for the first time can take half a minute)</div>';
+  const wrap = el.closest(".viewer-wrap");
+  disposeViewers();
+  wrap.querySelector(".picked")?.remove();
+  const picked = document.createElement("div");
+  picked.className = "picked";
+  picked.textContent = "Click a nucleotide in the 3D view, or in the alignment, to see its aligned partner.";
+  wrap.appendChild(picked);
+  // the mode bar and legend; Mol* needs WebGL2 and full-atom chains, so it is offered only where it can draw
+  const paintBar = (mode, molOff) => {
+    const modes = wrap.querySelector(".view-modes");
+    modes.innerHTML = VIEW_MODES.map(([k, label]) =>
+      `<button type="button" data-mode="${k}" class="${k === mode ? "on" : ""}"${k !== "classic" && molOff ? ` disabled title="${esc(molOff)}"` : ""}>${label}</button>`).join("");
+    modes.querySelectorAll("button").forEach((b) => b.addEventListener("click", () => {
+      if (b.classList.contains("on")) return;
+      try { localStorage.setItem("rfs-3d-mode", b.dataset.mode); } catch (_) { /* storage blocked */ }
+      drawStructure(h);
+    }));
+    wrap.querySelector(".viewer-legend").innerHTML = mode === "rainbow"
+      ? `<span><span class="sw" style="background:#d6d0ca"></span>Query</span>
+         <span title="${esc(h.target)}"><span class="sw sw-rainbow"></span>${esc(shortTarget(h))} 5′→3′</span>`
+      : `<span><span class="sw" style="background:#d9703a"></span>Query</span>
+         <span title="${esc(h.target)}"><span class="sw" style="background:#3f6fb5"></span>${esc(shortTarget(h))}</span>
+         <span class="hint">pale = unaligned</span>`;
+  };
+  let mode = viewMode();
+  const noGL = hasWebGL2 ? "" : "This browser has no WebGL2";
+  paintBar(mode, noGL);
+  markNt = null;
+  if (!h.structure3d) {
+    el.innerHTML = '<div class="hint" style="padding:16px">Loading the 3D structures… (a large chain fetched from the RCSB for the first time can take half a minute)</div>';
+    try {
+      h.structure3d = await (await api(`/api/result/${job.id}/${activeDb}/${h.rank}/structure`)).text();
+    } catch (err) {
+      el.innerHTML = `<div class="hint" style="padding:16px">${esc(err.message)}</div>`;
+      return;
+    }
+    if ($("viewer") !== el) return;                                // another hit was opened meanwhile
+  }
+  const full = ((h.structure3d.match(/^REMARK {3}1 FULLATOM (.*)$/m) || [])[1] || "").trim().split(/\s+/);
+  if (!(full.includes("A") && full.includes("B"))) {
+    // a predicted hit keeps only five atoms per nucleotide, too few for Mol*'s cartoon
+    mode = "classic";
+    paintBar(mode, noGL || "Only the Classic style can draw a structure stored with five atoms per nucleotide");
+  }
+  const map = pairMap(h.aln);
+  // the line under the view: which nucleotide was picked and what it is aligned to; returns the partner
+  const describe = (chain, resi, resn) => {
+    const mine = chain === "A" ? "Query" : shortTarget(h);
+    const other = map ? (chain === "A" ? map.q2t[resi] : map.t2q[resi]) : null;
+    if (resn === undefined || resn === null) {
+      picked.textContent = `${mine} nucleotide ${resi} is not in the 3D model`;
+      return null;
+    }
+    const partner = map ? (other ? ` is aligned to ${chain === "A" ? shortTarget(h) : "Query"} nucleotide ${other}` : " is not aligned") : "";
+    picked.textContent = `${mine} nucleotide ${resi}${resn && resn !== "N" ? ` (${resn})` : ""}${partner}`;
+    return other;
+  };
   try {
-    pdb = await (await api(`/api/result/${job.id}/${activeDb}/${h.rank}/structure`)).text();
+    if (mode === "classic") markNt = drawClassic(el, h, h.structure3d, map, describe);
+    else markNt = await drawMolstar(el, h, h.structure3d, mode, describe);
   } catch (err) {
-    el.innerHTML = `<div class="hint" style="padding:16px">${esc(err.message)}</div>`;
+    el.innerHTML = `<div class="hint" style="padding:16px">3D view unavailable: ${esc(err.message)}</div>`;
     return;
   }
+  document.querySelectorAll("#detail-body .nt").forEach((el2) => {
+    el2.onclick = () => {
+      document.querySelectorAll("#detail-body .nt.sel").forEach((x) => x.classList.remove("sel"));
+      const c = el2.dataset.c, p = +el2.dataset.p;
+      el2.classList.add("sel");
+      const o = map ? (c === "A" ? map.q2t[p] : map.t2q[p]) : null;
+      if (o) document.querySelector(`#detail-body .nt[data-c="${c === "A" ? "B" : "A"}"][data-p="${o}"]`)?.classList.add("sel");
+      if (markNt) markNt(c, p, true);
+    };
+  });
+}
+
+async function drawMolstar(el, h, pdbText, mode, describe) {
+  el.innerHTML = '<div class="hint" style="padding:16px">Loading the 3D viewer…</div>';
+  await loadMolstar();
+  if (!el.isConnected) return null;
+  el.innerHTML = "";
+  const pdb = orientPdb(pdbText, el.clientWidth >= el.clientHeight);
+  const res = pdbResidues(pdb);
+  const v = await molstar.Viewer.create(el, {
+    layoutIsExpanded: false, layoutShowControls: false, layoutShowRemoteState: false,
+    layoutShowSequence: false, layoutShowLog: false, layoutShowLeftPanel: false, collapseLeftPanel: true,
+    viewportShowExpand: false, viewportShowSelectionMode: false, viewportShowAnimation: false,
+    viewportShowControls: false, viewportShowSettings: false,
+  });
+  if (!el.isConnected) { v.plugin.dispose(); return null; }
+  molViewer = v;
+  const url = URL.createObjectURL(new Blob([pdb], { type: "text/plain" }));
+  const chain = (c) => ({ kind: "component", params: { selector: { auth_asym_id: c } }, children: [
+    { kind: "representation", params: { type: "cartoon" }, children: chainColours(res[c], c, mode) }] });
+  const mvs = { metadata: { version: "1" }, root: { kind: "root", children: [
+    { kind: "canvas", params: { background_color: "white" } },
+    { kind: "download", params: { url }, children: [
+      { kind: "parse", params: { format: "pdb" }, children: [
+        { kind: "structure", params: { type: "model" }, children: ["A", "B"].filter((c) => res[c].length).map(chain) }] }] }] } };
+  try { await v.loadMvsData(JSON.stringify(mvs), "mvsj"); } finally { URL.revokeObjectURL(url); }
+  const c3d = v.plugin.canvas3d;
+  c3d.setProps({
+    renderer: { ...c3d.props.renderer, backgroundColor: 0xffffff, selectColor: 0xe5322d, selectStrength: 0.9 },
+    camera: { ...c3d.props.camera, helper: { axes: { name: "off", params: {} } } },
+    postprocessing: { ...c3d.props.postprocessing,
+      occlusion: { name: "on", params: { ...(c3d.props.postprocessing.occlusion.params || {}), samples: 32, radius: 5, bias: 0.8, blurKernelSize: 15, resolutionScale: 1 } },
+      outline: { name: "off", params: {} } },
+  });
+  const { StructureElement: SE, StructureProperties: SP } = molstar.lib.structure;
+  const structure = () => v.plugin.managers.structure.hierarchy.current.structures[0]?.cell.obj?.data;
+  const residue = (s, c, r) => SE.Loci.fromSchema(s, { auth_asym_id: c, auth_seq_id: r });
+  const mark = (c, r, centre) => {
+    const s = structure();
+    if (!s) return;
+    const loci = residue(s, c, r);
+    const empty = SE.Loci.isEmpty(loci);
+    const other = describe(c, r, empty ? null : SP.atom.label_comp_id(SE.Loci.getFirstLocation(loci)));
+    if (empty) return;
+    let both = loci;
+    if (other) { const o = residue(s, c === "A" ? "B" : "A", other); if (!SE.Loci.isEmpty(o)) both = SE.Loci.union(loci, o); }
+    v.plugin.managers.interactivity.lociSelects.selectOnly({ loci: both });
+    if (centre) v.plugin.managers.camera.focusLoci(both, { minRadius: 32, extraRadius: 8, durationMs: 400 });
+  };
+  v.plugin.behaviors.interaction.click.subscribe(({ current }) => {
+    const loci = current.loci;
+    if (!SE.Loci.is(loci) || SE.Loci.isEmpty(loci)) return;
+    const loc = SE.Loci.getFirstLocation(loci);
+    mark(SP.chain.auth_asym_id(loc), SP.residue.auth_seq_id(loc), false);
+  });
+  return mark;
+}
+
+function drawClassic(el, h, pdb, map, describe) {
+  if (!window.$3Dmol) throw new Error("3Dmol.js did not load");
   el.innerHTML = "";
   viewer = $3Dmol.createViewer(el, { backgroundColor: "white", antialias: true });
   viewer.addModel(pdb, "pdb");
   orient(viewer.selectedAtoms({}), el.clientWidth >= el.clientHeight);
   // aligned nucleotides carry B = 1; colours are the query's orange and the hit's blue, pale where unaligned
-  const PAL = { A: { on: "#d9703a", off: "#f0cfb8", base: "#e8955f" }, B: { on: "#3f6fb5", off: "#c4d3ea", base: "#6a93cf" } };
   const col = (chain, atom, kind) =>
     atom.b > 0.5 ? (kind === "base" ? PAL[chain].base : PAL[chain].on) : PAL[chain].off;
   // Chains the server sent with all their atoms are drawn as a cartoon: a ribbon along the
@@ -669,20 +880,13 @@ async function drawStructure(h) {
   }
   viewer.setViewStyle({ style: "outline", color: "#3a3330", width: 0.025 });
   viewer.zoomTo();
-  const map = pairMap(h.aln);
-  const picked = document.createElement("div");
-  picked.className = "picked";
-  picked.textContent = "Click a nucleotide in the 3D view, or in the alignment, to see its aligned partner.";
-  el.closest(".viewer-wrap").appendChild(picked);
+  viewer.render();
   // mark one nucleotide (and its aligned partner) in the 3D view; `centre` moves the view to it
   const mark = (chain, resi, centre) => {
     const atom = viewer.selectedAtoms({ chain, resi, atom: "C4'" })[0] || viewer.selectedAtoms({ chain, resi })[0];
-    if (!atom) { picked.textContent = `${chain === "A" ? "Query" : shortTarget(h)} nucleotide ${resi} is not in the 3D model`; return; }
-    const mine = chain === "A" ? "Query" : shortTarget(h);
-    const other = map ? (chain === "A" ? map.q2t[resi] : map.t2q[resi]) : null;
+    const other = describe(chain, resi, atom && atom.resn);
+    if (!atom) return;
     const otherChain = chain === "A" ? "B" : "A";
-    const partner = map ? (other ? ` is aligned to ${chain === "A" ? shortTarget(h) : "Query"} nucleotide ${other}` : " is not aligned") : "";
-    picked.textContent = `${mine} nucleotide ${resi}${atom.resn && atom.resn !== "N" ? ` (${atom.resn})` : ""}${partner}`;
     viewer.removeAllLabels();
     baseStyle();
     viewer.addLabel(`${chain === "A" ? "Q" : "T"}${resi}`, { position: atom, fontSize: 12,
@@ -702,17 +906,8 @@ async function drawStructure(h) {
     if (centre) viewer.center({ chain, resi }, 400);
     viewer.render();
   };
-  markNt = mark;
   viewer.setClickable({}, true, (atom) => mark(atom.chain, atom.resi, false));
-  viewer.render();
-  document.querySelectorAll("#detail-body .nt").forEach((el2) => el2.addEventListener("click", () => {
-    document.querySelectorAll("#detail-body .nt.sel").forEach((x) => x.classList.remove("sel"));
-    const c = el2.dataset.c, p = +el2.dataset.p;
-    el2.classList.add("sel");
-    const o = map ? (c === "A" ? map.q2t[p] : map.t2q[p]) : null;
-    if (o) document.querySelector(`#detail-body .nt[data-c="${c === "A" ? "B" : "A"}"][data-p="${o}"]`)?.classList.add("sel");
-    mark(c, p, true);
-  }));
+  return mark;
 }
 
 // ---------------------------------------------------------------- boot
