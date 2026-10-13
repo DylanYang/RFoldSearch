@@ -5,9 +5,11 @@ import sys
 from pathlib import Path
 
 import torch
+import pytest
 
 
-def test_fit_cli_writes_exportable_database_specific_model(tmp_path):
+@pytest.mark.parametrize("censoring", (None, "none"))
+def test_fit_cli_writes_exportable_database_specific_model(tmp_path, censoring):
     root = Path(__file__).resolve().parents[1]
     db = tmp_path / "target.pt"
     entries = []
@@ -45,15 +47,19 @@ def test_fit_cli_writes_exportable_database_specific_model(tmp_path):
 
     model_path, result_path = tmp_path / "model.json", tmp_path / "result.json"
     fit_script = root / "scripts" / "fit_target_aware_evalue_params.py"
-    subprocess.run([
+    command = [
         sys.executable, str(fit_script), "--db", str(db),
-        "--observations", str(observations), "--censoring", "none",
+        "--observations", str(observations),
         "--gumbel-model", str(model_path), "--result", str(result_path),
         "--structural-audit-complete", "--validation-accepted",
-    ], check=True)
+    ]
+    if censoring is not None:
+        command.extend(("--censoring", censoring))
+    subprocess.run(command, check=True)
 
     model, result = json.loads(model_path.read_text()), json.loads(result_path.read_text())
-    assert model["censoring"] == "none"
+    expected_censoring = censoring or "left-censored"
+    assert model["censoring"] == expected_censoring
     assert result["protocol"]["deployment_ready"] is True
     assert result["power"]["validation_status"] == "background-audit-complete"
 
@@ -65,5 +71,5 @@ def test_fit_cli_writes_exportable_database_specific_model(tmp_path):
         "--output", str(params_path),
     ], check=True)
     params = json.loads(params_path.read_text())
-    assert params["scheme"] == "target-aware-none-gumbel-power"
+    assert params["scheme"] == f"target-aware-{expected_censoring}-gumbel-power"
     assert params["n_clusters"] == len(entries)

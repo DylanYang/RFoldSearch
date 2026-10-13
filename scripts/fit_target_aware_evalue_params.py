@@ -304,9 +304,9 @@ def main(argv=None):
     parser.add_argument("--gumbel-model", required=True)
     parser.add_argument("--result", required=True)
     parser.add_argument("--matrix", default=None)
-    parser.add_argument("--censoring", required=True,
+    parser.add_argument("--censoring", default="left-censored",
                         choices=("left-censored", "none"),
-                        help="explicitly choose the Gumbel likelihood")
+                        help="Gumbel likelihood (default: left-censored)")
     parser.add_argument("--censor-quantile", type=float, default=0.95)
     parser.add_argument("--censor-strata-bins", type=int, default=3)
     parser.add_argument("--ridge", type=float, default=1e-3)
