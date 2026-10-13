@@ -176,26 +176,55 @@ estimate for the structure score `R_str`. It is computed in two steps:
    observed number of structurally unrelated clusters per query. Above the
    fitted maximum it extends proportionally and is capped at the cluster count.
 
-The Gumbel fit uses `left-censored` tail fitting by default and the
-short/low-entropy auxiliary panel. An uncensored fit can be selected explicitly
-for a separate calibration run; its parameters cannot be relabelled as
-left-censored. Fitting, calibration, and deployment use the complete target
-database; no query--target length-ratio filter is applied. Parameters are bound
-to the database tokens, clusters, substitution matrix, and gap costs by
-fingerprints.
+Gumbel fitting supports two explicitly selected likelihoods: left-censored
+and uncensored. The selected mode is stored with the fitted model. Optional
+auxiliary queries can contribute to Gumbel fitting with query weights supplied
+in the calibration table; they are not used for power calibration. Fitting
+uses the complete target-cluster length distribution, and no query--target
+length-ratio filter is applied during scoring. Parameters are bound to the
+database tokens, clusters, substitution matrix, and gap costs by fingerprints.
 
-Calibration must be fitted separately for each target database. The fitting
-run must record whether the Gumbel likelihood was left-censored (the default)
-or uncensored, the target-database and score-context fingerprints, and the
-validated proportional-above-fit-maximum power tail. Export is blocked unless
-the structural audit is complete and the refit protocol explicitly records
-`deployment_ready: true`. Existing analysis results marked `false` cannot be
-exported by merely changing a label; they require a reviewed refit and
-provenance check.
+#### Fit and export parameters
 
-After these checks, export the audited model and power-fit result:
+Fit parameters separately for each target database from a tab-separated file
+containing one row per query and eligible target cluster. Each score must be
+the maximum `S_SW/min(Lq,Lt)` among that cluster's eligible members, after the
+chosen family/clan and structural-background exclusions. The fitter does not
+generate pairwise scores or perform the US-align audit; those are inputs to
+this fitting step.
 
-1. Export the database-specific asset:
+Required columns are:
+
+| Column | Meaning |
+| --- | --- |
+| `query_id` | Calibration-query identifier |
+| `role` | `gumbel`, `auxiliary`, or `power` |
+| `query_length`, `query_entropy` | Query token length and Shannon entropy |
+| `family`, `clan` | Semicolon-separated labels; required for `power` rows |
+| `query_weight` | Total Gumbel likelihood weight for this query, repeated on its rows |
+| `expansion` | Background expansion factor for this query, repeated on its rows |
+| `cluster_id` | Cluster label used in the encoded database |
+| `cluster_median_length` | Median token length of that target cluster |
+| `normalized_score` | Eligible cluster-maximum normalized SW score |
+
+Use disjoint query IDs for Gumbel fitting (`gumbel` and `auxiliary`) and power
+calibration (`power`). Select the Gumbel likelihood explicitly:
+
+```bash
+python scripts/fit_target_aware_evalue_params.py --db target_db.pt \
+  --observations audited_cluster_scores.tsv --censoring left-censored \
+  --gumbel-model target_gumbel_model.json --result target_power_fit.json
+```
+
+Use `--censoring none` for an uncensored fit. The fitter writes the fitted
+Gumbel model and power-law result. It leaves deployment validation pending
+unless both `--structural-audit-complete` and `--validation-accepted` are
+provided. Those flags assert that the input background has passed structural
+adjudication and that nested family/clan validation has been reviewed; they do
+not perform either procedure.
+
+After the audit and validation are complete, export the database-specific
+asset:
 
 ```bash
 python scripts/export_target_aware_evalue_params.py --db target_db.pt \
