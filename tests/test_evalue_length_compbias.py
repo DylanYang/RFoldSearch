@@ -151,3 +151,19 @@ def test_fitter_bins_power_by_query_length_and_merges_sparse_bins():
     single = F.fit_power_length_bins(rows, idx, np.array(initial), 500, 1000.0, 64,
                                      EV.TAIL_RULE_POWER, 1)
     assert "length_bins" not in single
+
+
+def test_raw_score_model_skips_length_normalization():
+    entries = [{"id": "a", "tokens": [0] * 10, "cluster": "c0"},
+               {"id": "b", "tokens": [0] * 100, "cluster": "c1"}]
+    params = synthetic_evalue_params(entries)
+    raw = {**params, "target_aware_gumbel": {**params["target_aware_gumbel"],
+                                             "score_normalization": "sw"}}
+    query = np.array([0] * 20)
+    assert EV.target_aware_evalue(raw, query, 7.0, 100) == pytest.approx(
+        EV.target_aware_initial_evalue(raw, query, 7.0))
+    assert EV.target_aware_evalue(params, query, 7.0, 100) == pytest.approx(
+        EV.target_aware_initial_evalue(params, query, 7.0 / 20))
+    with pytest.raises(ValueError, match="normalization"):
+        EV.target_aware_evalue({**params, "target_aware_gumbel": {
+            **params["target_aware_gumbel"], "score_normalization": "sw/len"}}, query, 7.0, 100)

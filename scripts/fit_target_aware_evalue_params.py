@@ -1,8 +1,8 @@
 """Fit target-aware Gumbel and power E-value parameters from audited scores.
 
 Input is a TSV with one row per query and eligible target cluster. Scores are
-cluster-max SW/min(Lq,Lt) values produced after family/clan and structural
-background exclusions. This script fits parameters; it does not score chains
+cluster-max SW/min(Lq,Lt) values (or raw SW values with --score raw) produced
+after family/clan and structural background exclusions. This script fits parameters; it does not score chains
 or perform the US-align audit.
 """
 from __future__ import annotations
@@ -25,7 +25,7 @@ sys.path.insert(0, str(ROOT))
 
 from rfoldsearch.database import (calibration_context_fingerprint,
                                 database_fingerprint, load_database)
-from rfoldsearch.evalue import TAIL_RULE, TAIL_RULE_POWER
+from rfoldsearch.evalue import SCORE_NORMALIZATIONS, TAIL_RULE, TAIL_RULE_POWER
 from rfoldsearch.search import GAP_EXTEND, GAP_OPEN, load_matrix
 
 
@@ -357,6 +357,9 @@ def main(argv=None):
     parser.add_argument("--power-length-bins", type=int, default=4,
                         help="fit the power law separately in this many query-length "
                              "bins (default 4; fewer when bins would hold <20 queries)")
+    parser.add_argument("--score", choices=("normalized", "raw"), default="normalized",
+                        help="what the normalized_score column holds: SW/min(Lq,Lt) "
+                             "(normalized, default) or the raw SW score (raw)")
     parser.add_argument("--comp-bias-window", type=int, default=0,
                         help="half-width of the query composition-bias correction the "
                              "observation scores were computed with (0: none)")
@@ -406,6 +409,7 @@ def main(argv=None):
     context_digest = calibration_context_fingerprint(db_digest, matrix, GAP_OPEN, GAP_EXTEND,
                                                      args.comp_bias_window)
     composition = {"window": args.comp_bias_window} if args.comp_bias_window else False
+    normalization = "sw" if args.score == "raw" else "sw/min(query_length,target_length)"
     tail_rule = TAIL_RULE_POWER if args.power_tail == "power" else TAIL_RULE
     model = fit_gumbel(rows, gumbel_indices, args.censoring, args.censor_quantile,
                        args.censor_strata_bins, args.ridge)
@@ -419,7 +423,7 @@ def main(argv=None):
 
     source = {"target_database_fingerprint": db_digest,
               "calibration_context_fingerprint": context_digest,
-              "score_normalization": "sw/min(query_length,target_length)",
+              "score_normalization": normalization,
               "target_length_feature": "cluster median", "composition_bias": composition}
     model["source"] = source
     model["fingerprint"] = hashlib.sha256(json.dumps(
@@ -432,7 +436,7 @@ def main(argv=None):
                                   else "fit-complete-validation-pending")
     result = {
         "protocol": {
-            "score": "SW/min(Lq,Lt), then eligible cluster max",
+            "score": SCORE_NORMALIZATIONS[normalization],
             "target_length_feature": "cluster median", "composition_bias": composition,
             "gumbel_censoring": "left" if args.censoring == "left-censored" else "none",
             "n_clusters": len(expected_lengths),

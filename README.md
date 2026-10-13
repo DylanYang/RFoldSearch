@@ -179,9 +179,12 @@ maximum scores, conditioned on the query's length and token entropy, gives an
 initial value `E0`, and a database-specific power law `E = a_D * E0**b_D`
 calibrates it to the observed number of structurally unrelated clusters.
 
-1. A target-aware Gumbel null models the length-normalized score
-   `Y_qt = S_SW / min(L_q, L_t)` for every query--target pair, where `L_t` is
-   the target-chain length. Its predictors are
+1. A target-aware Gumbel null models either the length-normalized score
+   `Y_qt = S_SW / min(L_q, L_t)` or the raw score `Y_qt = S_SW` (chosen when
+   fitting, stored in the parameters) for every query--target pair, where
+   `L_t` is the target-chain length. Use the raw score for predicted-structure
+   databases: with normalization, a long low-complexity query scores as highly
+   against short targets as against itself. Its predictors are
    query length, target-cluster median length, their log-length difference,
    and query-token entropy. The initial value is
    `E0 = sum_c P(max_{t in c} Y_qt >= y)`.
@@ -245,6 +248,7 @@ Use `--censoring none` for an uncensored fit. Power-calibration options:
 | `--power-length-bins` | 4 | Query-length bins for separate power laws; fewer are used when a bin would hold <20 queries |
 | `--power-max` | 1000 | Largest `E0` entering the power fit |
 | `--power-tail` | `power` | Above `--power-max`: keep the power law, or `proportional` (former behaviour) |
+| `--score` | `normalized` | `normalized_score` holds `S_SW/min(Lq,Lt)` (`normalized`) or raw `S_SW` (`raw`) |
 | `--comp-bias-window` | 0 | Composition-bias half-width the `normalized_score` column was computed with; 0 means uncorrected scores |
 
 With `--comp-bias-window w`, every `normalized_score` must come from

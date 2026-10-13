@@ -193,7 +193,8 @@ class Searcher:
                     ev_score = float(smith_waterman_numba(
                         positions, self.toks[t], profile, GAP_OPEN, GAP_EXTEND))
                     hit["evalue_sw_score"] = ev_score
-                hit["normalized_sw_score"] = ev_score / min(len(qtok), target_length)
+                hit["normalized_sw_score"] = float(_evalue.score_for_model(
+                    self.ev_par, ev_score, len(qtok), target_length))
                 raw_evalue = float(_evalue.target_aware_evalue(
                     self.ev_par, qtok, ev_score, target_length))
                 hit["raw_evalue"] = raw_evalue
