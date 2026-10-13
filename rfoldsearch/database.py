@@ -58,14 +58,19 @@ def cluster_median_lengths(entries, clusters):
 
 
 def calibration_context_fingerprint(database_digest: str, matrix,
-                                    gap_open: float, gap_extend: float) -> str:
-    """Bind E-value parameters to the target, score matrix and gap costs."""
+                                    gap_open: float, gap_extend: float,
+                                    comp_bias_window: int = 0) -> str:
+    """Bind E-value parameters to the target, score matrix, gap costs and,
+    when enabled, the query composition-bias window (0 leaves the digest of
+    uncorrected scoring unchanged)."""
     substitution = np.asarray(matrix, dtype="<f4")
     digest = hashlib.sha256(b"rfoldseek-evalue-context-v1\0")
     digest.update(str(database_digest).encode())
     digest.update(b"\0")
     digest.update(substitution.tobytes())
     digest.update(np.asarray([gap_open, gap_extend], dtype="<f8").tobytes())
+    if comp_bias_window:
+        digest.update(f"\0composition-bias-window={int(comp_bias_window)}".encode())
     return digest.hexdigest()
 
 

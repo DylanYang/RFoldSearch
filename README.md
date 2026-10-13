@@ -185,10 +185,18 @@ calibrates it to the observed number of structurally unrelated clusters.
    query length, target-cluster median length, their log-length difference,
    and query-token entropy. The initial value is
    `E0 = sum_c P(max_{t in c} Y_qt >= y)`.
-2. A database-specific positive power law,
-   `E_cal = a_D * E0**b_D` within the fitted range, calibrates `E0` to the
-   observed number of structurally unrelated clusters per query. Above the
-   fitted maximum it extends proportionally and is capped at the cluster count.
+2. A database-specific positive power law, `E_cal = a_D * E0**b_D`,
+   calibrates `E0` to the observed number of structurally unrelated clusters
+   per query, and is capped at the cluster count. By default it is fitted
+   separately in four query-length bins (log `a` and `b` are interpolated in
+   log query length between bin centres), over `E0 <= 1000`, and kept as a
+   power law above that range. Parameter files fitted with a single law and a
+   proportional tail above `E0 = 100` remain supported.
+3. Optionally (per database), E-values use a composition-bias corrected
+   query score, as in MMseqs2 and Foldseek: each query position's
+   substitution scores are reduced by the mean score of its +/-`w`
+   neighbours relative to the database background. Only reported hits are
+   rescored this way; the ranking always uses the uncorrected score.
 
 Gumbel fitting supports two explicitly selected likelihoods: left-censored
 and uncensored. The selected mode is stored with the fitted model. Optional
@@ -230,7 +238,22 @@ python scripts/fit_target_aware_evalue_params.py --db target_db.pt \
   --gumbel-model target_gumbel_model.json --result target_power_fit.json
 ```
 
-Use `--censoring none` for an uncensored fit. The fitter writes the fitted
+Use `--censoring none` for an uncensored fit. Power-calibration options:
+
+| Option | Default | Meaning |
+| --- | --- | --- |
+| `--power-length-bins` | 4 | Query-length bins for separate power laws; fewer are used when a bin would hold <20 queries |
+| `--power-max` | 1000 | Largest `E0` entering the power fit |
+| `--power-tail` | `power` | Above `--power-max`: keep the power law, or `proportional` (former behaviour) |
+| `--comp-bias-window` | 0 | Composition-bias half-width the `normalized_score` column was computed with; 0 means uncorrected scores |
+
+With `--comp-bias-window w`, every `normalized_score` must come from
+`rfoldsearch.compbias.query_profile(query, matrix, background, w)` with the
+target database's state frequencies as `background`. The window is bound into
+the scoring-context fingerprint, so a mismatch is rejected at search time.
+On the 885-chain experimental database the correction made short-chain
+self-hits less significant, so leave it off there; on predicted-structure
+databases it reduces low-complexity (helix-rich) false positives. The fitter writes the fitted
 Gumbel model and power-law result. It leaves deployment validation pending
 unless both `--structural-audit-complete` and `--validation-accepted` are
 provided. Those flags assert that the input background has passed structural

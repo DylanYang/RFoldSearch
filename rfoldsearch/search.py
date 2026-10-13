@@ -21,6 +21,7 @@ from . import structure_score as _ss
 from . import evalue as _evalue
 from . import usalign as _usalign
 from . import tiebreak as _tiebreak
+from .compbias import background_frequencies, query_profile
 
 GAP_OPEN = -2.0
 GAP_EXTEND = -0.5
@@ -72,8 +73,13 @@ class Searcher:
         if (stored_fingerprint is not None
                 and stored_fingerprint != target_fingerprint):
             raise ValueError("stored database fingerprint does not match its contents")
+        self.comp_bias_window = (_evalue.composition_bias_window(self.ev_par)
+                                 if self.ev_par is not None else 0)
         score_fingerprint = calibration_context_fingerprint(
-            target_fingerprint, self.sub, GAP_OPEN, GAP_EXTEND)
+            target_fingerprint, self.sub, GAP_OPEN, GAP_EXTEND,
+            self.comp_bias_window)
+        self.background = (background_frequencies(self.toks, self.n_codes)
+                           if self.comp_bias_window else None)
         if self.ev_par is not None:
             _evalue.validate_target_aware_params(
                 self.ev_par, self.n_clusters, target_fingerprint,
@@ -166,6 +172,11 @@ class Searcher:
             order = np.argsort(-score, kind="stable")
         else:
             order = np.lexsort((self.tie_keys(tie_seed)[cand], -score))
+        if self.ev_par is not None and self.comp_bias_window:
+            # The E-value was fitted on composition-bias corrected scores, so
+            # score the reported hits that way. Ranking keeps the plain score.
+            positions, profile = query_profile(
+                qtok, self.sub, self.background, self.comp_bias_window)
         hits = []
         for rank, oi in enumerate(order[:top_k], 1):
             t, sc = int(cand[oi]), float(sw[oi])
@@ -177,12 +188,17 @@ class Searcher:
                 hit["aligned"] = int(aligned[oi])
             if self.ev_par is not None:
                 target_length = len(self.toks[t])
-                hit["normalized_sw_score"] = sc / min(len(qtok), target_length)
+                ev_score = sc
+                if self.comp_bias_window:
+                    ev_score = float(smith_waterman_numba(
+                        positions, self.toks[t], profile, GAP_OPEN, GAP_EXTEND))
+                    hit["evalue_sw_score"] = ev_score
+                hit["normalized_sw_score"] = ev_score / min(len(qtok), target_length)
                 raw_evalue = float(_evalue.target_aware_evalue(
-                    self.ev_par, qtok, sc, target_length))
+                    self.ev_par, qtok, ev_score, target_length))
                 hit["raw_evalue"] = raw_evalue
                 hit["evalue"] = float(_evalue.apply_power_calibration(
-                    raw_evalue, self.power_ev))
+                    raw_evalue, self.power_ev, len(qtok)))
             hits.append(hit)
         return hits
 

@@ -25,7 +25,7 @@ sys.path.insert(0, str(ROOT))
 
 from rfoldsearch.database import (calibration_context_fingerprint,
                                 database_fingerprint, load_database)
-from rfoldsearch.evalue import TAIL_RULE
+from rfoldsearch.evalue import TAIL_RULE, TAIL_RULE_POWER
 from rfoldsearch.search import GAP_EXTEND, GAP_OPEN, load_matrix
 
 
@@ -250,9 +250,14 @@ def _predict_initial(rows, indices, model, cluster_lengths, multiplicities):
     return out
 
 
-def fit_power(rows, indices, initial, n_clusters, maximum, n_thresholds):
+MIN_QUERIES_PER_LENGTH_BIN = 20
+
+
+def fit_power(rows, indices, initial, n_clusters, maximum, n_thresholds,
+              tail_rule=TAIL_RULE):
     _, metadata = _query_groups(rows, "power")
-    queries = sorted(metadata)
+    present = {rows[i]["query_id"] for i in indices}
+    queries = sorted(q for q in metadata if q in present)
     families = set().union(*(metadata[q]["family"] for q in queries))
     if not queries or not families or any(not metadata[q]["family"] for q in queries):
         raise ValueError("power-calibration queries require family annotations")
@@ -290,10 +295,43 @@ def fit_power(rows, indices, initial, n_clusters, maximum, n_thresholds):
         raise ValueError("power-law fit did not produce positive finite parameters")
     return {
         "a": a, "b": b, "fit_min": e_min, "fit_max": float(maximum),
-        "tail_rule": TAIL_RULE, "n_observations": int(positive.sum()),
+        "tail_rule": tail_rule, "n_observations": int(positive.sum()),
         "n_queries": int(len(queries)), "n_families": int(len(families)),
         "thresholds": int(keep.sum()), "n_clusters": int(n_clusters),
     }
+
+
+def fit_power_length_bins(rows, indices, initial, n_clusters, maximum,
+                          n_thresholds, tail_rule, n_bins):
+    """One power law per query-length bin (equal query counts), plus the pooled fit.
+
+    Bins with fewer than MIN_QUERIES_PER_LENGTH_BIN queries are avoided by
+    using fewer bins; one bin reproduces the pooled fit.
+    """
+    pooled = fit_power(rows, indices, initial, n_clusters, maximum,
+                       n_thresholds, tail_rule)
+    lengths = {}
+    for i in indices:
+        lengths[rows[i]["query_id"]] = rows[i]["query_length"]
+    queries = sorted(lengths, key=lambda q: (lengths[q], q))
+    n_bins = max(1, min(int(n_bins), len(queries) // MIN_QUERIES_PER_LENGTH_BIN))
+    if n_bins == 1:
+        return pooled
+    initial = np.asarray(initial)
+    position = {i: k for k, i in enumerate(indices)}
+    bins = []
+    for b in range(n_bins):
+        part = set(queries[b * len(queries) // n_bins:(b + 1) * len(queries) // n_bins])
+        sub = [i for i in indices if rows[i]["query_id"] in part]
+        fit = fit_power(rows, sub, initial[[position[i] for i in sub]], n_clusters,
+                        maximum, n_thresholds, tail_rule)
+        centre = float(np.mean([math.log(lengths[q]) for q in part]))
+        bins.append({"log_query_length": centre, "a": fit["a"], "b": fit["b"],
+                     "query_length_min": float(min(lengths[q] for q in part)),
+                     "query_length_max": float(max(lengths[q] for q in part)),
+                     "n_queries": fit["n_queries"], "n_observations": fit["n_observations"]})
+    pooled["length_bins"] = bins
+    return pooled
 
 
 def main(argv=None):
@@ -310,7 +348,18 @@ def main(argv=None):
     parser.add_argument("--censor-quantile", type=float, default=0.95)
     parser.add_argument("--censor-strata-bins", type=int, default=3)
     parser.add_argument("--ridge", type=float, default=1e-3)
-    parser.add_argument("--power-max", type=float, default=100.0)
+    parser.add_argument("--power-max", type=float, default=1000.0,
+                        help="largest E0 used in the power fit (default 1000; "
+                             "fit well past the significance region)")
+    parser.add_argument("--power-tail", choices=("power", "proportional"), default="power",
+                        help="above --power-max: keep the power law (default) or "
+                             "extend proportionally; both are capped at the cluster count")
+    parser.add_argument("--power-length-bins", type=int, default=4,
+                        help="fit the power law separately in this many query-length "
+                             "bins (default 4; fewer when bins would hold <20 queries)")
+    parser.add_argument("--comp-bias-window", type=int, default=0,
+                        help="half-width of the query composition-bias correction the "
+                             "observation scores were computed with (0: none)")
     parser.add_argument("--power-thresholds", type=int, default=128)
     parser.add_argument("--structural-audit-complete", action="store_true",
                         help="declare that input observations already passed the complete structural audit")
@@ -319,6 +368,8 @@ def main(argv=None):
     args = parser.parse_args(argv)
     if not 0 < args.censor_quantile < 1 or args.censor_strata_bins < 1:
         parser.error("censor quantile must be in (0,1) and strata bins positive")
+    if args.power_length_bins < 1 or args.comp_bias_window < 0:
+        parser.error("power length bins must be positive and the window non-negative")
     if args.ridge < 0 or args.power_max <= 0 or args.power_thresholds < 3:
         parser.error("ridge must be nonnegative, power maximum positive, and at least 3 thresholds")
 
@@ -352,20 +403,24 @@ def main(argv=None):
                           rtol=0, atol=1e-8):
             parser.error(f"cluster median length mismatch for {row['cluster_id']!r}")
     matrix = load_matrix(args.matrix)
-    context_digest = calibration_context_fingerprint(db_digest, matrix, GAP_OPEN, GAP_EXTEND)
+    context_digest = calibration_context_fingerprint(db_digest, matrix, GAP_OPEN, GAP_EXTEND,
+                                                     args.comp_bias_window)
+    composition = {"window": args.comp_bias_window} if args.comp_bias_window else False
+    tail_rule = TAIL_RULE_POWER if args.power_tail == "power" else TAIL_RULE
     model = fit_gumbel(rows, gumbel_indices, args.censoring, args.censor_quantile,
                        args.censor_strata_bins, args.ridge)
     unique_lengths, length_multiplicities = np.unique(
         np.asarray(list(expected_lengths.values())), return_counts=True)
     initial = _predict_initial(rows, power_indices, model, unique_lengths,
                                length_multiplicities)
-    power = fit_power(rows, power_indices, initial, len(expected_lengths),
-                      args.power_max, args.power_thresholds)
+    power = fit_power_length_bins(rows, power_indices, initial, len(expected_lengths),
+                                  args.power_max, args.power_thresholds, tail_rule,
+                                  args.power_length_bins)
 
     source = {"target_database_fingerprint": db_digest,
               "calibration_context_fingerprint": context_digest,
               "score_normalization": "sw/min(query_length,target_length)",
-              "target_length_feature": "cluster median", "composition_bias": False}
+              "target_length_feature": "cluster median", "composition_bias": composition}
     model["source"] = source
     model["fingerprint"] = hashlib.sha256(json.dumps(
         {"model": model, "source": source}, sort_keys=True).encode()).hexdigest()
@@ -378,7 +433,7 @@ def main(argv=None):
     result = {
         "protocol": {
             "score": "SW/min(Lq,Lt), then eligible cluster max",
-            "target_length_feature": "cluster median", "composition_bias": False,
+            "target_length_feature": "cluster median", "composition_bias": composition,
             "gumbel_censoring": "left" if args.censoring == "left-censored" else "none",
             "n_clusters": len(expected_lengths),
             "deployment_ready": bool(args.structural_audit_complete and args.validation_accepted),

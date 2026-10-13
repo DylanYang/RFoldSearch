@@ -19,7 +19,8 @@ sys.path.insert(0, str(ROOT))
 
 from rfoldsearch.database import (calibration_context_fingerprint,
                                 database_fingerprint, load_database)
-from rfoldsearch.evalue import apply_power_calibration, validate_target_aware_params
+from rfoldsearch.evalue import (TAIL_RULES, apply_power_calibration, composition_bias_window,
+                               validate_target_aware_params)
 from rfoldsearch.search import GAP_EXTEND, GAP_OPEN, load_matrix
 
 
@@ -38,11 +39,13 @@ def main(argv=None):
     db, entries, tokens, _, n_codes, clusters = load_database(args.db)
     target_digest = database_fingerprint(entries, clusters, n_codes)
     matrix = load_matrix(args.matrix)
-    score_digest = calibration_context_fingerprint(
-        target_digest, matrix, GAP_OPEN, GAP_EXTEND)
 
     model = json.loads(Path(args.gumbel_model).read_text(encoding="utf-8"))
     result = json.loads(Path(args.result).read_text(encoding="utf-8"))
+    composition = result.get("protocol", {}).get("composition_bias")
+    window = composition_bias_window({"composition_bias": composition})
+    score_digest = calibration_context_fingerprint(
+        target_digest, matrix, GAP_OPEN, GAP_EXTEND, window)
     model_censoring = model.get("censoring")
     if model_censoring not in {"left-censored", "none"}:
         raise ValueError("Gumbel model must record its fitted censoring mode")
@@ -55,7 +58,8 @@ def main(argv=None):
         raise ValueError("refit protocol censoring does not match the fitted model")
     if protocol.get("score") != "SW/min(Lq,Lt), then eligible cluster max":
         raise ValueError("unsupported score definition in refit protocol")
-    if protocol.get("target_length_feature") != "cluster median" or protocol.get("composition_bias") is not False:
+    if (protocol.get("target_length_feature") != "cluster median"
+            or (model.get("source") or {}).get("composition_bias") != composition):
         raise ValueError("refit protocol does not match the packaged scoring model")
     expected_source = {
         "target_database_fingerprint": target_digest,
@@ -99,8 +103,8 @@ def main(argv=None):
         )
     if "fit_min" not in power or "fit_max" not in power:
         raise ValueError("power fit must record fit_min and fit_max")
-    if power.get("tail_rule") != "proportional above fit_max; capped at cluster count":
-        raise ValueError("power fit must record the validated proportional capped tail rule")
+    if power.get("tail_rule") not in TAIL_RULES:
+        raise ValueError("power fit must record a supported capped tail rule")
     power.update({
         "scheme": "power-law",
         "n_clusters": int(len(cluster_lengths)),
@@ -110,8 +114,10 @@ def main(argv=None):
     })
     if not 0 < float(power["fit_raw_evalue_min"]) <= float(power["fit_raw_evalue_max"]):
         raise ValueError("invalid power calibration fit range")
-    apply_power_calibration(np.array([0.0, float(power["fit_raw_evalue_max"]),
-                                      float(len(cluster_lengths))]), power)
+    for bin_ in power.get("length_bins") or [{"log_query_length": 0.0}]:
+        apply_power_calibration(np.array([0.0, float(power["fit_raw_evalue_max"]),
+                                          float(len(cluster_lengths))]), power,
+                                np.exp(float(bin_["log_query_length"])))
     params = {
         "scheme": f"target-aware-{model_censoring}-gumbel-power",
         "n_chains": len(entries),
@@ -121,6 +127,7 @@ def main(argv=None):
         "target_database_fingerprint": target_digest,
         "calibration_context_fingerprint": score_digest,
         "validation_status": "background-audit-complete",
+        "composition_bias": composition,
         "target_aware_gumbel": {
             "distribution": "Gumbel",
             "score_normalization": "sw/min(query_length,target_length)",

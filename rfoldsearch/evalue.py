@@ -8,6 +8,11 @@ import numpy as np
 
 
 TAIL_RULE = "proportional above fit_max; capped at cluster count"
+# Pure power law over the whole E0 range. Fit it to an E0 range that reaches
+# well past the significance region (for example E0 <= 1000) so the curve is
+# not extrapolated where short queries' background E-values lie.
+TAIL_RULE_POWER = "power law throughout; capped at cluster count"
+TAIL_RULES = (TAIL_RULE, TAIL_RULE_POWER)
 FEATURE_ORDER = [
     "intercept", "z_log_query_length", "z_log_cluster_median_length",
     "z_log_length_difference", "z_token_entropy",
@@ -63,23 +68,80 @@ def _target_aware_model(params: dict):
     return centre, coefficients, lengths, multiplicities
 
 
-def apply_power_calibration(raw_evalue, calibration: dict):
-    """Use the validated power fit, proportional upper tail, and cluster cap."""
+def power_terms(calibration: dict, query_length=None):
+    """-> (a, b) for a query of this length.
+
+    With ``length_bins`` the power law is fitted separately per query-length
+    bin; log a and b are interpolated linearly in log query length between
+    the bin centres and held constant beyond the outermost centres.
+    """
+    bins = calibration.get("length_bins")
+    if not bins:
+        return float(calibration["a"]), float(calibration["b"])
+    if query_length is None:
+        raise ValueError("length-binned power calibration needs the query length")
+    if not query_length > 0:
+        raise ValueError("query length must be positive")
+    centres = [float(b["log_query_length"]) for b in bins]
+    x = math.log(float(query_length))
+    log_a = float(np.interp(x, centres, [math.log(float(b["a"])) for b in bins]))
+    b = float(np.interp(x, centres, [float(b["b"]) for b in bins]))
+    return math.exp(log_a), b
+
+
+def apply_power_calibration(raw_evalue, calibration: dict, query_length=None):
+    """Map E0 through the validated power fit, its tail rule, and the cluster cap."""
     values = np.asarray(raw_evalue, dtype=np.float64)
-    a, b = float(calibration["a"]), float(calibration["b"])
+    a, b = power_terms(calibration, query_length)
     ceiling = float(calibration["fit_raw_evalue_max"])
     n_clusters = int(calibration["n_clusters"])
     if (not all(map(math.isfinite, (a, b, ceiling))) or a <= 0 or b <= 0
             or ceiling <= 0 or n_clusters < 1):
         raise ValueError("power calibration requires finite positive parameters")
-    if calibration.get("tail_rule") != TAIL_RULE:
+    rule = calibration.get("tail_rule")
+    if rule not in TAIL_RULES:
         raise ValueError("unsupported power extrapolation rule")
     if np.any(~np.isfinite(values)) or np.any(values < 0):
         raise ValueError("raw E-values must be finite and non-negative")
-    output = a * np.power(np.minimum(values, ceiling), b)
-    output *= np.maximum(1.0, values / ceiling)
+    if rule == TAIL_RULE:
+        output = a * np.power(np.minimum(values, ceiling), b)
+        output *= np.maximum(1.0, values / ceiling)
+    else:
+        output = a * np.power(values, b)
     output = np.minimum(output, n_clusters)
     return float(output) if output.ndim == 0 else output
+
+
+def composition_bias_window(params: dict) -> int:
+    """Half-width of the query composition-bias correction the fit used (0: none)."""
+    value = params.get("composition_bias", False)
+    if value is False or value is None:
+        return 0
+    if not isinstance(value, dict) or set(value) != {"window"}:
+        raise ValueError("composition_bias must be false or {'window': n}")
+    window = value["window"]
+    if isinstance(window, bool) or not isinstance(window, int) or window < 1:
+        raise ValueError("composition-bias window must be a positive integer")
+    return window
+
+
+def _validate_length_bins(power: dict) -> None:
+    bins = power.get("length_bins")
+    if bins is None:
+        return
+    if not isinstance(bins, list) or not bins:
+        raise ValueError("length_bins must be a nonempty list")
+    centres = []
+    for entry in bins:
+        try:
+            centre, a, b = (float(entry[k]) for k in ("log_query_length", "a", "b"))
+        except (KeyError, TypeError, ValueError) as exc:
+            raise ValueError("each length bin needs log_query_length, a and b") from exc
+        if not all(map(math.isfinite, (centre, a, b))) or a <= 0 or b <= 0:
+            raise ValueError("length-bin power parameters must be finite and positive")
+        centres.append(centre)
+    if any(y <= x for x, y in zip(centres, centres[1:])):
+        raise ValueError("length-bin centres must increase strictly")
 
 
 def validate_target_aware_params(params: dict, n_clusters: int,
@@ -115,11 +177,14 @@ def validate_target_aware_params(params: dict, n_clusters: int,
             or power.get("validation_status") != "background-audit-complete"
             or int(power.get("n_clusters", -1)) != n_clusters):
         raise ValueError("target-aware power calibration is not validated for this database")
+    _validate_length_bins(power)
+    composition_bias_window(params)
     minimum = float(power.get("fit_raw_evalue_min", float("nan")))
     maximum = float(power.get("fit_raw_evalue_max", float("nan")))
     if not math.isfinite(minimum) or not 0 < minimum <= maximum:
         raise ValueError("invalid power calibration fit range")
-    apply_power_calibration(0.0, power)
+    for bin_ in power.get("length_bins") or [{"log_query_length": 0.0}]:
+        apply_power_calibration(0.0, power, math.exp(float(bin_["log_query_length"])))
 
 
 def target_aware_initial_evalue(params: dict, query_tokens, normalized_score):
