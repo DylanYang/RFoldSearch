@@ -56,6 +56,7 @@ def test_fit_cli_writes_exportable_database_specific_model(tmp_path):
     assert model["censoring"] == "none"
     assert result["protocol"]["deployment_ready"] is True
     assert result["power"]["validation_status"] == "background-audit-complete"
+    assert result["holdout_calibration"]["status"] == "skipped"   # one power family
 
     params_path = tmp_path / "params.json"
     export_script = root / "scripts" / "export_target_aware_evalue_params.py"

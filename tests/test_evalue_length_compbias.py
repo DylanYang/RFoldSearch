@@ -151,3 +151,61 @@ def test_fitter_bins_power_by_query_length_and_merges_sparse_bins():
     single = F.fit_power_length_bins(rows, idx, np.array(initial), 500, 1000.0, 64,
                                      EV.TAIL_RULE_POWER, 1)
     assert "length_bins" not in single
+
+
+def _background_rows(n_queries, per_query, rng, family=lambda q: f"f{q}", scale=lambda q: 1.0):
+    """Background E0 uniform on [0, per_query]: E0 itself is then calibrated."""
+    rows, initial = [], []
+    for q in range(n_queries):
+        for e in rng.uniform(0, per_query, per_query):
+            rows.append({"query_id": f"q{q}", "role": "power", "query_length": float(20 + q),
+                         "query_entropy": 2.0, "family": frozenset([family(q)]),
+                         "clan": frozenset(), "query_weight": 1.0, "expansion": 1.0})
+            initial.append(e * scale(q))
+    return rows, np.array(initial)
+
+
+def test_holdout_check_reports_calibrated_evalues_near_nominal():
+    F = _fit_module()
+    rows, initial = _background_rows(200, 100, np.random.default_rng(2))
+    report = F.holdout_calibration(rows, list(range(len(rows))), initial, 500, 1000.0, 64,
+                                   EV.TAIL_RULE_POWER, 4, 5)
+    assert report["status"] == "complete" and report["folds"] == 5
+    overall, *strata = report["strata"]
+    assert overall["n_queries"] == 200 and len(strata) == 4
+    assert [s["n_queries"] for s in strata] == [50] * 4
+    by_e = {l["evalue"]: l for l in overall["levels"]}
+    assert set(by_e) == set(F.HOLDOUT_EVALUES)
+    assert 0.8 < by_e[1.0]["ratio"] < 1.25
+    assert by_e[1.0]["expected_hits"] == pytest.approx(200.0)
+
+
+def test_holdout_check_flags_length_dependent_miscalibration_with_one_law():
+    F = _fit_module()
+    # E0 drifts with query length (too large for short, too small for long queries)
+    rows, initial = _background_rows(400, 50, np.random.default_rng(3),
+                                     scale=lambda q: ((20 + q) / 100.0) ** -1.0)
+    idx = list(range(len(rows)))
+    ratios = {}
+    for n_bins in (1, 4):
+        report = F.holdout_calibration(rows, idx, initial, 500, 1000.0, 64,
+                                       EV.TAIL_RULE_POWER, n_bins, 5, n_strata=2)
+        assert len(report["strata"]) == 3          # strata do not follow the fit's bins
+        ratios[n_bins] = [s["levels"][-1]["ratio"] for s in report["strata"][1:]]
+    assert ratios[1][1] > 1.8                      # one law: long queries too significant
+    assert all(0.7 < r < 1.8 for r in ratios[4]) and ratios[4][1] < ratios[1][1]
+
+
+def test_holdout_folds_keep_families_together_and_skip_when_too_few():
+    F = _fit_module()
+    rows, initial = _background_rows(40, 10, np.random.default_rng(4),
+                                     family=lambda q: f"f{q // 4}")
+    idx = list(range(len(rows)))
+    folds = F._family_folds(rows, idx, 5)
+    assert sorted(len(f) for f in folds) == [8] * 5
+    for fold in folds:
+        assert all({f"q{4 * (int(q[1:]) // 4) + k}" for k in range(4)} <= fold for q in fold)
+    assert F._family_folds(rows, idx, 11) is None
+    report = F.holdout_calibration(rows, idx, initial, 500, 1000.0, 64,
+                                   EV.TAIL_RULE_POWER, 4, 11)
+    assert report["status"] == "skipped"

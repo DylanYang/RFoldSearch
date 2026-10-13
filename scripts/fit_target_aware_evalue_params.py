@@ -25,7 +25,7 @@ sys.path.insert(0, str(ROOT))
 
 from rfoldsearch.database import (calibration_context_fingerprint,
                                 database_fingerprint, load_database)
-from rfoldsearch.evalue import TAIL_RULE, TAIL_RULE_POWER
+from rfoldsearch.evalue import TAIL_RULE, TAIL_RULE_POWER, apply_power_calibration
 from rfoldsearch.search import GAP_EXTEND, GAP_OPEN, load_matrix
 
 
@@ -253,8 +253,14 @@ def _predict_initial(rows, indices, model, cluster_lengths, multiplicities):
 MIN_QUERIES_PER_LENGTH_BIN = 20
 
 
-def fit_power(rows, indices, initial, n_clusters, maximum, n_thresholds,
-              tail_rule=TAIL_RULE):
+def _background_weights(rows, indices):
+    """-> (row weights, queries, families) for background observations.
+
+    Each family carries equal weight, split over its queries, and the query
+    weights sum to one; a row's weight is its query's weight times its
+    expansion. Summing the weights of rows with E <= e therefore gives the
+    family-balanced mean number of background clusters per query at E <= e.
+    """
     _, metadata = _query_groups(rows, "power")
     present = {rows[i]["query_id"] for i in indices}
     queries = sorted(q for q in metadata if q in present)
@@ -271,15 +277,15 @@ def fit_power(rows, indices, initial, n_clusters, maximum, n_thresholds,
         for q in queries
     }
     total_query_weight = sum(query_weight.values())
-    query_weight = {q: weight / total_query_weight
-                    for q, weight in query_weight.items()}
-    values, weights = [], []
-    for row_idx, e0 in zip(indices, initial):
-        row = rows[row_idx]
-        q = row["query_id"]
-        values.append(float(e0))
-        weights.append(query_weight[q] * row["expansion"])
-    values, weights = np.asarray(values), np.asarray(weights)
+    weights = np.asarray([query_weight[rows[i]["query_id"]] / total_query_weight
+                          * rows[i]["expansion"] for i in indices])
+    return weights, queries, families
+
+
+def fit_power(rows, indices, initial, n_clusters, maximum, n_thresholds,
+              tail_rule=TAIL_RULE):
+    weights, queries, families = _background_weights(rows, indices)
+    values = np.asarray(initial, dtype=np.float64)
     positive = (values > 0) & (values <= maximum)
     if positive.sum() < 3:
         raise ValueError("too few positive background E0 observations in the fit range")
@@ -334,6 +340,115 @@ def fit_power_length_bins(rows, indices, initial, n_clusters, maximum,
     return pooled
 
 
+HOLDOUT_EVALUES = (0.001, 0.01, 0.1, 1.0)
+HOLDOUT_LENGTH_STRATA = 4    # reported regardless of how many bins the fit used
+
+
+def _family_folds(rows, indices, n_folds):
+    """Split queries into folds so that no family spans two folds.
+
+    Queries sharing any family are joined into one group; groups go, largest
+    first, to the fold with the fewest queries (ties by a stable hash).
+    """
+    parent = {}
+
+    def find(x):
+        parent.setdefault(x, x)
+        while parent[x] != x:
+            parent[x] = parent[parent[x]]
+            x = parent[x]
+        return x
+
+    for i in indices:
+        q = ("q", rows[i]["query_id"])
+        for fam in rows[i]["family"]:
+            parent[find(q)] = find(("f", fam))
+    groups = defaultdict(set)
+    for i in indices:
+        q = rows[i]["query_id"]
+        groups[find(("q", q))].add(q)
+    if len(groups) < n_folds:
+        return None
+    key = lambda g: (-len(g), hashlib.sha256("\0".join(sorted(g)).encode()).hexdigest())
+    folds = [set() for _ in range(n_folds)]
+    for group in sorted(groups.values(), key=key):
+        min(folds, key=len).update(group)
+    return folds
+
+
+def holdout_calibration(rows, indices, initial, n_clusters, maximum, n_thresholds,
+                        tail_rule, n_bins, n_folds, evalues=HOLDOUT_EVALUES,
+                        n_strata=HOLDOUT_LENGTH_STRATA):
+    """Family-held-out check of the calibrated E-values in the significance region.
+
+    Each fold's power calibration is refitted on the other folds' queries
+    (the Gumbel model stays fixed: it is fitted on separate queries) and
+    applied to its own. For every query-length stratum and nominal E, the
+    observed value is the family-balanced mean number of background clusters
+    per held-out query reaching that E; a calibrated E gives observed/nominal
+    near 1. ``n_hits`` against ``expected_hits`` (nominal E times the number
+    of queries) shows how much a ratio rests on.
+    """
+    folds = _family_folds(rows, indices, n_folds)
+    if folds is None:
+        return {"status": "skipped",
+                "reason": f"fewer than {n_folds} independent family groups"}
+    initial = np.asarray(initial, dtype=np.float64)
+    query_of = np.asarray([rows[i]["query_id"] for i in indices])
+    length_of = {rows[i]["query_id"]: rows[i]["query_length"] for i in indices}
+    calibrated = np.full(len(indices), np.nan)
+    for fold in folds:
+        test = np.isin(query_of, sorted(fold))
+        train = np.flatnonzero(~test)
+        try:
+            fit = fit_power_length_bins(rows, [indices[p] for p in train], initial[train],
+                                        n_clusters, maximum, n_thresholds, tail_rule, n_bins)
+        except ValueError as exc:
+            return {"status": "skipped", "reason": f"fold refit failed: {exc}"}
+        power = {**fit, "fit_raw_evalue_max": fit["fit_max"]}
+        for q in fold:
+            mask = query_of == q
+            calibrated[mask] = apply_power_calibration(initial[mask], power, length_of[q])
+
+    queries = sorted(length_of, key=lambda q: (length_of[q], q))
+    n_strata = max(1, min(int(n_strata), len(queries) // MIN_QUERIES_PER_LENGTH_BIN))
+    strata = [queries]
+    if n_strata > 1:
+        strata += [queries[s * len(queries) // n_strata:(s + 1) * len(queries) // n_strata]
+                   for s in range(n_strata)]
+    report = []
+    for part in strata:
+        positions = np.flatnonzero(np.isin(query_of, part))
+        weights, _, families = _background_weights(rows, [indices[p] for p in positions])
+        values = calibrated[positions]
+        levels = []
+        for e in evalues:
+            reached = values <= e
+            observed = float(weights[reached].sum())
+            levels.append({"evalue": float(e), "observed": observed,
+                           "ratio": observed / float(e), "n_hits": int(reached.sum()),
+                           "expected_hits": float(e) * len(part)})
+        report.append({"query_length_min": float(length_of[part[0]]),
+                       "query_length_max": float(length_of[part[-1]]),
+                       "n_queries": len(part), "n_families": len(families),
+                       "levels": levels})
+    return {"status": "complete", "folds": int(n_folds), "grouping": "family",
+            "strata": report}
+
+
+def _print_holdout(holdout):
+    if holdout["status"] != "complete":
+        print(f"holdout calibration skipped: {holdout['reason']}")
+        return
+    print(f"holdout calibration ({holdout['folds']} family folds), "
+          "observed/nominal [hits/expected]:")
+    for s in holdout["strata"]:
+        cells = "  ".join(f"E<={l['evalue']:g}: {l['ratio']:.2f} "
+                          f"[{l['n_hits']}/{l['expected_hits']:.1f}]" for l in s["levels"])
+        print(f"  Lq {s['query_length_min']:g}-{s['query_length_max']:g} "
+              f"({s['n_queries']} q): {cells}")
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--db", required=True, help="clustered encoded target database")
@@ -361,6 +476,11 @@ def main(argv=None):
                         help="half-width of the query composition-bias correction the "
                              "observation scores were computed with (0: none)")
     parser.add_argument("--power-thresholds", type=int, default=128)
+    parser.add_argument("--holdout-folds", type=int, default=5,
+                        help="family-held-out folds for the significance-region "
+                             "calibration check (default 5; 0 skips it)")
+    parser.add_argument("--holdout-evalues", default=",".join(f"{e:g}" for e in HOLDOUT_EVALUES),
+                        help="comma-separated nominal E-values the check reports")
     parser.add_argument("--structural-audit-complete", action="store_true",
                         help="declare that input observations already passed the complete structural audit")
     parser.add_argument("--validation-accepted", action="store_true",
@@ -372,6 +492,13 @@ def main(argv=None):
         parser.error("power length bins must be positive and the window non-negative")
     if args.ridge < 0 or args.power_max <= 0 or args.power_thresholds < 3:
         parser.error("ridge must be nonnegative, power maximum positive, and at least 3 thresholds")
+    try:
+        holdout_evalues = tuple(float(x) for x in args.holdout_evalues.split(",") if x.strip())
+    except ValueError:
+        parser.error("holdout E-values must be comma-separated numbers")
+    if (args.holdout_folds < 0 or args.holdout_folds == 1 or not holdout_evalues
+            or not all(math.isfinite(e) and e > 0 for e in holdout_evalues)):
+        parser.error("holdout folds must be 0 or at least 2, and holdout E-values positive")
 
     rows = read_observations(args.observations)
     for role in ("gumbel", "auxiliary", "power"):
@@ -416,6 +543,11 @@ def main(argv=None):
     power = fit_power_length_bins(rows, power_indices, initial, len(expected_lengths),
                                   args.power_max, args.power_thresholds, tail_rule,
                                   args.power_length_bins)
+    holdout = (holdout_calibration(rows, power_indices, initial, len(expected_lengths),
+                                   args.power_max, args.power_thresholds, tail_rule,
+                                   args.power_length_bins, args.holdout_folds,
+                                   holdout_evalues)
+               if args.holdout_folds else {"status": "skipped", "reason": "disabled"})
 
     source = {"target_database_fingerprint": db_digest,
               "calibration_context_fingerprint": context_digest,
@@ -444,10 +576,12 @@ def main(argv=None):
         "gumbel_model_sha256": model_digest,
         "audit": [{"pending": 0 if args.structural_audit_complete else 1}],
         "power": power,
+        "holdout_calibration": holdout,
     }
     Path(args.result).write_text(json.dumps(result, indent=2), encoding="utf-8")
     print(f"wrote {args.gumbel_model} and {args.result}; "
           f"deployment_ready={result['protocol']['deployment_ready']}")
+    _print_holdout(holdout)
 
 
 if __name__ == "__main__":

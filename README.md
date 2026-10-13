@@ -246,14 +246,36 @@ Use `--censoring none` for an uncensored fit. Power-calibration options:
 | `--power-max` | 1000 | Largest `E0` entering the power fit |
 | `--power-tail` | `power` | Above `--power-max`: keep the power law, or `proportional` (former behaviour) |
 | `--comp-bias-window` | 0 | Composition-bias half-width the `normalized_score` column was computed with; 0 means uncorrected scores |
+| `--holdout-folds` | 5 | Family-held-out folds for the significance-region calibration check; 0 skips it |
+| `--holdout-evalues` | `0.001,0.01,0.1,1` | Nominal E-values the check reports |
+
+The holdout check refits the power calibration with each family-disjoint fold
+left out, applies it to that fold, and reports observed/nominal background
+hits per query at each nominal E, overall and in four query-length strata
+(`holdout_calibration` in the result, and a table on stdout). Ratios near 1
+mean calibrated; compare `n_hits` with `expected_hits` before trusting a ratio
+at small E. The check is a report and does not change `deployment_ready`.
 
 With `--comp-bias-window w`, every `normalized_score` must come from
 `rfoldsearch.compbias.query_profile(query, matrix, background, w)` with the
 target database's state frequencies as `background`. The window is bound into
 the scoring-context fingerprint, so a mismatch is rejected at search time.
-On the 885-chain experimental database the correction made short-chain
-self-hits less significant, so leave it off there; on predicted-structure
-databases it reduces low-complexity (helix-rich) false positives. The fitter writes the fitted
+
+No single setting suits every database; choose per database and confirm with
+the holdout check. Holdout observed/nominal at E <= 1 per query-length stratum:
+
+| Database | Recommended options | Holdout E <= 1 by length stratum | Not recommended |
+| --- | --- | --- | --- |
+| Experimental structures (885 chains) | `--power-length-bins 1 --power-max 100 --power-tail proportional` | 0.45 / 1.92 / 1.05 / 1.24 | 4 bins: longest stratum 4.5 |
+| Predicted structures (33k chains, NR80) | `--power-length-bins 4 --comp-bias-window 20` (defaults otherwise) | 0.88 / 1.66 / 1.86 / 1.47 | one law: 0.00-18.9; 4 bins without correction: 0.42-3.21 |
+
+On the experimental database only 198 calibration queries (48 families) are
+available, too few for four length bins, and the correction also made
+short-chain self-hits less significant, so leave it off there. On
+predicted-structure databases the correction reduces low-complexity
+(helix-rich) false positives, and with it the significance region (E <= 0.1)
+stays within 0.8-1.8 of nominal in every length stratum. Even the recommended
+settings run about 1.5 times anticonservative at E <= 1. The fitter writes the fitted
 Gumbel model and power-law result. It leaves deployment validation pending
 unless both `--structural-audit-complete` and `--validation-accepted` are
 provided. Those flags assert that the input background has passed structural
