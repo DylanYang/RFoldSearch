@@ -1,4 +1,4 @@
-"""Command line interface: rfoldsearch preprocess | build | calibrate | search."""
+"""Command line interface: rfoldsearch preprocess | build | search."""
 import argparse
 import glob
 import json
@@ -7,7 +7,6 @@ import sys
 import numpy as np
 import torch
 
-from .calibrate import AuditIncomplete, calibrate
 from .database import (attach_evalue_calibration, build_database, short_id,
                        structure_to_entry)
 from .search import (DEFAULT_MIN_DIAG, DEFAULT_RERANK, DEFAULT_TOP_N, RERANKERS,
@@ -44,17 +43,6 @@ def cmd_attach_calibration(a):
         index_prefix=a.index_prefix)
     print(f"Saved: {result['output']}  ({result['n_chains']} chains, "
           f"{result['n_clusters']} clusters)")
-
-
-def cmd_calibrate(a):
-    try:
-        calibrate(a.db, a.clusters, a.labels, a.queries, a.output,
-                  db_type=a.db_type, related_pairs=a.related_pairs,
-                  query_panel=a.query_panel, usalign=a.usalign,
-                  workdir=a.workdir, index_prefix=a.index_prefix,
-                  matrix=a.matrix, log=lambda m: print(m, flush=True))
-    except (AuditIncomplete, FileExistsError) as e:
-        raise SystemExit(str(e))
 
 
 def cmd_search(a):
@@ -135,12 +123,12 @@ def cmd_search(a):
         return
     header = f"{'rank':>4}  {'target':<24}{'SW_score':>10}"
     if has_ev:
-        header += f"{'bits':>8}{'E-value':>11}"
+        header += f"{'norm_SW':>10}{'E-value':>11}"
     print(header + f"  {'len':>5}")
     for h in hits:
         line = f"{h['rank']:>4}  {h['target']:<24}{h['sw_score']:>10.2f}"
         if has_ev:
-            line += f"{h['bits']:>8.1f}{h['evalue']:>11.2g}"
+            line += f"{h['normalized_sw_score']:>10.3f}{h['evalue']:>11.2g}"
         print(line + f"  {h['length']:>5}")
 
 
@@ -185,37 +173,6 @@ def main(argv=None):
     p.add_argument("--index-prefix", default=None,
                    help="CD-HIT IDs based on database row positions, e.g. t for t0, t1, ...")
     p.set_defaults(fn=cmd_attach_calibration)
-
-    p = sub.add_parser("calibrate",
-                       help="fit database-specific E-values and attach them, in one step")
-    p.add_argument("--db", required=True, help="encoded database to calibrate")
-    p.add_argument("--clusters", required=True,
-                   help="CD-HIT-EST .clstr (or id/cluster TSV) for --db")
-    p.add_argument("--labels", required=True,
-                   help="TSV of chain_id with Rfam family and clan columns, "
-                        "covering --db and --queries")
-    p.add_argument("--queries", required=True,
-                   help="independent database of calibration queries")
-    p.add_argument("--db_type", required=True, choices=("predicted", "experimental"),
-                   help="predicted: background is every eligible cluster; "
-                        "experimental: Rfam-annotated targets, reweighted to "
-                        "the full database")
-    p.add_argument("--output", required=True, help="calibrated database path")
-    p.add_argument("--related_pairs", default=None,
-                   help="existing US-align adjudication TSV (query_id, "
-                        "target_id, tm_query, tm_target); pairs it lacks are "
-                        "aligned with US-align")
-    p.add_argument("--query_panel", default=None,
-                   help="TSV of query_id selecting the chains of --db used to "
-                        "fit the Gumbel model (default: every chain)")
-    p.add_argument("--usalign", default=None,
-                   help="path to the USalign binary (default: $USALIGN, then PATH)")
-    p.add_argument("--workdir", default=None,
-                   help="intermediate files (default: OUTPUT stem + .calibration/)")
-    p.add_argument("--index_prefix", default=None,
-                   help="CD-HIT IDs based on database row positions, e.g. t for t0, t1, ...")
-    p.add_argument("--matrix", default=None)
-    p.set_defaults(fn=cmd_calibrate)
 
     p = sub.add_parser("search", help="search a query against a token database")
     p.add_argument("--query", required=True,

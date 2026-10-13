@@ -25,7 +25,7 @@ def test_search_pipeline(tmp_path):
     torch.save({"n_codes": 80, "entries": entries, "checkpoint": "synthetic"},
                db_path)
     params_path = tmp_path / "evalue_params.json"
-    params_path.write_text(json.dumps(synthetic_evalue_params()))
+    params_path.write_text(json.dumps(synthetic_evalue_params(entries)))
 
     s = Searcher(str(db_path), evalue_params_path=str(params_path))
     hits = s.search_id("chain_000", top_k=5)

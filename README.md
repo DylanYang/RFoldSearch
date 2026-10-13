@@ -37,8 +37,8 @@ conda activate rfoldsearch
 ```
 
 Without conda, `pip install .` installs RFoldSearch alone. CD-HIT-EST and US-align must
-then be installed separately and they are needed only for building clustered databases,
-`--rerank tm` and `rfoldsearch calibrate`.
+then be installed separately and they are needed for building clustered databases
+and `--rerank tm`.
 
 ## Hardware and memory requirements
 
@@ -169,7 +169,9 @@ rank  target                    TM_mean  TM_query  TM_target    len
 
 ### E-values
 
-RFoldSearch reports Smith--Waterman E-values in `tm_a` and `sw` modes. The
+RFoldSearch reports Smith--Waterman E-values in `tm_a` and `sw` modes when the
+database embeds matching parameters or matching parameters are supplied with
+`--evalue_params`. It never falls back to a bundled calibration. The
 E-value is the expected number of unrelated database clusters (CD-HIT-EST,
 80% identity) reaching a hit's token-alignment score and it is not a significance
 estimate for the structure score R<sub>str</sub>. A Gumbel null of per-cluster
@@ -177,51 +179,90 @@ maximum scores, conditioned on the query's length and token entropy, gives an
 initial value `E0`, and a database-specific power law `E = a_D * E0**b_D`
 calibrates it to the observed number of structurally unrelated clusters.
 
-The parameters belong to one database. Those bundled with RFoldSearch were
-fitted for the paper's 885-chain database and are used only
-when searching that database; a search of any other database reports no
-E-value until the database is calibrated. Their power-law correction was
-fitted after a US-align audit of every background cluster leader with
-`E0 <= 100`. The calibration holds on average over families: most
-families see fewer unrelated hits than nominal and a few see many more, and
-below E = 0.1 there are too few events to check it.
+1. A target-aware Gumbel null models the length-normalized score
+   `Y_qt = S_SW / min(L_q, L_t)` for every query--target pair, where `L_t` is
+   the target-chain length. Its predictors are
+   query length, target-cluster median length, their log-length difference,
+   and query-token entropy. The initial value is
+   `E0 = sum_c P(max_{t in c} Y_qt >= y)`.
+2. A database-specific positive power law,
+   `E_cal = a_D * E0**b_D` within the fitted range, calibrates `E0` to the
+   observed number of structurally unrelated clusters per query. Above the
+   fitted maximum it extends proportionally and is capped at the cluster count.
 
-To calibrate your own database, run once:
+Gumbel fitting supports two explicitly selected likelihoods: left-censored
+and uncensored. The selected mode is stored with the fitted model. Optional
+auxiliary queries can contribute to Gumbel fitting with query weights supplied
+in the calibration table; they are not used for power calibration. Fitting
+uses the complete target-cluster length distribution, and no query--target
+length-ratio filter is applied during scoring. Parameters are bound to the
+database tokens, clusters, substitution matrix, and gap costs by fingerprints.
 
+#### Fit and export parameters
+
+Fit parameters separately for each target database from a tab-separated file
+containing one row per query and eligible target cluster. Each score must be
+the maximum `S_SW/min(Lq,Lt)` among that cluster's eligible members, after the
+chosen family/clan and structural-background exclusions. The fitter does not
+generate pairwise scores or perform the US-align audit; those are inputs to
+this fitting step.
+
+Required columns are:
+
+| Column | Meaning |
+| --- | --- |
+| `query_id` | Calibration-query identifier |
+| `role` | `gumbel`, `auxiliary`, or `power` |
+| `query_length`, `query_entropy` | Query token length and Shannon entropy |
+| `family`, `clan` | Semicolon-separated labels; required for `power` rows |
+| `query_weight` | Total Gumbel likelihood weight for this query, repeated on its rows |
+| `expansion` | Background expansion factor for this query, repeated on its rows |
+| `cluster_id` | Cluster label used in the encoded database |
+| `cluster_median_length` | Median token length of that target cluster |
+| `normalized_score` | Eligible cluster-maximum normalized SW score |
+
+Use disjoint query IDs for Gumbel fitting (`gumbel` and `auxiliary`) and power
+calibration (`power`). Select the Gumbel likelihood explicitly:
+
+```bash
+python scripts/fit_target_aware_evalue_params.py --db target_db.pt \
+  --observations audited_cluster_scores.tsv --censoring left-censored \
+  --gumbel-model target_gumbel_model.json --result target_power_fit.json
 ```
-rfoldsearch calibrate \
-  --db target_db.pt \
-  --clusters target_nr80.clstr \
-  --labels labels.tsv \
-  --queries calibration_queries.pt \
-  --db_type predicted \
+
+Use `--censoring none` for an uncensored fit. The fitter writes the fitted
+Gumbel model and power-law result. It leaves deployment validation pending
+unless both `--structural-audit-complete` and `--validation-accepted` are
+provided. Those flags assert that the input background has passed structural
+adjudication and that nested family/clan validation has been reviewed; they do
+not perform either procedure.
+
+After the audit and validation are complete, export the database-specific
+asset:
+
+```bash
+python scripts/export_target_aware_evalue_params.py --db target_db.pt \
+  --gumbel-model target_gumbel_model.json --result target_power_fit.json \
+  --output target_evalue_params.json
+```
+
+The exporter reads the fitted censoring mode from the model and checks it
+against the refit protocol. It cannot change the fitting mode.
+
+Attach the parameters to their matching database:
+
+```bash
+rfoldsearch attach-calibration --db target_db.pt \
+  --clusters target_nr80.clstr --evalue_params target_evalue_params.json \
   --output calibrated_db.pt
 ```
 
-and search `calibrated_db.pt` as usual. The command fits the Gumbel model,
-scores the calibration queries against every target cluster, fits the power
-law, and attaches the result to a new database file.
-
-| Option            | Description                                                               |
-| ----------------- | ------------------------------------------------------------------------- |
-| `--labels`        | TSV of `chain_id`, `family`, `clan` (Rfam) for every chain in `--db` and `--queries`; `scripts/build_rfam_labels.py` makes it from `cmscan --fmt 2` output |
-| `--queries`       | Independent database of calibration queries, built with `rfoldsearch build` |
-| `--db_type`       | `predicted` uses every eligible cluster as background; `experimental` uses Rfam-annotated targets, reweighted to the full database |
-| `--related_pairs` | Existing US-align results (`query_id`, `target_id`, `tm_query`, `tm_target`) |
-| `--usalign`       | Path to the `USalign` binary (default: `$USALIGN`, then `PATH`)           |
-| `--query_panel`   | TSV of `query_id` choosing the chains of `--db` that fit the Gumbel model (default: all) |
-| `--workdir`       | Intermediate files (default: `calibrated_db.calibration/`)                |
-
-Pairs with the same Rfam family or clan, and pairs US-align finds
-structurally related (mean TM-score >= 0.45), are excluded from the
-background. Every cluster leader with `E0 <= 100` needs a US-align result;
-those not in `--related_pairs` are aligned automatically and cached in the
-work directory, so a rerun does not align them again. Calibration should be
-assessed by leave-one-Rfam-family-out validation. Since `a_D > 0` and
-`b_D > 0`, the correction is monotone and preserves the token-score ordering
-for a fixed query. To run the stages separately, use
-`scripts/rebuild_evalue_params.py`, `scripts/build_evalue_calibration_background.py`
-and `scripts/fit_power_evalue_calibration.py`, then `rfoldsearch attach-calibration`.
+Every cluster leader within the fitted E0 range must have a US-align audit
+result. Structurally related leaders are excluded and replaced by the next
+eligible member of the same cluster. Calibration should be assessed by nested
+leave-one-Rfam-family-out validation. Since `a_D > 0` and `b_D > 0`, the
+correction is monotone and preserves the token-score ordering for a fixed
+query.
 
 ### Python API
 
@@ -261,7 +302,7 @@ from rfoldsearch import Searcher
 s = Searcher("target_db.pt")
 hits = s.search_id("target_chain_id", top_k=10)
 # [{'rank': 1, 'target': …, 'structure_score': …, 'tm_a': …,
-#   'aligned': …, 'sw_score': …, 'bits': …, 'evalue': …}, …]
+#   'aligned': …, 'sw_score': …, 'normalized_sw_score': …, 'evalue': …}, …]
 ```
 
 Anything else is searched by handing `search` the tokens from above:
@@ -274,9 +315,12 @@ hits = s.search(np.asarray(enc["tokens"], np.int64), query_entry=enc, top_k=10)
 
 `query_entry` is required by the default `rerank="tm_a"` and by `rerank="tm"`,
 because both use query coordinates. Plain `rerank="sw"` can leave it out.
-`search_id` forwards its keyword arguments to `search`, so `top_n`, `min_diag`, `rerank`
-and `tie_seed` are available from both. `bits` and `evalue` are present when
-E-value parameters are loaded, which they are by default.
+`search_id`
+forwards its keyword arguments to `search`, so `top_n`, `min_diag`, `rerank`
+and `tie_seed` are available from both. `evalue` is present when matching
+database-specific E-value parameters are loaded. The target-aware model reports
+`normalized_sw_score` rather than a single bit score, because its null varies
+with target-chain length.
 
 `Searcher` deliberately takes no tokenizer — searching happens on tokens, not
 structures. It does accept the two files that interpret those tokens,
