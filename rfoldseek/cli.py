@@ -123,12 +123,12 @@ def cmd_search(a):
         return
     header = f"{'rank':>4}  {'target':<24}{'SW_score':>10}"
     if has_ev:
-        header += f"{'bits':>8}{'E-value':>11}"
+        header += f"{'norm_SW':>10}{'E-value':>11}"
     print(header + f"  {'len':>5}")
     for h in hits:
         line = f"{h['rank']:>4}  {h['target']:<24}{h['sw_score']:>10.2f}"
         if has_ev:
-            line += f"{h['bits']:>8.1f}{h['evalue']:>11.2g}"
+            line += f"{h['normalized_sw_score']:>10.3f}{h['evalue']:>11.2g}"
         print(line + f"  {h['length']:>5}")
 
 

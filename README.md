@@ -158,52 +158,55 @@ rank  target                    TM_mean  TM_query  TM_target    len
 
 ### E-values
 
-RFoldseek reports Smith--Waterman E-values in `tm_a` and `sw` modes. The
+RFoldseek reports Smith--Waterman E-values in `tm_a` and `sw` modes when the
+database embeds matching parameters or matching parameters are supplied with
+`--evalue_params`. It never falls back to a bundled calibration. The
 E-value is the expected number of unrelated database clusters (CD-HIT-EST,
 80% identity) reaching a hit's token-alignment score; it is not a significance
 estimate for the structure score `R_str`. It is computed in two steps:
 
-1. A Gumbel null of per-cluster maximum scores gives the initial value `E0`.
-   Its parameters follow the database-specific linear query model
-   `(mu_q, log beta_q) = (1, z_log_length, z_token_entropy) B_D`.
+1. A target-aware Gumbel null models the length-normalized score
+   `Y_qt = S_SW / min(L_q, L_t)` for every query--target pair, where `L_t` is
+   the target-chain length. Its predictors are
+   query length, target-cluster median length, their log-length difference,
+   and query-token entropy. The initial value is
+   `E0 = sum_c P(max_{t in c} Y_qt >= y)`.
 2. A database-specific positive power law,
-   `E_cal = a_D * E0**b_D`, calibrates `E0` to the observed number of
-   structurally unrelated clusters per query.
+   `E_cal = a_D * E0**b_D` within the fitted range, calibrates `E0` to the
+   observed number of structurally unrelated clusters per query. Above the
+   fitted maximum it extends proportionally and is capped at the cluster count.
 
-Gumbel fitting, calibration, and deployment use the complete target database;
-no query--target length-ratio filter is applied. Parameters are bound to the
-database tokens, clusters, substitution matrix, and gap costs by fingerprints.
+The Gumbel fit uses `left-censored` tail fitting by default and the
+short/low-entropy auxiliary panel. An uncensored fit can be selected explicitly
+for a separate calibration run; its parameters cannot be relabelled as
+left-censored. Fitting, calibration, and deployment use the complete target
+database; no query--target length-ratio filter is applied. Parameters are bound
+to the database tokens, clusters, substitution matrix, and gap costs by
+fingerprints.
 
-Calibration is performed once per database:
+Calibration must be fitted separately for each target database. The fitting
+run must record whether the Gumbel likelihood was left-censored (the default)
+or uncensored, the target-database and score-context fingerprints, and the
+validated proportional-above-fit-maximum power tail. Export is blocked unless
+the structural audit is complete and the refit protocol explicitly records
+`deployment_ready: true`. Existing analysis results marked `false` cannot be
+exported by merely changing a label; they require a reviewed refit and
+provenance check.
 
-1. Fit the query-conditional cluster-max Gumbel model:
+After these checks, export the audited model and power-fit result:
 
-```bash
-python scripts/rebuild_evalue_params.py --db target_db.pt --labels labels.tsv \
-  --query-panel query_panel.tsv --related-pairs adjudication.tsv \
-  --audit-ceiling 100 --output target_clustermax_params.json
-```
-
-2. Generate one observation per calibration query and target cluster:
-
-```bash
-python scripts/build_evalue_calibration_background.py --db target_db.pt \
-  --queries calibration_queries.pt --params target_clustermax_params.json \
-  --labels labels.tsv --related-pairs adjudication.tsv --audit-ceiling 100 \
-  --background-scope all --output target_background.tsv
-```
-
-3. Fit the power-law calibration:
+1. Export the database-specific asset:
 
 ```bash
-python scripts/fit_power_evalue_calibration.py \
-  --params target_clustermax_params.json --background target_background.tsv \
-  --query-panel target_background.queries.tsv --background-scaling none \
-  --raw-evalue-ceiling 100 --db target_db.pt \
+python scripts/export_target_aware_evalue_params.py --db target_db.pt \
+  --gumbel-model target_gumbel_model.json --result target_power_fit.json \
   --output target_evalue_params.json
 ```
 
-4. Attach the parameters to their matching database:
+The exporter reads the fitted censoring mode from the model and checks it
+against the refit protocol. It cannot change the fitting mode.
+
+2. Attach the parameters to their matching database:
 
 ```bash
 rfoldseek attach-calibration --db target_db.pt \
@@ -211,14 +214,12 @@ rfoldseek attach-calibration --db target_db.pt \
   --output calibrated_db.pt
 ```
 
-Every cluster leader with `E0 <= 100` must have a US-align audit result.
-Structurally related leaders are excluded and replaced by the next eligible
-member of the same cluster. Predicted databases use `--background-scope all`
-and `--background-scaling none`; experimental databases use
-`--background-scope annotated` and `--background-scaling annotated-to-full`.
-Calibration should be assessed by leave-one-Rfam-family-out validation. Since
-`a_D > 0` and `b_D > 0`, the correction is monotone and preserves the
-token-score ordering for a fixed query.
+Every cluster leader within the fitted E0 range must have a US-align audit
+result. Structurally related leaders are excluded and replaced by the next
+eligible member of the same cluster. Calibration should be assessed by nested
+leave-one-Rfam-family-out validation. Since `a_D > 0` and `b_D > 0`, the
+correction is monotone and preserves the token-score ordering for a fixed
+query.
 
 ### Python API
 
@@ -258,7 +259,7 @@ from rfoldseek import Searcher
 s = Searcher("target_db.pt")
 hits = s.search_id("target_chain_id", top_k=10)
 # [{'rank': 1, 'target': …, 'structure_score': …, 'tm_a': …,
-#   'aligned': …, 'sw_score': …, 'bits': …, 'evalue': …}, …]
+#   'aligned': …, 'sw_score': …, 'normalized_sw_score': …, 'evalue': …}, …]
 ```
 
 Anything else is searched by handing `search` the tokens from above:
@@ -273,8 +274,10 @@ hits = s.search(np.asarray(enc["tokens"], np.int64), query_entry=enc, top_k=10)
 because both use query coordinates. Plain `rerank="sw"` can leave it out.
 `search_id`
 forwards its keyword arguments to `search`, so `top_n`, `min_diag`, `rerank`
-and `tie_seed` are available from both. `bits` and `evalue` are present when
-E-value parameters are loaded, which they are by default.
+and `tie_seed` are available from both. `evalue` is present when matching
+database-specific E-value parameters are loaded. The target-aware model reports
+`normalized_sw_score` rather than a single bit score, because its null varies
+with target-chain length.
 
 `Searcher` deliberately takes no tokenizer — searching happens on tokens, not
 structures. It does accept the two files that interpret those tokens,

@@ -2,7 +2,6 @@
 from __future__ import annotations
 import hashlib
 import json
-import math
 import os
 
 import numpy as np
@@ -12,14 +11,7 @@ from .backbone import extract_backbone_coords
 from .edges import find_base_pair_and_stack_idx
 from .prefilter import KMER_K
 from .tokenizer import encode_entry, load_model
-
-
-def _validate_power_calibration(calibration):
-    if calibration is None:
-        return
-    a, b = float(calibration["a"]), float(calibration["b"])
-    if not math.isfinite(a) or not math.isfinite(b) or a <= 0 or b <= 0:
-        raise ValueError("power E-value calibration requires positive finite a and b")
+from .evalue import validate_target_aware_params
 
 
 def database_fingerprint(entries, clusters, n_codes: int = 80) -> str:
@@ -55,6 +47,13 @@ def database_fingerprint(entries, clusters, n_codes: int = 80) -> str:
         digest.update(json.dumps(row, separators=(",", ":")).encode())
         digest.update(b"\0")
     return digest.hexdigest()
+
+
+def cluster_median_lengths(entries, clusters):
+    members = {}
+    for entry, cluster in zip(entries, clusters):
+        members.setdefault(str(cluster), []).append(len(entry["tokens"]))
+    return [float(np.median(lengths)) for lengths in members.values()]
 
 
 def calibration_context_fingerprint(database_digest: str, matrix,
@@ -189,30 +188,9 @@ def build_database(checkpoint: str, data_paths: list[str], output: str,
     if evalue_params is not None:
         with open(evalue_params) as handle:
             embedded_evalue_params = json.load(handle)
-        query_model = embedded_evalue_params.get("query_parameter_model")
-        if query_model is not None and "training_domain" not in query_model:
-            raise ValueError("query-conditional E-value model needs a training_domain")
-        fitted_clusters = embedded_evalue_params.get("n_clusters")
-        if fitted_clusters is not None and int(fitted_clusters) != n_clusters:
-            raise ValueError(
-                f"E-value parameters have {int(fitted_clusters)} clusters, "
-                f"but the database has {n_clusters}"
-            )
-        fitted_target = embedded_evalue_params.get("target_database_fingerprint")
-        if fitted_target is not None and fitted_target != target_fingerprint:
-            raise ValueError("E-value parameters were fitted for a different target database")
-        power = embedded_evalue_params.get("power_calibration")
-        if power is not None:
-            _validate_power_calibration(power)
-            fitted_n = power.get("n_clusters", embedded_evalue_params.get("n_clusters"))
-            if fitted_n is None:
-                raise ValueError("power E-value calibration needs a cluster count")
-            fitted_n = int(fitted_n)
-            if fitted_n != n_clusters:
-                raise ValueError(
-                    f"power E-value calibration has {fitted_n} clusters, "
-                    f"but the database has {n_clusters}"
-                )
+        validate_target_aware_params(
+            embedded_evalue_params, n_clusters, target_fingerprint,
+            cluster_median_lengths=cluster_median_lengths(entries, labels))
     db = {"n_codes": int(n_codes), "entries": entries, "checkpoint": checkpoint,
           "n_clusters": n_clusters, "clustered": bool(clusters),
           "database_fingerprint": target_fingerprint}
@@ -266,24 +244,11 @@ def attach_evalue_calibration(database: str, clusters: str,
     n_clusters = len(set(labels))
     with open(evalue_params) as handle:
         params = json.load(handle)
-    query_model = params.get("query_parameter_model")
-    if query_model is not None and "training_domain" not in query_model:
-        raise ValueError("query-conditional E-value model needs a training_domain")
-    fitted_n = params.get("n_clusters")
-    power = params.get("power_calibration")
-    if power is not None:
-        _validate_power_calibration(power)
-        fitted_n = power.get("n_clusters", fitted_n)
-    if fitted_n is None or int(fitted_n) != n_clusters:
-        raise ValueError(
-            f"E-value parameters have {fitted_n} clusters, "
-            f"but the cluster file assigns {n_clusters}"
-        )
     target_fingerprint = database_fingerprint(
         entries, labels, int(db.get("n_codes", 80)))
-    fitted_target = params.get("target_database_fingerprint")
-    if fitted_target is not None and fitted_target != target_fingerprint:
-        raise ValueError("E-value parameters were fitted for a different target database")
+    validate_target_aware_params(
+        params, n_clusters, target_fingerprint,
+        cluster_median_lengths=cluster_median_lengths(entries, labels))
     for entry, label in zip(entries, labels):
         entry["cluster"] = label
     db["n_clusters"] = n_clusters
