@@ -190,8 +190,8 @@ calibrates it to the observed number of structurally unrelated clusters.
    observed number of structurally unrelated clusters per query. Above the
    fitted maximum it extends proportionally and is capped at the cluster count.
 
-Gumbel fitting supports two explicitly selected likelihoods: left-censored
-and uncensored. The selected mode is stored with the fitted model. Optional
+Gumbel fitting uses a left-censored likelihood by default; an uncensored
+likelihood is optional. The fitted mode is stored with the model. Optional
 auxiliary queries can contribute to Gumbel fitting with query weights supplied
 in the calibration table; they are not used for power calibration. Fitting
 uses the complete target-cluster length distribution, and no query--target
@@ -222,11 +222,11 @@ Required columns are:
 | `normalized_score` | Eligible cluster-maximum normalized SW score |
 
 Use disjoint query IDs for Gumbel fitting (`gumbel` and `auxiliary`) and power
-calibration (`power`). Select the Gumbel likelihood explicitly:
+calibration (`power`). Left-censored fitting is the default:
 
 ```bash
 python scripts/fit_target_aware_evalue_params.py --db target_db.pt \
-  --observations audited_cluster_scores.tsv --censoring left-censored \
+  --observations audited_cluster_scores.tsv \
   --gumbel-model target_gumbel_model.json --result target_power_fit.json
 ```
 
