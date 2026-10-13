@@ -23,10 +23,10 @@ ROOT = Path(__file__).resolve().parents[1]
 import sys
 sys.path.insert(0, str(ROOT))
 
-from rfoldseek.database import (calibration_context_fingerprint,
+from rfoldsearch.database import (calibration_context_fingerprint,
                                 database_fingerprint, load_database)
-from rfoldseek.evalue import TAIL_RULE
-from rfoldseek.search import GAP_EXTEND, GAP_OPEN, load_matrix
+from rfoldsearch.evalue import TAIL_RULE
+from rfoldsearch.search import GAP_EXTEND, GAP_OPEN, load_matrix
 
 
 REQUIRED = {

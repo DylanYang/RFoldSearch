@@ -1,18 +1,18 @@
 """Integration against the paper's bundled 885-chain database, if available.
 
-Set RFOLDSEEK_PAPER_DB to the analysis repo's files/models/db.pt to enable;
-the expected scores are the README example of RFoldseek-paper-code.
+Set RFOLDSEARCH_PAPER_DB to the analysis repo's files/models/db.pt to enable;
+the expected scores are the README example of RFoldSearch-paper-code.
 """
 import os
 
 import pytest
 
-from rfoldseek.search import Searcher
+from rfoldsearch.search import Searcher
 
-DB = os.environ.get("RFOLDSEEK_PAPER_DB")
+DB = os.environ.get("RFOLDSEARCH_PAPER_DB")
 
 
-@pytest.mark.skipif(not DB, reason="RFOLDSEEK_PAPER_DB not set")
+@pytest.mark.skipif(not DB, reason="RFOLDSEARCH_PAPER_DB not set")
 def test_readme_example():
     s = Searcher(DB)
     hits = s.search_id("PDB_00001FFZ_1_A", top_k=3, rerank="sw")

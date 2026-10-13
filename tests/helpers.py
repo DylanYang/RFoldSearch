@@ -1,9 +1,9 @@
 """Shared test helpers."""
 import numpy as np
 
-from rfoldseek.database import (calibration_context_fingerprint,
+from rfoldsearch.database import (calibration_context_fingerprint,
                                 cluster_median_lengths, database_fingerprint)
-from rfoldseek.search import GAP_EXTEND, GAP_OPEN, load_matrix
+from rfoldsearch.search import GAP_EXTEND, GAP_OPEN, load_matrix
 
 
 def add_coords(entries, seed=0):

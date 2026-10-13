@@ -18,13 +18,13 @@ ENV USALIGN=/usr/local/bin/USalign
 COPY app ./app
 COPY static ./static
 
-ENV RFOLDSEEK_DBS="" \
-    RFOLDSEEK_MAX_CONCURRENT=2 \
-    RFOLDSEEK_MAX_UPLOAD_MB=32 \
-    RFOLDSEEK_TOP_N_CAP=2000
+ENV RFOLDSEARCH_DBS="" \
+    RFOLDSEARCH_MAX_CONCURRENT=2 \
+    RFOLDSEARCH_MAX_UPLOAD_MB=32 \
+    RFOLDSEARCH_TOP_N_CAP=2000
 EXPOSE 8000
 
 # One worker process: each would hold its own copy of the databases.
-# Concurrency comes from RFOLDSEEK_MAX_CONCURRENT threads inside it.
+# Concurrency comes from RFOLDSEARCH_MAX_CONCURRENT threads inside it.
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", \
      "--workers", "1", "--timeout-keep-alive", "75"]

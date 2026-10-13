@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>RFoldseek Search</title>
+<title>RFoldSearch</title>
 <link rel="icon" href="/static/logo.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -42,7 +42,7 @@
   nav.links a { color: #f1ebe5 }
   nav.links a:hover { color: #fff; text-decoration: none; border-bottom: 2px solid var(--accent) }
 
-  main { max-width: 1320px; margin: 0 auto; padding: 28px 24px 80px }
+  main { max-width: 1320px; margin: 0 auto; padding: 28px 24px 20px }
   .card { background: var(--card); border: 1px solid var(--line);
           border-radius: var(--radius); padding: 22px 24px }
   h1 { font-size: 26px; letter-spacing: -.015em; margin: 0 0 4px }
@@ -235,17 +235,189 @@
   .aln-note { color: var(--muted); font-size: 11.5px; margin-top: 6px }
   .foot { color: var(--muted); font-size: 12px; margin-top: 12px }
   footer { max-width: 1320px; margin: 0 auto; padding: 0 24px 40px; color: var(--muted); font-size: 12.5px }
+
+  /* ---- 1006 review: layout of the search form, larger type, calmer results ---- */
+  body { font-size: 15px }
+  .lead { font-size: 16px }
+  .search-grid { align-items: stretch }
+  .qcol { display: flex; flex-direction: column }
+  .qcol .drop { flex: 1; display: flex }
+  .qcol .drop textarea { height: auto; min-height: 160px; flex: 1 }
+  .row.actions { margin-top: 12px }
+  .row .spacer { flex: 1 }
+  .ocol { display: flex; flex-direction: column; gap: 10px }
+  .fold { border: 1px solid var(--line); border-radius: 10px; background: var(--card) }
+  .fold > summary { list-style: none; cursor: pointer; padding: 14px 16px; display: flex; align-items: baseline; gap: 14px }
+  .fold > summary::-webkit-details-marker { display: none }
+  .fold > summary .k { font-size: 12px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase;
+                       color: var(--muted); min-width: 86px }
+  .fold > summary .sum { font-weight: 600; color: var(--ink) }
+  .fold > summary::after { content: "▾"; margin-left: auto; color: var(--muted) }
+  .fold[open] > summary::after { content: "▴" }
+  .fold[open] > summary { border-bottom: 1px solid var(--line-2) }
+  .fold-body { padding: 14px 16px 16px }
+  .db .name { font-size: 16.5px }
+  .db .meta { font-size: 14px }
+  .hint { font-size: 13.5px }
+  .modes .m-name { font-size: 16px }
+  .modes .m-sub { font-size: 14px }
+
+  .best { background: #fffaf6; border-color: #f6e8dc; padding: 28px 32px; gap: 32px; margin-bottom: 20px }
+  .best .tag { font-size: 15px; letter-spacing: .08em }
+  .best .main { font-size: 26px }
+  .best .sub { font-size: 17px }
+  .best .kv { gap: 26px }
+  .best .kv div { font-size: 13px; letter-spacing: .05em }
+  .best .kv b { font-size: 28px; margin-top: 3px }
+
+  table.hits { font-size: 15.5px }
+  table.hits th { font-size: 12px; padding: 12px 9px; white-space: normal; line-height: 1.25; vertical-align: bottom }
+  table.hits td { padding: 12px 10px }
+  table.hits th.num, table.hits td.num { padding-left: 10px; padding-right: 12px }
+  table.hits th:first-child, table.hits td.rank { padding-right: 2px; width: 28px }
+  table.hits td:nth-child(3), table.hits th:nth-child(3) { padding-right: 18px }
+  table.hits th.sortable { cursor: pointer; user-select: none }
+  table.hits th.sortable:hover { color: var(--ink) }
+  table.hits th .arrow { margin-left: 4px; color: var(--accent-ink) }
+  td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap }
+  .tgt { font-size: 14.5px }
+  .chain { color: #a09a93; font-size: 12.5px; margin-left: 8px; white-space: nowrap }
+  td:nth-child(2) { white-space: nowrap }
+  .desc { max-width: 240px; min-width: 170px }
+  .desc .t { white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden }
+  .desc .o { font-size: 13.5px }
+  .tags { margin-top: 4px }
+  .pill { display: inline-block; background: var(--line-2); color: var(--ink-2); border-radius: 6px;
+          padding: 1px 8px; font-size: 12px; margin-right: 6px }
+  .covbar { display: inline-flex; align-items: center; gap: 8px }
+  .covbar .cbar { display: inline-block; width: 64px; height: 6px; border-radius: 3px; background: #efebe6; overflow: hidden }
+  .covbar .cbar i { display: block; height: 100%; background: #d9703a; border-radius: 3px }
+  .covbar .pc { min-width: 3.1em; text-align: right }
+  .summary { font-size: 15px }
+  .stat .k { font-size: 12px }
+  .stat .v { font-size: 20px }
+  .stats { grid-template-columns: repeat(2, 1fr) }
+  .stat .s { font-size: 12.5px; color: var(--muted); margin-top: 2px }
+  .nt { cursor: pointer; border-radius: 2px }
+  .nt:hover { background: #ffe3d2 }
+  .nt.sel { background: #e5322d; color: #fff }
+  .aln { font-size: 13.5px }
+  .picked { font-size: 14px }
+  .viewer-legend { font-size: 13px }
+  .tab-meta:empty, .foot:empty { display: none }
+  .dblogo { height: 30px; width: auto; max-width: 92px; object-fit: contain; flex: none; align-self: center }
+  .tablogo { height: 18px; width: auto; max-width: 64px; vertical-align: -4px; margin-right: 7px }
+
+  /* ---- 1008 layout (Ruyi's layout.jpg) ---- */
+  :root { --bg: #f8f5f1 }
+  header.top { background: #fff; border-bottom: 1px solid var(--line) }
+  .bar { padding: 9.8px 25.9px }
+  .brand { color: var(--ink); gap: 9.8px }
+  .brand img { width: 37.3px; height: 37.3px }
+  .brand b { color: var(--accent); font-size: 23.5px }
+  .brand span { color: var(--ink-2); font-size: 15.4px; border-left: 1.5px solid #d6cec6; padding-left: 14.5px; margin-left: 4.9px; line-height: 1.2 }
+  nav.links { gap: 34px; font-size: 14.2px; font-weight: 400 }
+  nav.links a { color: var(--ink-2); padding: 6.4px 2px; border-bottom: 3px solid transparent }
+  nav.links a:hover { color: var(--ink); border-bottom: 3px solid #f0c9b3 }
+  nav.links a.on { color: var(--ink); font-weight: 600; border-bottom-color: var(--accent) }
+  .ico { width: 17.8px; height: 17.8px; stroke: currentColor; fill: none; stroke-width: 1.7;
+         stroke-linecap: round; stroke-linejoin: round; flex: none }
+  main, .bar { max-width: 1165.8px }
+  .db .meta { font-size: 12.1px }
+  .s-grid { display: grid; grid-template-columns: minmax(0, 1.62fr) minmax(0, 1fr); gap: 16.2px; align-items: start; margin-top: 6.4px }
+  @media (max-width: 900px) { .s-grid { grid-template-columns: 1fr } }
+  .s-head h1 { font-size: 34px; letter-spacing: -.02em; margin: 17.8px 0 6.4px; line-height: 1.15 }
+  .s-head .lead { font-size: 15px; color: var(--ink-2); margin: 0 0 21.1px }
+  .card.qcard { padding: 0 }
+  .qcard-h { display: flex; align-items: center; gap: 11.3px; padding: 13px 19.4px; border-bottom: 1px solid var(--line) }
+  .qcard-h .t { font-size: 16.2px; font-weight: 600 }
+  .qcard-h .ico.big { width: 24.3px; height: 24.3px; color: var(--accent) }
+  .qcard-h .help { margin-left: auto; color: var(--ink-2); font-size: 13px; display: inline-flex; gap: 6.4px; align-items: center }
+  .qcard-h .help .ico { width: 19.4px; height: 19.4px; color: var(--muted) }
+  .qcard-b { padding: 14.5px 19.4px 19.4px }
+  .drop { border: 1px solid var(--line); border-radius: 8.1px; background: #fff }
+  .qcol .drop textarea, .drop textarea { min-height: 307.6px; padding: 24.3px 24.3px; font-size: 10.5px }
+  .drop textarea::placeholder { font-size: 14.5px; line-height: 1.65; color: #8f8780 }
+  .row.actions { margin-top: 21.1px; gap: 8.1px; flex-wrap: nowrap }
+  .row.actions .btn { display: inline-flex; align-items: center; gap: 9.8px; padding: 8.9px 13px; font-size: 13px;
+                      font-weight: 600; border-radius: 6.4px; border-color: #e3ddd7 }
+  .row.actions .btn .ico { width: 19.4px; height: 19.4px; color: var(--accent) }
+  .row.actions .btn .chev-s { width: 16.2px; height: 16.2px; color: var(--ink); margin-left: 3.2px }
+  .row.actions #max-upload { font-size: 12.5px; margin-left: 3.2px; white-space: nowrap }
+  @media (max-width: 1100px) { .row.actions { flex-wrap: wrap } }
+  .btn.primary { display: inline-flex; align-items: center; gap: 9.8px; padding: 9.8px 24.3px !important; font-size: 14.5px !important; white-space: nowrap;
+                 font-weight: 500 !important; background: #d4613f; border-color: #d4613f }
+  .btn.primary .ico { width: 22.6px !important; height: 22.6px !important; color: #fff !important; stroke-width: 2 }
+  .btn.primary:disabled { opacity: .5 }
+  .ocol { gap: 13px }
+  .fold { border-radius: 9.8px; background: #fff; border-color: var(--line) }
+  .fold > summary { padding: 14.5px 19.4px; align-items: center; gap: 13px }
+  .fold > summary::after, .fold[open] > summary::after { content: none }
+  .fold > summary > .ico:first-child { width: 24.3px; height: 24.3px; color: var(--accent) }
+  .fold > summary .k { font-size: 17px; font-weight: 600; letter-spacing: 0; text-transform: none; color: var(--ink); min-width: 0 }
+  .fold > summary .sum { font-weight: 400; color: var(--muted); font-size: 11.8px; margin-left: auto; text-align: right }
+  .fold[open] > summary .sum { display: none }
+  .fold > summary .chev { width: 19.4px; height: 19.4px; color: var(--ink); stroke-width: 2; margin-left: auto; transition: transform .15s }
+  .fold > summary .sum + .chev { margin-left: 6.4px }
+  .fold[open] > summary .chev { transform: rotate(180deg); margin-left: auto }
+  .fold[open] > summary { border-bottom: 1px solid var(--line) }
+  .fold-body { padding: 11.3px 13px 13px }
+  .dbs { gap: 0 }
+  .db { border: 0; border-radius: 6.4px; padding: 11.3px 13px; gap: 14.5px; align-items: center }
+  .db + .db { border-top: 1px solid var(--line-2); border-radius: 0 6.4px 6.4px 0 }
+  .db:hover { background: #fcf7f3 }
+  .db.on { background: #fbeee6; border-color: transparent }
+  .db input, .modes input { appearance: none; -webkit-appearance: none; display: block; flex: none; margin: 0;
+                            width: 21.1px; height: 21.1px; border: 1.6px solid #8f8780; background: #fff; cursor: pointer }
+  .db input { border-radius: 4px }
+  .db input:checked { background: var(--accent) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m5 12.5 4.5 4.5L19 7.5'/%3E%3C/svg%3E") center / 14.5px no-repeat;
+                      border-color: var(--accent) }
+  .db .name { font-size: 16.2px; font-weight: 600; line-height: 1.3 }
+  .db .meta { font-size: 12.5px; color: var(--ink-2) }
+  .db .dblogo { height: 17.8px; max-width: 56.7px; vertical-align: -3px; margin-left: 8.1px }
+  .seg.modes { display: flex; flex-direction: column; border: 0; padding: 0; gap: 0 }
+  .seg.modes label { display: grid; grid-template-columns: 21.1px 1fr; column-gap: 14.5px; text-align: left;
+                     padding: 11.3px 13px; border-radius: 6.4px; color: var(--ink); font-weight: 400; align-items: center }
+  .seg.modes label + label { margin-top: 4.9px }
+  .seg.modes label.on { background: #fbeee6; color: var(--ink); font-weight: 400 }
+  .seg.modes input { grid-row: span 2; border-radius: 50% }
+  .seg.modes input:checked { border-color: var(--accent); background: radial-gradient(circle, var(--accent) 0 4.9px, #fff 5.7px) }
+  .seg.modes .m-name { font-size: 16.2px; font-weight: 600 }
+  .seg.modes .m-sub { font-size: 12.5px; color: var(--ink-2) }
+  footer { text-align: center; border-top: 1px solid var(--line); padding: 19.4px 19.4px 25.9px; margin-top: 29.2px;
+           color: var(--ink-2); font-size: 11.8px; max-width: 1029.8px }
+  @media (max-width: 700px) {
+    .bar { padding: 10px 16px; gap: 12px; flex-wrap: wrap }
+    .brand img { width: 36px; height: 36px }
+    .brand b { font-size: 23px }
+    .brand span { display: none }
+    nav.links { gap: 18px; font-size: 15.5px; margin-left: auto }
+    main { padding: 16px 16px 12px }
+    .s-head h1 { font-size: 30px; margin-top: 8px }
+    .s-head .lead { font-size: 16px; margin-bottom: 16px }
+    .qcard-h { padding: 14px 16px; flex-wrap: wrap }
+    .qcard-h .help { font-size: 14.5px }
+    .qcard-b { padding: 14px 16px 16px }
+    .qcol .drop textarea, .drop textarea { min-height: 220px; padding: 16px }
+    .drop textarea::placeholder { font-size: 15px }
+    .row.actions { margin-top: 14px }
+    .fold > summary { padding: 14px 16px }
+    .fold-body { padding: 10px 8px 12px }
+    .db, .seg.modes label { padding: 12px 10px; gap: 12px; column-gap: 12px }
+    .db .name, .seg.modes .m-name { font-size: 17.5px }
+    footer { padding: 18px 16px 24px }
+  }
 </style>
 </head>
 <body>
 <header class="top">
   <div class="bar">
-    <a class="brand" href="/"><img src="/static/logo.png" alt=""><b>RFoldseek</b><span>RNA structure search</span></a>
+    <a class="brand" href="/"><img src="/static/logo.png" alt=""><b>RFoldSearch</b><span>RNA structure search</span></a>
     <nav class="links">
-      <a href="/">Search</a>
-      <a href="/tutorial">Tutorial</a>
+      <a href="/" id="nav-search">Search</a>
+      <a href="/tutorial" id="nav-tutorial">Tutorial</a>
       <a href="/api/docs" target="_blank">API</a>
-      <a href="https://github.com/DylanYang/RFoldseek" target="_blank">GitHub</a>
+      <a href="https://github.com/DylanYang/RFoldSearch" target="_blank">GitHub</a>
     </nav>
   </div>
 </header>
@@ -255,95 +427,104 @@
 
   <!-- search view -->
   <section id="view-search">
-    <div class="card">
-      <h1>Search RNA structures</h1>
-      <p class="lead">Upload or paste one RNA chain (PDB or mmCIF). It is encoded in the learned 3Dr
-        structural alphabet and searched against the selected databases in seconds.</p>
-      <form id="form" class="search-grid" autocomplete="off">
-        <div>
-          <div class="label">Query structure</div>
-          <div class="drop" id="drop">
-            <textarea id="text" spellcheck="false"
-              placeholder="Paste a PDB or mmCIF structure here, or drop a file onto this box.&#10;&#10;The first RNA chain is used; nucleotides need C3′, C4′ and O4′ atoms."></textarea>
-            <div class="file-chip" id="chip" hidden><span id="chip-name"></span><button type="button" id="chip-x" title="Remove">×</button></div>
-          </div>
-          <div class="row">
-            <label class="btn">Upload file<input type="file" id="file" accept=".pdb,.cif,.mmcif,.ent" hidden></label>
-            <div class="menu">
-              <button type="button" class="btn" id="ex-btn">Load example ▾</button>
-              <div class="menu-list" id="ex-list" hidden></div>
+    <form id="form" class="s-grid" autocomplete="off">
+      <div class="qcol">
+        <div class="s-head">
+          <h1>Search RNA structures</h1>
+          <p class="lead">Upload or paste one RNA chain (PDB or mmCIF) to search the selected databases.</p>
+        </div>
+        <div class="card qcard">
+          <div class="qcard-h"><svg class="ico big" viewBox="0 0 24 24" aria-hidden="true"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/></svg><span class="t">Query structure</span>
+            <a class="help" href="/tutorial#input"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M9.6 9.4a2.5 2.5 0 1 1 3.4 2.4c-.6.3-1 .8-1 1.5v.4"/><circle cx="12" cy="17" r=".5"/></svg>Input format help</a></div>
+          <div class="qcard-b">
+            <div class="drop" id="drop">
+              <textarea id="text" spellcheck="false"
+                placeholder="Paste a PDB or mmCIF structure here, or drop a file onto this box.&#10;&#10;The first RNA chain is used; nucleotides need C3′, C4′ and O4′ atoms."></textarea>
+              <div class="file-chip" id="chip" hidden><span id="chip-name"></span><button type="button" id="chip-x" title="Remove">×</button></div>
             </div>
-            <span class="hint" id="max-upload"></span>
+            <div class="row actions">
+              <label class="btn"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15V4M7.5 8.5 12 4l4.5 4.5"/><path d="M5 14v4a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-4"/></svg>Upload file<input type="file" id="file" accept=".pdb,.cif,.mmcif,.ent" hidden></label>
+              <div class="menu">
+                <button type="button" class="btn" id="ex-btn"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/></svg>Load example<svg class="ico chev-s" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></button>
+                <div class="menu-list" id="ex-list" hidden></div>
+              </div>
+              <span class="hint" id="max-upload"></span>
+              <span class="spacer"></span>
+              <span class="hint" id="go-hint"></span>
+              <button class="btn primary" id="go" type="submit" disabled><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.6-3.6"/></svg>Search</button>
+            </div>
           </div>
         </div>
-        <div>
-          <div class="label">Databases</div>
-          <div class="dbs" id="dbs"><div class="hint"><span class="spinner"></span>Connecting to the server…</div></div>
-          <div class="label" style="margin-top:18px">Mode</div>
-          <div class="seg modes" id="mode">
-            <label class="on"><input type="radio" name="rerank" value="tm_a" checked>
-              <span class="m-name">Structure-score search</span>
-              <span class="m-sub">RFoldseek · R<sub>str</sub> = S<sub>SW</sub> × TM<sub>a</sub></span>
-              <span class="m-speed">Default, structure-aware candidate ranking</span></label>
-            <label id="mode-tm"><input type="radio" name="rerank" value="tm">
-              <span class="m-name">Accurate reranking</span>
-              <span class="m-sub">RFoldseek-TM · coordinate refinement</span>
-              <span class="m-speed">Slower, improved structural ranking</span></label>
+      </div>
+      <div class="ocol">
+        <details class="fold" open>
+          <summary><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><ellipse cx="12" cy="5.5" rx="7" ry="2.5"/><path d="M5 5.5v13c0 1.4 3.1 2.5 7 2.5s7-1.1 7-2.5v-13"/><path d="M5 12c0 1.4 3.1 2.5 7 2.5s7-1.1 7-2.5"/></svg><span class="k">Databases</span><span class="sum" id="sum-db">…</span><svg class="ico chev" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></summary>
+          <div class="fold-body"><div class="dbs" id="dbs"><div class="hint"><span class="spinner"></span>Connecting to the server…</div></div></div>
+        </details>
+        <details class="fold" open>
+          <summary><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M12 3.5l1.6 2.1 2.6-.6.6 2.6 2.1 1.6-1.2 2.4 1.2 2.4-2.1 1.6-.6 2.6-2.6-.6L12 20.5l-1.6-2.1-2.6.6-.6-2.6-2.1-1.6L6.3 12 5.1 9.6l2.1-1.6.6-2.6 2.6.6z"/></svg><span class="k">Mode</span><span class="sum" id="sum-mode">RFoldSearch</span><svg class="ico chev" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></summary>
+          <div class="fold-body">
+            <div class="seg modes" id="mode">
+                <label class="on"><input type="radio" name="rerank" value="tm_a" checked>
+                  <span class="m-name">RFoldSearch</span>
+                  <span class="m-sub">Recommended for most searches</span></label>
+                <label id="mode-tm"><input type="radio" name="rerank" value="tm">
+                  <span class="m-name">RFoldSearch-TM</span>
+                  <span class="m-sub">Better structural ranking</span></label>
+              </div>
           </div>
-          <details class="adv">
-            <summary>Advanced options</summary>
+        </details>
+        <details class="fold">
+          <summary><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></svg><span class="k">Settings</span><span class="sum" id="sum-set">50 hits shown</span><svg class="ico chev" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></summary>
+          <div class="fold-body">
             <div class="adv-grid">
-              <label><span class="hint">Hits shown</span><span class="num-step"><input type="number" id="top_k" value="50" min="1" max="1000"><button type="button" data-for="top_k" data-step="50" title="Add 50">+50</button></span></label>
-              <label><span class="hint">Candidate depth</span><span class="num-step"><input type="number" id="top_n" value="200" min="1" max="2000"><button type="button" data-for="top_n" data-step="100" title="Add 100">+100</button></span></label>
-              <label><span class="hint">Min. diagonal k-mers</span><input type="number" id="min_diag" value="2" min="1" max="8"></label>
-            </div>
-          </details>
-          <div class="submit-row">
-            <button class="btn primary" id="go" type="submit" disabled>Search</button>
-            <span class="hint" id="go-hint"></span>
+                <label><span class="hint">Hits shown</span><span class="num-step"><input type="number" id="top_k" value="50" min="1" max="1000"><button type="button" data-for="top_k" data-step="50" title="Add 50">+50</button></span></label>
+                <label><span class="hint">Candidate depth</span><span class="num-step"><input type="number" id="top_n" value="200" min="1" max="2000"><button type="button" data-for="top_n" data-step="100" title="Add 100">+100</button></span></label>
+                <label><span class="hint">Min. diagonal k-mers</span><input type="number" id="min_diag" value="2" min="1" max="8"></label>
+              </div>
           </div>
-        </div>
-      </form>
-    </div>
-    <div class="about">
-      <div class="card"><h3>3Dr alphabet</h3><p>Each nucleotide's local geometry is quantised into one of 80 learned states, turning an RNA chain into a token string.</p></div>
-      <div class="card"><h3>Structure score</h3><p>Affine-gap Smith–Waterman defines the token alignment; aligned C4′ atoms then yield TM<sub>a</sub>, and candidates rank by S<sub>SW</sub> × TM<sub>a</sub>.</p></div>
-      <div class="card"><h3>RFoldseek-TM</h3><p>Optionally reranks the same candidates by US-align TM-score for higher sensitivity at a higher cost.</p></div>
-    </div>
+        </details>
+      </div>
+    </form>
   </section>
 
   <!-- tutorial view -->
   <section id="view-tutorial" hidden>
     <div class="card doc">
       <h1>How to read the results</h1>
-      <p class="lead">RFoldseek encodes every nucleotide as one of 80 learned 3Dr structural states, aligns the resulting token strings, and reports the closest structures in each database.</p>
+      <p class="lead">RFoldSearch encodes every nucleotide as one of 80 learned 3Dr structural states, aligns the resulting token strings, and reports the closest structures in each database.</p>
+
+      <h2 id="input">Input</h2>
+      <p>Paste or upload one RNA chain as PDB or mmCIF (up to the size shown under the box). The first RNA chain in the file is used. Every nucleotide needs its C3′, C4′ and O4′ atoms; nucleotides without them are skipped, and chains shorter than 20 nucleotides cannot be searched.</p>
 
       <h2>1. Choose a mode</h2>
-      <p><b>Structure-score search</b> (RFoldseek) prefilters with a k-mer index, aligns structural tokens with affine-gap Smith–Waterman, superposes the aligned C4′ atoms, and ranks by R<sub>str</sub> = S<sub>SW</sub> × TM<sub>a</sub>. It is the default mode.
-         <b>Accurate reranking</b> (RFoldseek-TM) re-scores the same candidates with US-align on the coordinates; it is slower and can improve the structural ranking.</p>
+      <p><b>RFoldSearch</b> (recommended for most searches) prefilters with a k-mer index, aligns structural tokens with affine-gap Smith–Waterman, superposes the aligned C4′ atoms, and ranks hits by the <b>structure score</b> S<sub>SW</sub> × TM-score.
+         <b>RFoldSearch-TM</b> re-scores the same candidates with US-align on the coordinates, which improves the structural ranking at a higher cost.</p>
 
       <h2>2. The hit table</h2>
+      <p>Click a column heading to sort by it, and a row to open the hit.</p>
       <table>
         <tr><th>Column</th><th>Meaning</th></tr>
-        <tr><td>Target</td><td>The matched chain: PDB id and chain, or a predicted-model id.</td></tr>
-        <tr><td>Seq. id.</td><td>Nucleotide identity over the aligned positions. Hidden for databases without sequences.</td></tr>
-        <tr><td>Aligned nt / 3Dr id.</td><td>Number of aligned nucleotides and the fraction of aligned pairs with the same structural token. Shown for databases without sequences.</td></tr>
-        <tr><td>RMSD</td><td>Root-mean-square deviation of the superposed aligned nucleotides, in Å.</td></tr>
-        <tr><td>R<sub>str</sub>, TM<sub>a</sub></td><td>The default ranking score S<sub>SW</sub> × TM<sub>a</sub>, and the query/target length-normalised TM-score of the fixed token alignment.</td></tr>
-        <tr><td>E-value, Bits</td><td>Expected number of chance Smith–Waterman hits at least this good, and the normalised token-alignment score. These are derived from S<sub>SW</sub>, not R<sub>str</sub>. Databases marked <i>uncalibrated</i> have no empirical E-value calibration yet.</td></tr>
-        <tr><td>Symmetric TM-score</td><td>Accurate reranking only. The mean of the query-normalised and target-normalised US-align TM-scores over the whole chains.</td></tr>
-        <tr><td>Query coverage</td><td>The part of your query that is aligned; darker means higher identity.</td></tr>
+        <tr><td>Target</td><td>The matched chain: the PDB entry with its chain, or the RNAcentral id of a predicted model (it links to the entry page).</td></tr>
+        <tr><td>RNA / organism</td><td>The name of the RNA and its source organism. Predicted models also show their Rfam family when one is assigned.</td></tr>
+        <tr><td>pLDDT</td><td>Predicted databases only: the mean pLDDT of the model, a measure of its quality (higher is better, 100 is the maximum).</td></tr>
+        <tr><td>Seq identity</td><td>Nucleotide identity over the aligned positions. Databases without sequences show <i>3Dr identity</i> instead: the fraction of aligned pairs with the same structural token.</td></tr>
+        <tr><td>RMSD (Å)</td><td>Root-mean-square deviation of the superposed aligned nucleotides.</td></tr>
+        <tr><td>Structure score</td><td>The ranking score, S<sub>SW</sub> × TM-score. A hit has to match locally and in the arrangement of its aligned segments.</td></tr>
+        <tr><td>TM-score</td><td>The TM-score of the token alignment after superposition, normalised by the query and by the target length and averaged. In RFoldSearch-TM it is the US-align TM-score of the two whole chains.</td></tr>
+        <tr><td>E-value</td><td>The expected number of unrelated hits at least this good by chance. It is calibrated for each query (its length and token composition) against the database it is searched in, and is computed from S<sub>SW</sub>, so it does not always increase down the list. Databases that have not been calibrated yet report no E-value.</td></tr>
+        <tr><td>Query cov, Target cov</td><td>The share of the query and of the target that the alignment spans.</td></tr>
       </table>
 
       <h2>3. Inside a hit</h2>
-      <p>Click a row to open it. The summary line gives the alignment length, the query and target ranges, and the 3Dr identity. <b>Aligned-region TM-score</b> is the TM-score computed over the aligned nucleotides only, so it can differ from the symmetric whole-chain TM-score in the table.</p>
+      <p>Click a row to open it. Four numbers describe the alignment: the <b>Aligned-region TM-score</b>, the RMSD, the query and target coverage (with the aligned ranges underneath) and the sequence identity (with the 3Dr identity underneath; for databases without sequences only the 3Dr identity). The <b>Aligned-region TM-score</b> is the TM-score computed over the aligned nucleotides only, so it can differ from the TM-score in the table.</p>
       <h3>The 3Dr line</h3>
       <p>Between the query and target sequences, <code>|</code> marks the same structural token, <code>+</code> a positive Structure-BLOSUM substitution and <code>.</code> any other aligned pair. Positions count nucleotides with a complete C3′, C4′, O4′ backbone. Databases without sequences show the target residues as <code>·</code>.</p>
       <h3>The 3D view</h3>
-      <p>The query is orange and the hit is blue after superposition on the aligned nucleotides; pale colours are unaligned. Rotate and zoom with the mouse, and click a nucleotide to see which nucleotide of the other structure it is aligned to.</p>
+      <p>The query is orange and the hit is blue after superposition on the aligned nucleotides; pale colours are unaligned. Rotate and zoom with the mouse, and click a nucleotide, in the 3D view or in the alignment, to see which nucleotide of the other structure it is aligned to. Clicking in the alignment also centres the 3D view on it.</p>
 
       <h2>4. Databases</h2>
-      <p>PDB-RNA (all RCSB RNA chains) and RNAsolo (a non-redundant representative set) hold experimental structures. NuFold holds predicted structures, which carry no sequence, so 3Dr identity is the main measure of agreement there.</p>
+      <p>PDB-RNA (all RCSB RNA chains) and RNAsolo 2.0 (a non-redundant representative set) hold experimental structures. NuFold holds predicted structures, which carry no sequence, so 3Dr identity is the main measure of agreement there.</p>
     </div>
   </section>
 
@@ -371,7 +552,7 @@
     </div>
   </section>
 </main>
-<footer>RFoldseek · learned 3Dr structural alphabet for fast RNA tertiary-structure search</footer>
+<footer>RFoldSearch · learned 3Dr structural alphabet for fast RNA tertiary-structure search</footer>
 
 <script src="https://cdn.jsdelivr.net/npm/3dmol@2.4.2/build/3Dmol-min.js"></script>
 <script src="/static/app.js"></script>

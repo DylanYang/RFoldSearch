@@ -5,7 +5,7 @@ package computes it in linear memory without a traceback. The result page
 needs the alignment itself -- which query and target positions pair up --
 so here the same recurrence is run with full traceback matrices, for the
 handful of hits a user is shown. Scoring is identical to
-``rfoldseek.smith_waterman`` (same matrix, gap open -2.0, gap extend -0.5,
+``rfoldsearch.smith_waterman`` (same matrix, gap open -2.0, gap extend -0.5,
 open cost charged on the first gapped position), and ``score`` is returned
 so a caller can check it against the hit's ``sw_score``.
 

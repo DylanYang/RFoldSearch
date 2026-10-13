@@ -4,7 +4,7 @@ Three reranking backends share the token prefilter. ``tm_a`` (default) aligns
 candidates by affine-gap token Smith-Waterman, superposes the aligned C4'
 atoms and ranks by R_str = S_SW * TM_a. ``sw`` keeps the token-only
 Smith-Waterman ranking. Both report the E-value of S_SW. ``tm``
-(RFoldseek-TM) hands the candidate pool to US-align and ranks by the mean of
+(RFoldSearch-TM) hands the candidate pool to US-align and ranks by the mean of
 its two length-normalised TM-scores; that backend reports no E-value.
 """
 import json
@@ -203,7 +203,7 @@ class Searcher:
         return flat, qxyz
 
     def _rerank_tm(self, query_entry, cand, top_k, usalign, tie_seed=None):
-        """Rank the candidate pool by US-align TM-score (RFoldseek-TM)."""
+        """Rank the candidate pool by US-align TM-score (RFoldSearch-TM)."""
         binary = _usalign.find_usalign(usalign)
         pool = [(self.ids[int(t)], self.ents[int(t)]["coords"],
                  self.ents[int(t)]["mask"]) for t in cand]

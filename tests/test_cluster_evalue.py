@@ -6,11 +6,11 @@ import numpy as np
 import pytest
 import torch
 
-from rfoldseek import evalue as EV
-from rfoldseek.database import (assign_clusters, attach_evalue_calibration,
+from rfoldsearch import evalue as EV
+from rfoldsearch.database import (assign_clusters, attach_evalue_calibration,
                                 calibration_context_fingerprint,
                                 database_fingerprint, read_clusters)
-from rfoldseek.search import Searcher, asset
+from rfoldsearch.search import Searcher, asset
 from helpers import add_coords, synthetic_evalue_params
 
 
@@ -139,7 +139,7 @@ def test_attach_and_search_use_only_new_parameters(tmp_path):
 
 
 def test_cli_header_shows_normalized_score_and_cluster_count(tmp_path, capsys):
-    from rfoldseek import cli
+    from rfoldsearch import cli
 
     entries = add_coords([
         {"id": "chain0", "tokens": [1, 2, 3, 4] * 10, "cluster": "c0"},

@@ -17,10 +17,10 @@ import numpy as np
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from rfoldseek.database import (calibration_context_fingerprint,
+from rfoldsearch.database import (calibration_context_fingerprint,
                                 database_fingerprint, load_database)
-from rfoldseek.evalue import apply_power_calibration, validate_target_aware_params
-from rfoldseek.search import GAP_EXTEND, GAP_OPEN, load_matrix
+from rfoldsearch.evalue import apply_power_calibration, validate_target_aware_params
+from rfoldsearch.search import GAP_EXTEND, GAP_OPEN, load_matrix
 
 
 def main(argv=None):

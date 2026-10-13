@@ -7,10 +7,10 @@ from pathlib import Path
 
 import torch
 import pytest
-from rfoldseek.database import (calibration_context_fingerprint,
+from rfoldsearch.database import (calibration_context_fingerprint,
                                 database_fingerprint, load_database,
                                 attach_evalue_calibration)
-from rfoldseek.search import GAP_EXTEND, GAP_OPEN, Searcher, load_matrix
+from rfoldsearch.search import GAP_EXTEND, GAP_OPEN, Searcher, load_matrix
 
 
 def _write_inputs(tmp_path, validation_status="background-audit-complete",

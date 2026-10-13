@@ -1,27 +1,4 @@
-"""Structure-aware ranking: TM_a of a token Smith-Waterman alignment.
-
-The token Smith-Waterman score S_SW rewards local geometric similarity, which
-each 3Dr token encodes, but cannot see how the aligned segments are arranged
-in space. TM_a adds that: the C4' atoms of the aligned nucleotide pairs are
-superposed without changing the alignment, and
-
-    T_X = (1 / L_X) * sum_i 1 / (1 + (r_i / d0(L_X))^2),   X in {Q, T},
-    TM_a = (T_Q + T_T) / 2,
-
-with r_i the C4'-C4' distance of aligned pair i and L_Q, L_T the query and
-target lengths, so partial coverage is penalised. The superposition comes from
-iterative Kabsch refinement started from all aligned pairs and from the
-highest-scoring gapless segment; each iteration refits on the pairs with
-r_i < min(d0(L_Q), d0(L_T)) + 1 A, for up to five iterations or until that set
-is unchanged, and the best TM_a over both starts and all iterations is kept.
-Candidates are ranked by the structure score R_str = S_SW * TM_a (cf.
-Foldseek's structure bit score), ties ordered as in the prefilter; E-values
-stay those of S_SW alone.
-
-The traceback Smith-Waterman below uses exactly the recurrence and tie rules
-of ``smith_waterman._smith_waterman_numba``, so its score equals S_SW; one
-dynamic-programming pass gives both the score and the alignment.
-"""
+"""Structure-aware ranking: TM_a of a token Smith-Waterman alignment."""
 import numpy as np
 from numba import njit, prange
 
