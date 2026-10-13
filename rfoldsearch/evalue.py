@@ -13,13 +13,6 @@ TAIL_RULE = "proportional above fit_max; capped at cluster count"
 # not extrapolated where short queries' background E-values lie.
 TAIL_RULE_POWER = "power law throughout; capped at cluster count"
 TAIL_RULES = (TAIL_RULE, TAIL_RULE_POWER)
-# Scores the Gumbel null can model. Length-normalised scores let a long
-# low-complexity query score as highly against a short target as against
-# itself; raw scores, with the lengths left to the features, do not.
-SCORE_NORMALIZATIONS = {
-    "sw/min(query_length,target_length)": "SW/min(Lq,Lt), then eligible cluster max",
-    "sw": "SW, then eligible cluster max",
-}
 FEATURE_ORDER = [
     "intercept", "z_log_query_length", "z_log_cluster_median_length",
     "z_log_length_difference", "z_token_entropy",
@@ -43,7 +36,7 @@ def _target_aware_model(params: dict):
     model = params.get("target_aware_gumbel")
     if not isinstance(model, dict) or model.get("distribution") != "Gumbel":
         raise ValueError("target-aware E-values require a Gumbel model")
-    if model.get("score_normalization") not in SCORE_NORMALIZATIONS:
+    if model.get("score_normalization") != "sw/min(query_length,target_length)":
         raise ValueError("unsupported target-aware score normalization")
     if model.get("censoring") not in {"left-censored", "none"}:
         raise ValueError("target-aware model must record its fitted censoring mode")
@@ -195,7 +188,7 @@ def validate_target_aware_params(params: dict, n_clusters: int,
 
 
 def target_aware_initial_evalue(params: dict, query_tokens, normalized_score):
-    """Expected count of target clusters whose maximum model score exceeds s."""
+    """Expected count of target clusters whose maximum normalized SW exceeds s."""
     centre, coefficients, cluster_lengths, multiplicities = _target_aware_model(params)
     query = np.asarray(query_tokens, dtype=np.int64)
     qlength = len(query)
@@ -221,18 +214,10 @@ def target_aware_initial_evalue(params: dict, query_tokens, normalized_score):
     return float(result) if result.ndim == 0 else result
 
 
-def score_for_model(params: dict, sw_score, query_length: int, target_length: int):
-    """The score the Gumbel null was fitted on, for one query--target pair."""
-    if params["target_aware_gumbel"]["score_normalization"] == "sw":
-        return np.asarray(sw_score, dtype=np.float64)
-    return np.asarray(sw_score, dtype=np.float64) / min(int(query_length), int(target_length))
-
-
 def target_aware_evalue(params: dict, query_tokens, sw_score, target_length: int):
-    """Score the hit as the null was fitted (raw SW or SW/min(Lq,Lt), with the
-    actual hit length), then count null clusters."""
+    """Use actual hit length in SW/min(Lq,Lt), then count null clusters."""
     query_length = len(np.asarray(query_tokens))
     if query_length < 1 or int(target_length) < 1:
         raise ValueError("query and target lengths must be positive")
-    score = score_for_model(params, sw_score, query_length, target_length)
+    score = np.asarray(sw_score, dtype=np.float64) / min(query_length, int(target_length))
     return target_aware_initial_evalue(params, query_tokens, score)

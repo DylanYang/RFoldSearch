@@ -19,7 +19,7 @@ sys.path.insert(0, str(ROOT))
 
 from rfoldsearch.database import (calibration_context_fingerprint,
                                 database_fingerprint, load_database)
-from rfoldsearch.evalue import (SCORE_NORMALIZATIONS, TAIL_RULES, apply_power_calibration, composition_bias_window,
+from rfoldsearch.evalue import (TAIL_RULES, apply_power_calibration, composition_bias_window,
                                validate_target_aware_params)
 from rfoldsearch.search import GAP_EXTEND, GAP_OPEN, load_matrix
 
@@ -56,10 +56,7 @@ def main(argv=None):
         raise ValueError("refit protocol is not explicitly marked deployment_ready")
     if protocol.get("gumbel_censoring") != ("left" if model_censoring == "left-censored" else "none"):
         raise ValueError("refit protocol censoring does not match the fitted model")
-    normalization = (model.get("source") or {}).get(
-        "score_normalization", "sw/min(query_length,target_length)")
-    if (normalization not in SCORE_NORMALIZATIONS
-            or protocol.get("score") != SCORE_NORMALIZATIONS[normalization]):
+    if protocol.get("score") != "SW/min(Lq,Lt), then eligible cluster max":
         raise ValueError("unsupported score definition in refit protocol")
     if (protocol.get("target_length_feature") != "cluster median"
             or (model.get("source") or {}).get("composition_bias") != composition):
@@ -133,7 +130,7 @@ def main(argv=None):
         "composition_bias": composition,
         "target_aware_gumbel": {
             "distribution": "Gumbel",
-            "score_normalization": normalization,
+            "score_normalization": "sw/min(query_length,target_length)",
             "feature_order": [
                 "intercept", "z_log_query_length", "z_log_cluster_median_length",
                 "z_log_length_difference", "z_token_entropy",
