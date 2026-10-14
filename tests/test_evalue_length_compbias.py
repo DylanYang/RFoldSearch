@@ -142,6 +142,8 @@ def test_fitter_bins_power_by_query_length_and_merges_sparse_bins():
     assert len(bins) == 4 and fit["tail_rule"] == EV.TAIL_RULE_POWER
     assert [b["n_queries"] for b in bins] == [20] * 4
     assert all(x["log_query_length"] < y["log_query_length"] for x, y in zip(bins, bins[1:]))
+    assert fit["length_bin_exponent"] == "shared"
+    assert all(x["b"] == fit["b"] for x in bins)        # only a varies with length
     # short queries' E0 is inflated, so their calibrated E must come out smaller
     assert EV.apply_power_calibration(10.0, {**fit, "fit_raw_evalue_max": 1000.0}, 25) < (
         EV.apply_power_calibration(10.0, {**fit, "fit_raw_evalue_max": 1000.0}, 95))
@@ -209,3 +211,19 @@ def test_holdout_folds_keep_families_together_and_skip_when_too_few():
     report = F.holdout_calibration(rows, idx, initial, 500, 1000.0, 64,
                                    EV.TAIL_RULE_POWER, 4, 11)
     assert report["status"] == "skipped"
+
+
+def test_raw_score_model_skips_length_normalization():
+    entries = [{"id": "a", "tokens": [0] * 10, "cluster": "c0"},
+               {"id": "b", "tokens": [0] * 100, "cluster": "c1"}]
+    params = synthetic_evalue_params(entries)
+    raw = {**params, "target_aware_gumbel": {**params["target_aware_gumbel"],
+                                             "score_normalization": "sw"}}
+    query = np.array([0] * 20)
+    assert EV.target_aware_evalue(raw, query, 7.0, 100) == pytest.approx(
+        EV.target_aware_initial_evalue(raw, query, 7.0))
+    assert EV.target_aware_evalue(params, query, 7.0, 100) == pytest.approx(
+        EV.target_aware_initial_evalue(params, query, 7.0 / 20))
+    with pytest.raises(ValueError, match="normalization"):
+        EV.target_aware_evalue({**params, "target_aware_gumbel": {
+            **params["target_aware_gumbel"], "score_normalization": "sw/len"}}, query, 7.0, 100)

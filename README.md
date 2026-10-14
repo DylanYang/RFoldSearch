@@ -179,17 +179,22 @@ maximum scores, conditioned on the query's length and token entropy, gives an
 initial value `E0`, and a database-specific power law `E = a_D * E0**b_D`
 calibrates it to the observed number of structurally unrelated clusters.
 
-1. A target-aware Gumbel null models the length-normalized score
-   `Y_qt = S_SW / min(L_q, L_t)` for every query--target pair, where `L_t` is
-   the target-chain length. Its predictors are
+1. A target-aware Gumbel null models either the length-normalized score
+   `Y_qt = S_SW / min(L_q, L_t)` or the raw score `Y_qt = S_SW` (chosen when
+   fitting, stored in the parameters) for every query--target pair, where
+   `L_t` is the target-chain length. Use the raw score: dividing by the
+   shorter length lets short targets score as highly as real homologs, so
+   short unrelated chains reach small E-values and long homologs are missed
+   (see the table below). Its predictors are
    query length, target-cluster median length, their log-length difference,
    and query-token entropy. The initial value is
    `E0 = sum_c P(max_{t in c} Y_qt >= y)`.
 2. A database-specific positive power law, `E_cal = a_D * E0**b_D`,
    calibrates `E0` to the observed number of structurally unrelated clusters
    per query, and is capped at the cluster count. By default it is fitted
-   separately in four query-length bins (log `a` and `b` are interpolated in
-   log query length between bin centres), over `E0 <= 1000`, and kept as a
+   separately in four query-length bins that share one exponent `b` (only
+   `a` varies with length; log `a` is interpolated in log query length
+   between bin centres), over `E0 <= 1000`, and kept as a
    power law above that range. Parameter files fitted with a single law and a
    proportional tail above `E0 = 100` remain supported.
 3. Optionally (per database), E-values use a composition-bias corrected
@@ -242,9 +247,10 @@ Use `--censoring none` for an uncensored fit. Power-calibration options:
 
 | Option | Default | Meaning |
 | --- | --- | --- |
-| `--power-length-bins` | 4 | Query-length bins for separate power laws; fewer are used when a bin would hold <20 queries |
+| `--power-length-bins` | 4 | Query-length bins, each with its own `a` and a shared `b`; fewer are used when a bin would hold <20 queries |
 | `--power-max` | 1000 | Largest `E0` entering the power fit |
 | `--power-tail` | `power` | Above `--power-max`: keep the power law, or `proportional` (former behaviour) |
+| `--score` | `normalized` | `normalized_score` holds `S_SW/min(Lq,Lt)` (`normalized`) or raw `S_SW` (`raw`) |
 | `--comp-bias-window` | 0 | Composition-bias half-width the `normalized_score` column was computed with; 0 means uncorrected scores |
 | `--holdout-folds` | 5 | Family-held-out folds for the significance-region calibration check; 0 skips it |
 | `--holdout-evalues` | `0.001,0.01,0.1,1` | Nominal E-values the check reports |
@@ -261,21 +267,31 @@ With `--comp-bias-window w`, every `normalized_score` must come from
 target database's state frequencies as `background`. The window is bound into
 the scoring-context fingerprint, so a mismatch is rejected at search time.
 
-No single setting suits every database; choose per database and confirm with
-the holdout check. Holdout observed/nominal at E <= 1 per query-length stratum:
+Recommended options, checked with the family-held-out holdout check and with
+sensitivity on held-out Rfam families (other-cluster members of the query's
+family reaching the E-value):
 
-| Database | Recommended options | Holdout E <= 1 by length stratum | Not recommended |
+| Database | Recommended options | Homologs found at E <= 0.01 / E <= 1 | Background hits / expected (E <= 0.1, E <= 1) |
 | --- | --- | --- | --- |
-| Experimental structures (885 chains) | `--power-length-bins 1 --power-max 100 --power-tail proportional` | 0.45 / 1.92 / 1.05 / 1.24 | 4 bins: longest stratum 4.5 |
-| Predicted structures (33k chains, NR80) | `--power-length-bins 4 --comp-bias-window 20` (defaults otherwise) | 0.88 / 1.66 / 1.86 / 1.47 | one law: 0.00-18.9; 4 bins without correction: 0.42-3.21 |
+| Experimental structures (885 chains) | `--score raw --power-length-bins 4` | 57% / 69% (normalized score: 9% / 33%) | 10/20, 99/198 |
+| Predicted structures (33k chains, NR80) | `--score raw --power-length-bins 4 --comp-bias-window 20` | 1.2% / 6.9% (normalized score: 0.3% / 2.1%) | 114/100, 1215/1000 |
 
-On the experimental database only 198 calibration queries (48 families) are
-available, too few for four length bins, and the correction also made
-short-chain self-hits less significant, so leave it off there. On
-predicted-structure databases the correction reduces low-complexity
-(helix-rich) false positives, and with it the significance region (E <= 0.1)
-stays within 0.8-1.8 of nominal in every length stratum. Even the recommended
-settings run about 1.5 times anticonservative at E <= 1. The fitter writes the fitted
+With the normalized score, 195 of the 196 background hits at E <= 1 on the
+experimental database were targets of 20-47 nt; with the raw score they
+spread over all target lengths. On the experimental database the raw score
+also finds 84% of structurally similar homologs (US-align TM >= 0.45) at
+E <= 1, against 41% with the normalized score. On predicted structures it
+lifts low-entropy self-hits with E < 1 from 57% to 85%.
+
+Limits. On predicted structures E <= 0.01 runs about 2 times
+anticonservative, driven by a few queries of 69-94 nt whose backgrounds are
+heavier-tailed than the model predicts; it is not removed by a narrower
+`--power-max` or by treating TM >= 0.40 as related. Absolute sensitivity on
+predicted structures is low with any score (only 15% of queries find an
+other-cluster homolog at E <= 1), a limit of the representation rather than
+of the E-values. The experimental database has 198 calibration queries, so
+ratios per length stratum vary between about 0.5 and 2.5 and nothing below
+E = 0.01 can be checked. The fitter writes the fitted
 Gumbel model and power-law result. It leaves deployment validation pending
 unless both `--structural-audit-complete` and `--validation-accepted` are
 provided. Those flags assert that the input background has passed structural

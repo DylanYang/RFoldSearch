@@ -1,8 +1,8 @@
 """Fit target-aware Gumbel and power E-value parameters from audited scores.
 
 Input is a TSV with one row per query and eligible target cluster. Scores are
-cluster-max SW/min(Lq,Lt) values produced after family/clan and structural
-background exclusions. This script fits parameters; it does not score chains
+cluster-max SW/min(Lq,Lt) values (or raw SW values with --score raw) produced
+after family/clan and structural background exclusions. This script fits parameters; it does not score chains
 or perform the US-align audit.
 """
 from __future__ import annotations
@@ -25,7 +25,8 @@ sys.path.insert(0, str(ROOT))
 
 from rfoldsearch.database import (calibration_context_fingerprint,
                                 database_fingerprint, load_database)
-from rfoldsearch.evalue import TAIL_RULE, TAIL_RULE_POWER, apply_power_calibration
+from rfoldsearch.evalue import (SCORE_NORMALIZATIONS, TAIL_RULE, TAIL_RULE_POWER,
+                               apply_power_calibration)
 from rfoldsearch.search import GAP_EXTEND, GAP_OPEN, load_matrix
 
 
@@ -283,7 +284,9 @@ def _background_weights(rows, indices):
 
 
 def fit_power(rows, indices, initial, n_clusters, maximum, n_thresholds,
-              tail_rule=TAIL_RULE):
+              tail_rule=TAIL_RULE, exponent=None):
+    """Fit log(cumulative background count) = log a + b log E0; with
+    ``exponent`` given, b is held at that value and only a is fitted."""
     weights, queries, families = _background_weights(rows, indices)
     values = np.asarray(initial, dtype=np.float64)
     positive = (values > 0) & (values <= maximum)
@@ -295,7 +298,11 @@ def fit_power(rows, indices, initial, n_clusters, maximum, n_thresholds,
     keep = counts > 0
     if keep.sum() < 3 or len(np.unique(np.log(grid[keep]))) < 2:
         raise ValueError("insufficient positive cumulative counts to fit power law")
-    slope, intercept = np.polyfit(np.log(grid[keep]), np.log(counts[keep]), 1)
+    if exponent is None:
+        slope, intercept = np.polyfit(np.log(grid[keep]), np.log(counts[keep]), 1)
+    else:
+        slope = float(exponent)
+        intercept = float(np.mean(np.log(counts[keep]) - slope * np.log(grid[keep])))
     a, b = float(np.exp(intercept)), float(slope)
     if not np.isfinite(a + b) or a <= 0 or b <= 0:
         raise ValueError("power-law fit did not produce positive finite parameters")
@@ -310,6 +317,11 @@ def fit_power(rows, indices, initial, n_clusters, maximum, n_thresholds,
 def fit_power_length_bins(rows, indices, initial, n_clusters, maximum,
                           n_thresholds, tail_rule, n_bins):
     """One power law per query-length bin (equal query counts), plus the pooled fit.
+
+    Every bin shares the pooled exponent b and fits only its own a. Fitting b
+    per bin as well made the significance region unstable: with a fifth of
+    the families held out, a bin's a and b moved together and the same E0 of
+    1e-3 mapped to E-values up to 250 times apart.
 
     Bins with fewer than MIN_QUERIES_PER_LENGTH_BIN queries are avoided by
     using fewer bins; one bin reproduces the pooled fit.
@@ -330,13 +342,14 @@ def fit_power_length_bins(rows, indices, initial, n_clusters, maximum,
         part = set(queries[b * len(queries) // n_bins:(b + 1) * len(queries) // n_bins])
         sub = [i for i in indices if rows[i]["query_id"] in part]
         fit = fit_power(rows, sub, initial[[position[i] for i in sub]], n_clusters,
-                        maximum, n_thresholds, tail_rule)
+                        maximum, n_thresholds, tail_rule, exponent=pooled["b"])
         centre = float(np.mean([math.log(lengths[q]) for q in part]))
         bins.append({"log_query_length": centre, "a": fit["a"], "b": fit["b"],
                      "query_length_min": float(min(lengths[q] for q in part)),
                      "query_length_max": float(max(lengths[q] for q in part)),
                      "n_queries": fit["n_queries"], "n_observations": fit["n_observations"]})
     pooled["length_bins"] = bins
+    pooled["length_bin_exponent"] = "shared"
     return pooled
 
 
@@ -472,6 +485,9 @@ def main(argv=None):
     parser.add_argument("--power-length-bins", type=int, default=4,
                         help="fit the power law separately in this many query-length "
                              "bins (default 4; fewer when bins would hold <20 queries)")
+    parser.add_argument("--score", choices=("normalized", "raw"), default="normalized",
+                        help="what the normalized_score column holds: SW/min(Lq,Lt) "
+                             "(normalized, default) or the raw SW score (raw)")
     parser.add_argument("--comp-bias-window", type=int, default=0,
                         help="half-width of the query composition-bias correction the "
                              "observation scores were computed with (0: none)")
@@ -533,6 +549,7 @@ def main(argv=None):
     context_digest = calibration_context_fingerprint(db_digest, matrix, GAP_OPEN, GAP_EXTEND,
                                                      args.comp_bias_window)
     composition = {"window": args.comp_bias_window} if args.comp_bias_window else False
+    normalization = "sw" if args.score == "raw" else "sw/min(query_length,target_length)"
     tail_rule = TAIL_RULE_POWER if args.power_tail == "power" else TAIL_RULE
     model = fit_gumbel(rows, gumbel_indices, args.censoring, args.censor_quantile,
                        args.censor_strata_bins, args.ridge)
@@ -551,7 +568,7 @@ def main(argv=None):
 
     source = {"target_database_fingerprint": db_digest,
               "calibration_context_fingerprint": context_digest,
-              "score_normalization": "sw/min(query_length,target_length)",
+              "score_normalization": normalization,
               "target_length_feature": "cluster median", "composition_bias": composition}
     model["source"] = source
     model["fingerprint"] = hashlib.sha256(json.dumps(
@@ -564,7 +581,7 @@ def main(argv=None):
                                   else "fit-complete-validation-pending")
     result = {
         "protocol": {
-            "score": "SW/min(Lq,Lt), then eligible cluster max",
+            "score": SCORE_NORMALIZATIONS[normalization],
             "target_length_feature": "cluster median", "composition_bias": composition,
             "gumbel_censoring": "left" if args.censoring == "left-censored" else "none",
             "n_clusters": len(expected_lengths),
