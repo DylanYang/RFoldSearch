@@ -1,8 +1,8 @@
 """Fit target-aware Gumbel and power E-value parameters from audited scores.
 
 Input is a TSV with one row per query and eligible target cluster. Scores are
-cluster-max SW/min(Lq,Lt) values (or raw SW values with --score raw) produced
-after family/clan and structural background exclusions. This script fits parameters; it does not score chains
+cluster-max raw SW values (or SW/min(Lq,Lt) values with --score normalized)
+produced after family/clan and structural background exclusions. This script fits parameters; it does not score chains
 or perform the US-align audit.
 """
 from __future__ import annotations
@@ -485,9 +485,9 @@ def main(argv=None):
     parser.add_argument("--power-length-bins", type=int, default=4,
                         help="fit the power law separately in this many query-length "
                              "bins (default 4; fewer when bins would hold <20 queries)")
-    parser.add_argument("--score", choices=("normalized", "raw"), default="normalized",
-                        help="what the normalized_score column holds: SW/min(Lq,Lt) "
-                             "(normalized, default) or the raw SW score (raw)")
+    parser.add_argument("--score", choices=("normalized", "raw"), default="raw",
+                        help="what the normalized_score column holds: the raw SW score "
+                             "(raw, default) or SW/min(Lq,Lt) (normalized)")
     parser.add_argument("--comp-bias-window", type=int, default=0,
                         help="half-width of the query composition-bias correction the "
                              "observation scores were computed with (0: none)")

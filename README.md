@@ -250,7 +250,7 @@ Use `--censoring none` for an uncensored fit. Power-calibration options:
 | `--power-length-bins` | 4 | Query-length bins, each with its own `a` and a shared `b`; fewer are used when a bin would hold <20 queries |
 | `--power-max` | 1000 | Largest `E0` entering the power fit |
 | `--power-tail` | `power` | Above `--power-max`: keep the power law, or `proportional` (former behaviour) |
-| `--score` | `normalized` | `normalized_score` holds `S_SW/min(Lq,Lt)` (`normalized`) or raw `S_SW` (`raw`) |
+| `--score` | `raw` | `normalized_score` holds raw `S_SW` (`raw`) or `S_SW/min(Lq,Lt)` (`normalized`, the former default) |
 | `--comp-bias-window` | 0 | Composition-bias half-width the `normalized_score` column was computed with; 0 means uncorrected scores |
 | `--holdout-folds` | 5 | Family-held-out folds for the significance-region calibration check; 0 skips it |
 | `--holdout-evalues` | `0.001,0.01,0.1,1` | Nominal E-values the check reports |
@@ -273,8 +273,8 @@ family reaching the E-value):
 
 | Database | Recommended options | Homologs found at E <= 0.01 / E <= 1 | Background hits / expected (E <= 0.1, E <= 1) |
 | --- | --- | --- | --- |
-| Experimental structures (885 chains) | `--score raw --power-length-bins 4` | 57% / 69% (normalized score: 9% / 33%) | 10/20, 99/198 |
-| Predicted structures (33k chains, NR80) | `--score raw --power-length-bins 4 --comp-bias-window 20` | 1.2% / 6.9% (normalized score: 0.3% / 2.1%) | 114/100, 1215/1000 |
+| Experimental structures (885 chains) | defaults (`--score raw --power-length-bins 4`) | 57% / 69% (normalized score: 9% / 33%) | 10/20, 99/198 |
+| Predicted structures (33k chains, NR80) | `--comp-bias-window 20` (defaults otherwise) | 1.2% / 7.1% (normalized score: 0.3% / 2.1%) | 120/100, 1247/1000 |
 
 With the normalized score, 195 of the 196 background hits at E <= 1 on the
 experimental database were targets of 20-47 nt; with the raw score they
@@ -287,11 +287,18 @@ Limits. On predicted structures E <= 0.01 runs about 2 times
 anticonservative, driven by a few queries of 69-94 nt whose backgrounds are
 heavier-tailed than the model predicts; it is not removed by a narrower
 `--power-max` or by treating TM >= 0.40 as related. Absolute sensitivity on
-predicted structures is low with any score (only 15% of queries find an
+predicted structures is low with any score (only 16% of queries find an
 other-cluster homolog at E <= 1), a limit of the representation rather than
 of the E-values. The experimental database has 198 calibration queries, so
 ratios per length stratum vary between about 0.5 and 2.5 and nothing below
-E = 0.01 can be checked. The fitter writes the fitted
+E = 0.01 can be checked.
+
+Both backgrounds above were fully audited with US-align: every eligible
+cluster leader with `E0 <= 100` for a calibration query was aligned, and
+leaders with mean TM >= 0.45 were excluded, repeating until no unaudited
+leader remained (predicted structures: 48,550 pairs in eight rounds, half of
+them related, 10 left; experimental: 632 pairs, 5 related). Completing the
+audit changed neither calibration nor sensitivity beyond noise. The fitter writes the fitted
 Gumbel model and power-law result. It leaves deployment validation pending
 unless both `--structural-audit-complete` and `--validation-accepted` are
 provided. Those flags assert that the input background has passed structural

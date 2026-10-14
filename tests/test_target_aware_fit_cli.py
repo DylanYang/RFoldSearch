@@ -48,6 +48,7 @@ def test_fit_cli_writes_exportable_database_specific_model(tmp_path):
     subprocess.run([
         sys.executable, str(fit_script), "--db", str(db),
         "--observations", str(observations), "--censoring", "none",
+        "--score", "normalized",
         "--gumbel-model", str(model_path), "--result", str(result_path),
         "--structural-audit-complete", "--validation-accepted",
     ], check=True)
