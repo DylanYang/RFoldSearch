@@ -304,6 +304,8 @@ function renderResult() {
   const mode = p.rerank === "tm" ? "RFoldSearch-TM" : "RFoldSearch";
   $("res-sub").textContent = `${q.n_tokens} nucleotides encoded · ` +
     `${mode} · searched ${job.created.replace("T", " ").slice(0, 16)}`;
+  $("res-notice").hidden = !q.notice;
+  $("res-notice").textContent = q.notice || "";
   $("dl-tsv").href = `/api/result/${job.id}/download?format=tsv`;
   $("dl-json").href = `/api/result/${job.id}/download?format=json`;
   const keys = Object.keys(job.results);
@@ -500,9 +502,13 @@ function alignmentHtml(h, a) {
   const noSeq = a.t_seq_known === false;
   const cq = a.n_aligned ? (a.q_end - a.q_start + 1) / a.q_len : null;
   const ct = a.n_aligned ? (a.t_end - a.t_start + 1) / a.t_len : null;
+  // the TM-score of the results table: US-align's in RFoldSearch-TM, the search's TM_a otherwise
+  const usalign = job.results[activeDb]?.rerank === "tm" && h.tm_mean != null;
+  const tmScore = usalign ? h.tm_mean : h.tm_a ?? a.tm_a ?? null;
+  const tmNote = usalign ? "US-align, mean of query/target normalised" : "mean of query/target normalised";
   const stat = (k, v, sub) => `<div class="stat"><div class="k">${k}</div><div class="v">${v}</div>${sub ? `<div class="s">${sub}</div>` : ""}</div>`;
   const stats = [
-    stat("Aligned-region TM-score", a.tm_aln == null ? "—" : a.tm_aln.toFixed(3)),
+    stat("TM-score", tmScore == null ? "—" : tmScore.toFixed(3), tmNote),
     stat("RMSD", a.rmsd == null ? "—" : `${a.rmsd.toFixed(2)} Å`, `${a.n_aligned} aligned nt`),
     stat("Query / target coverage", `${pct(cq)} / ${pct(ct)}`, `Query ${a.q_start}–${a.q_end}/${a.q_len} · Target ${a.t_start}–${a.t_end}/${a.t_len}`),
     noSeq ? stat("3Dr identity", pct(a.token_identity))

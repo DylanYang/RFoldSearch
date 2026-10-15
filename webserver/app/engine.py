@@ -58,6 +58,72 @@ _ANNOTATION = ("pdb", "chain", "auth_asym", "desc", "organism", "title",
                "method", "resolution", "rfam", "plddt", "msa_depth")
 
 
+def first_rna_chain(data: bytes, filename: str):
+    """Keep only the first RNA chain of an uploaded structure.
+
+    The encoder takes one chain, so a file with several chains is cut down
+    to its first RNA chain in file order (first model; label_asym_id for
+    mmCIF, as the encoder reads it). Return (data, notice): the notice
+    names the chains when more than one was RNA, and is None otherwise.
+    """
+    from rfoldsearch.edges import RNA_RESIDUE_NAMES
+
+    text = data.decode(errors="replace")
+    if filename.lower().endswith((".cif", ".mmcif")):
+        import io
+        import numpy as np
+        import biotite.structure.io.pdbx as pdbx
+        f = pdbx.CIFFile.read(io.StringIO(text))
+        block = f.block
+        cat = block["atom_site"]
+        col = lambda k: cat[k].as_array(str)
+        model = col("pdbx_PDB_model_num") if "pdbx_PDB_model_num" in cat else None
+        first = np.ones(len(col("label_asym_id")), bool) if model is None else model == model[0]
+        label, comp = col("label_asym_id"), np.char.upper(col("label_comp_id"))
+        auth = col("auth_asym_id") if "auth_asym_id" in cat else label
+        rna = first & np.isin(comp, sorted(RNA_RESIDUE_NAMES))
+        chains, names = [], []
+        for lab, au in zip(label[rna], auth[rna]):
+            if lab not in chains:
+                chains.append(lab)
+                names.append(au)
+        if not chains or len(set(label[first])) <= 1:
+            return data, None
+        keep = label == chains[0]
+        block["atom_site"] = pdbx.CIFCategory(
+            {k: pdbx.CIFColumn(pdbx.CIFData(c.data.array[keep]),
+                               None if c.mask is None else pdbx.CIFData(c.mask.array[keep]))
+             for k, c in cat.items()})
+        if "atom_site_anisotrop" in block:     # per-atom, often most of the file
+            del block["atom_site_anisotrop"]
+        out = io.StringIO()
+        f.write(out)
+        data = out.getvalue().encode()
+    else:
+        lines, chains, out, model_done = text.splitlines(), [], [], False
+        for ln in lines:
+            if ln.startswith("ENDMDL"):
+                model_done = True
+            if (ln.startswith(("ATOM", "HETATM")) and not model_done and len(ln) > 21
+                    and ln[17:20].strip().upper() in RNA_RESIDUE_NAMES
+                    and ln[21] not in chains):
+                chains.append(ln[21])
+        every = {ln[21] for ln in lines if ln.startswith(("ATOM", "HETATM")) and len(ln) > 21}
+        if not chains or len(every) <= 1:
+            return data, None
+        for ln in lines:
+            if ln.startswith(("ATOM", "HETATM", "ANISOU", "TER")) and (len(ln) <= 21 or ln[21] != chains[0]):
+                continue
+            out.append(ln)
+        data = ("\n".join(out) + "\n").encode()
+        names = chains
+    if len(names) <= 1:                         # other chains were protein, ligands, ...
+        return data, None
+    shown = ", ".join(n.strip() or "(blank)" for n in names[:10]) + (", …" if len(names) > 10 else "")
+    return data, (f"The structure has {len(names)} RNA chains ({shown}); "
+                  f"only the first, chain {names[0].strip() or '(blank)'}, was searched.")
+
+
 @dataclass
 class DatabaseHandle:
     key: str
