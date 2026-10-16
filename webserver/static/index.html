@@ -179,7 +179,7 @@
   .doc p, .doc li { color: var(--ink-2) }
   .doc code, .doc .kbd { font-family: var(--mono); font-size: 13px; background: var(--line-2);
                          padding: 1px 6px; border-radius: 5px }
-  .doc table { border-collapse: collapse; margin: 8px 0 }
+  .doc table { border-collapse: collapse; margin: 8px 0; max-width: 100% }
   .doc td, .doc th { border: 1px solid var(--line); padding: 6px 12px; text-align: left; font-size: 14px }
 
   /* results */
@@ -217,10 +217,27 @@
   .detail-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.25fr); gap: 0 }
   @media (max-width: 960px) { .detail-grid { grid-template-columns: 1fr } }
   .viewer-wrap { position: relative; border-right: 1px solid var(--line-2); min-height: 420px }
+  /* a fixed-height view that stays on screen beside a long alignment, rather than stretching with it */
+  .detail-grid > .viewer-wrap { position: sticky; top: 8px; align-self: start; height: clamp(420px, 70vh, 640px) }
+  @media (max-width: 960px) { .detail-grid > .viewer-wrap { position: relative; top: 0; height: 420px } }
   .viewer { position: absolute; inset: 0 }
-  .viewer-legend { position: absolute; left: 12px; bottom: 48px; z-index: 2; font-size: 12px; color: var(--ink-2);
-                   background: rgba(255, 255, 255, .85); border-radius: 7px; padding: 4px 9px;
-                   display: flex; gap: 12px }
+  /* the molecule is drawn between the legend above and the clicked-nucleotide line below */
+  .viewer-wrap .viewer { top: 38px; bottom: 58px }
+  .viewer-bar { position: absolute; left: 0; right: 0; top: 0; height: 38px; z-index: 2; display: flex;
+                align-items: center; justify-content: space-between; gap: 8px; padding: 0 10px 0 12px }
+  .viewer-legend { font-size: 12px; color: var(--ink-2); display: flex; gap: 12px; min-width: 0;
+                   white-space: nowrap; overflow: hidden }
+  .viewer-legend > span { overflow: hidden; text-overflow: ellipsis }
+  .sw-rainbow { background: linear-gradient(90deg, #3f3fd0, #3fd0d0, #3fd03f, #d0d03f, #d03f3f) }
+  .view-modes { display: flex; flex: none; border: 1px solid var(--line-2); border-radius: 7px; overflow: hidden }
+  .view-modes button { font: inherit; font-size: 12px; border: 0; background: #fff; color: var(--ink-2);
+                       padding: 3px 9px; cursor: pointer }
+  .view-modes button + button { border-left: 1px solid var(--line-2) }
+  .view-modes button.on { background: var(--accent-soft); color: var(--accent-ink); font-weight: 600 }
+  .view-modes button:disabled { color: var(--muted); cursor: not-allowed }
+  /* Mol*'s own toolbars are not needed in this small panel */
+  .viewer .msp-viewport-top-left-controls, .viewer .msp-viewport-controls,
+  .viewer .msp-highlight-toast-wrapper { display: none !important }
   .sw { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 5px;
         vertical-align: -1px }
   .detail-body { padding: 16px 18px 18px }
@@ -282,7 +299,7 @@
   td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap }
   .tgt { font-size: 14.5px }
   .chain { color: #a09a93; font-size: 12.5px; margin-left: 8px; white-space: nowrap }
-  td:nth-child(2) { white-space: nowrap }
+  table.hits td:nth-child(2) { white-space: nowrap }
   .desc { max-width: 240px; min-width: 170px }
   .desc .t { white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden }
   .desc .o { font-size: 13.5px }
@@ -491,40 +508,161 @@
   <!-- tutorial view -->
   <section id="view-tutorial" hidden>
     <div class="card doc">
-      <h1>How to read the results</h1>
-      <p class="lead">RFoldSearch encodes every nucleotide as one of 80 learned 3Dr structural states, aligns the resulting token strings, and reports the closest structures in each database.</p>
+      <h1>RFoldSearch User Guide</h1>
+      <p class="lead">RFoldSearch is a web server for the rapid retrieval of RNA tertiary structures. It encodes the local three-dimensional geometry at each nucleotide as a discrete symbol from a learned structural alphabet (3Dr), recasting structure comparison as the alignment of structural-token sequences. This representation enables indexed, large-scale searches against databases of experimentally determined and computationally predicted RNA structures.</p>
+      <p>This guide describes the preparation and submission of query structures, the configuration of searches, the interpretation of reported metrics, and the inspection of structural alignments. Methodological details are provided in the RFoldSearch manuscript.</p>
 
-      <h2 id="input">Input</h2>
-      <p>Paste or upload one RNA chain as PDB or mmCIF (up to the size shown under the box). The first RNA chain in the file is used. Every nucleotide needs its C3′, C4′ and O4′ atoms; nucleotides without them are skipped, and chains shorter than 20 nucleotides cannot be searched.</p>
-
-      <h2>1. Choose a mode</h2>
-      <p><b>RFoldSearch</b> (recommended for most searches) prefilters with a k-mer index, aligns structural tokens with affine-gap Smith–Waterman, superposes the aligned C4′ atoms, and ranks hits by the <b>structure score</b> S<sub>SW</sub> × TM-score.
-         <b>RFoldSearch-TM</b> re-scores the same candidates with US-align on the coordinates, which improves the structural ranking at a higher cost.</p>
-
-      <h2>2. The hit table</h2>
-      <p>Click a column heading to sort by it, and a row to open the hit.</p>
+      <h2 id="input">1. Query submission</h2>
+      <h3>1.1 Input formats</h3>
+      <p>Queries are submitted on the <a href="/">search page</a> by one of three routes:</p>
+      <ul>
+        <li><b>File upload:</b> an RNA structure in PDB or mmCIF format.</li>
+        <li><b>Direct input:</b> PDB- or mmCIF-formatted coordinate text pasted into the input field.</li>
+        <li><b>Example query:</b> a pre-loaded RNA structure provided for demonstration (<b>Load example</b>).</li>
+      </ul>
+      <h3>1.2 Input requirements</h3>
       <table>
-        <tr><th>Column</th><th>Meaning</th></tr>
-        <tr><td>Target</td><td>The matched chain: the PDB entry with its chain, or the RNAcentral id of a predicted model (it links to the entry page).</td></tr>
-        <tr><td>RNA / organism</td><td>The name of the RNA and its source organism. Predicted models also show their Rfam family when one is assigned.</td></tr>
-        <tr><td>pLDDT</td><td>Predicted databases only: the mean pLDDT of the model, a measure of its quality (higher is better, 100 is the maximum).</td></tr>
-        <tr><td>Seq identity</td><td>Nucleotide identity over the aligned positions. Databases without sequences show <i>3Dr identity</i> instead: the fraction of aligned pairs with the same structural token.</td></tr>
-        <tr><td>RMSD (Å)</td><td>Root-mean-square deviation of the superposed aligned nucleotides.</td></tr>
-        <tr><td>Structure score</td><td>The ranking score, S<sub>SW</sub> × TM-score. A hit has to match locally and in the arrangement of its aligned segments.</td></tr>
-        <tr><td>TM-score</td><td>The TM-score of the token alignment after superposition, normalised by the query and by the target length and averaged. In RFoldSearch-TM it is the US-align TM-score of the two whole chains.</td></tr>
-        <tr><td>E-value</td><td>The expected number of unrelated hits at least this good by chance. It is calibrated for each query (its length and token composition) against the database it is searched in, and is computed from S<sub>SW</sub>, so it does not always increase down the list. Databases that have not been calibrated yet report no E-value.</td></tr>
-        <tr><td>Query cov, Target cov</td><td>The share of the query and of the target that the alignment spans.</td></tr>
+        <tr><th>Criterion</th><th>Requirement</th></tr>
+        <tr><td>Molecule type</td><td>The file must contain RNA atomic coordinates.</td></tr>
+        <tr><td>Nucleotide validity</td><td>A nucleotide is considered valid only if its C3′, C4′ and O4′ atoms are present; other nucleotides are skipped.</td></tr>
+        <tr><td>Minimum length</td><td>The query must contain at least 4 valid nucleotides.</td></tr>
+        <tr><td>Multi-chain input</td><td>Where multiple RNA chains are present, only the first RNA chain is used.</td></tr>
+        <tr><td>File size</td><td>Up to the size shown under the input box, for uploaded and pasted structures alike.</td></tr>
       </table>
 
-      <h2>3. Inside a hit</h2>
-      <p>Click a row to open it. Four numbers describe the alignment: the <b>Aligned-region TM-score</b>, the RMSD, the query and target coverage (with the aligned ranges underneath) and the sequence identity (with the 3Dr identity underneath; for databases without sequences only the 3Dr identity). The <b>Aligned-region TM-score</b> is the TM-score computed over the aligned nucleotides only, so it can differ from the TM-score in the table.</p>
-      <h3>The 3Dr line</h3>
-      <p>Between the query and target sequences, <code>|</code> marks the same structural token, <code>+</code> a positive Structure-BLOSUM substitution and <code>.</code> any other aligned pair. Positions count nucleotides with a complete C3′, C4′, O4′ backbone. Databases without sequences show the target residues as <code>·</code>.</p>
-      <h3>The 3D view</h3>
-      <p>The query is orange and the hit is blue after superposition on the aligned nucleotides; pale colours are unaligned. Rotate and zoom with the mouse, and click a nucleotide, in the 3D view or in the alignment, to see which nucleotide of the other structure it is aligned to. Clicking in the alignment also centres the 3D view on it.</p>
+      <h2>2. Target databases</h2>
+      <p>RFoldSearch currently supports searches against three structure collections. One or more databases may be selected for a given query.</p>
+      <table>
+        <tr><th>Database</th><th>Content</th></tr>
+        <tr><td><b>PDB-RNA</b></td><td>Experimentally determined RNA structures deposited in the Protein Data Bank</td></tr>
+        <tr><td><b>RNAsolo 2.0</b></td><td>A non-redundant set of experimentally determined RNA structures</td></tr>
+        <tr><td><b>NuFold</b></td><td>A large-scale collection of predicted RNA structures. The models carry no sequence, so 3Dr identity is reported in place of sequence identity.</td></tr>
+      </table>
 
-      <h2>4. Databases</h2>
-      <p>PDB-RNA (all RCSB RNA chains) and RNAsolo 2.0 (a non-redundant representative set) hold experimental structures. NuFold holds predicted structures, which carry no sequence, so 3Dr identity is the main measure of agreement there.</p>
+      <h2>3. Search modes</h2>
+      <p>Two search modes are available, representing a trade-off between computational cost and ranking accuracy.</p>
+      <table>
+        <tr><th>Mode</th><th>Procedure</th></tr>
+        <tr><td><b>RFoldSearch</b> (default)</td><td>Structural-token retrieval followed by ranking with a combined token-alignment and geometric score</td></tr>
+        <tr><td><b>RFoldSearch-TM</b></td><td>Structural-token candidate retrieval followed by coordinate-based reranking with US-align</td></tr>
+      </table>
+      <p>The default <b>RFoldSearch</b> mode is recommended for most applications. Upon submission, candidate structures are identified through the indexed structural-token search pipeline and returned as a ranked list for each selected database. By default, up to 50 hits are reported per database.</p>
+
+      <h2>4. Search parameters</h2>
+      <p>Additional parameters are accessible through the <b>Settings</b> panel.</p>
+      <table>
+        <tr><th>Parameter</th><th>Definition</th><th>Default</th></tr>
+        <tr><td><b>Hits shown</b></td><td>Maximum number of hits reported per database</td><td>50</td></tr>
+        <tr><td><b>Candidate depth</b></td><td>Number of candidates retained for downstream alignment and ranking</td><td>200</td></tr>
+        <tr><td><b>Min. diagonal k-mers</b></td><td>Minimum number of compatible diagonal k-mer seeds required for a target to be retained as a candidate</td><td>2</td></tr>
+      </table>
+      <p>The default values represent a practical balance between computational efficiency and retrieval sensitivity. Increasing the candidate depth may recover additional, more distantly related structures at greater computational cost. Modifying the seed threshold alters the stringency of candidate selection: higher thresholds increase selectivity, whereas lower thresholds increase sensitivity at the expense of a larger candidate pool.</p>
+
+      <h2>5. Interpretation of search results</h2>
+      <h3>5.1 Reported metrics</h3>
+      <p>Each search returns a ranked table of structural matches. Click a column heading to sort by it, and a row to open the hit.</p>
+      <table>
+        <tr><th>Field</th><th>Definition</th></tr>
+        <tr><td><b>Target</b></td><td>Identifier of the matched RNA structure: the PDB entry with its chain, or the RNAcentral id of a predicted model (linked to the entry page)</td></tr>
+        <tr><td><b>RNA / Organism</b></td><td>RNA description, source organism, and available annotations (for predicted models, the Rfam family when one is assigned)</td></tr>
+        <tr><td><b>pLDDT</b></td><td>Predicted local structural confidence (reported for predicted structures where available)</td></tr>
+        <tr><td><b>Seq identity</b></td><td>Nucleotide sequence identity over aligned positions. Databases without sequences report <i>3Dr identity</i> instead: the fraction of aligned pairs with the same structural token.</td></tr>
+        <tr><td><b>RMSD (Å)</b></td><td>Root-mean-square deviation of aligned nucleotides after optimal superposition</td></tr>
+        <tr><td><b>Structure score</b></td><td>Composite score integrating token-alignment and geometric similarity (Section 5.2)</td></tr>
+        <tr><td><b>TM-score</b></td><td>Length-normalised measure of global structural similarity (Section 5.3)</td></tr>
+        <tr><td><b>E-value</b></td><td>Statistical significance of the structural-token alignment score (Section 5.5)</td></tr>
+        <tr><td><b>Query coverage</b></td><td>Fraction of query nucleotides included in the alignment</td></tr>
+        <tr><td><b>Target coverage</b></td><td>Fraction of target nucleotides included in the alignment</td></tr>
+      </table>
+      <h3>5.2 Structure score</h3>
+      <p>In the default mode, hits are ranked by a structure score that combines structural-token alignment similarity with geometric agreement:</p>
+      <p style="text-align:center"><i>R</i><sub>str</sub> = <i>S</i><sub>SW</sub> × aTM</p>
+      <p>where <i>S</i><sub>SW</sub> denotes the Smith–Waterman alignment score computed over structural-token sequences, and aTM denotes the TM-score of the token alignment after structural superposition (the TM-score column in the default mode). Higher values of <i>R</i><sub>str</sub> indicate stronger matches under the RFoldSearch ranking function.</p>
+      <h3>5.3 TM-score</h3>
+      <p>The TM-score quantifies global three-dimensional structural similarity on a scale from 0 to 1, with higher values indicating closer structural correspondence. Because it is normalised by length, it is less sensitive to local deviations than RMSD. RFoldSearch reports the mean of the query- and target-normalised scores: in the default mode for the token alignment, and in RFoldSearch-TM mode the US-align TM-score of the two chains. The hit view shows the same value as the table.</p>
+      <h3>5.4 RMSD</h3>
+      <p>The RMSD quantifies the mean geometric deviation, in ångströms, between aligned nucleotides after optimal superposition. As RMSD is computed only over aligned positions, it should be interpreted in conjunction with alignment coverage: a low RMSD obtained over a short alignment does not by itself indicate extensive structural similarity.</p>
+      <h3>5.5 E-value</h3>
+      <p>The E-value represents the expected number of unrelated database entries that would attain a structural-token alignment score equal to or greater than the observed score under the statistical background model. Lower E-values denote greater statistical significance. Databases that have not yet been calibrated report no E-value.</p>
+      <h3>5.6 Alignment coverage</h3>
+      <p>Query and target coverage together characterise the extent of the detected similarity:</p>
+      <ul>
+        <li><b>High query and high target coverage:</b> the alignment encompasses a substantial proportion of both structures, consistent with global structural similarity.</li>
+        <li><b>High query coverage, low target coverage:</b> the query corresponds to a structural region within a larger target RNA, for example a domain or subdomain.</li>
+        <li><b>Low query and target coverage:</b> the similarity is likely confined to a local structural motif.</li>
+      </ul>
+      <p>Coverage should therefore be considered explicitly when distinguishing local motif-level matches from global structural correspondence.</p>
+
+      <h2>6. Inspection of structural alignments</h2>
+      <p>Selecting a hit opens a detailed view comprising the structural-token alignment and an interactive three-dimensional superposition.</p>
+      <h3>6.1 Structural-token alignment</h3>
+      <p>The alignment displays corresponding nucleotide positions together with their assigned 3Dr structural states. The relationship between each pair of aligned tokens is annotated as follows:</p>
+      <table>
+        <tr><th>Symbol</th><th>Interpretation</th></tr>
+        <tr><td><code>|</code></td><td>Identical structural tokens</td></tr>
+        <tr><td><code>+</code></td><td>Favourable structural-token substitution</td></tr>
+        <tr><td><code>.</code></td><td>Other aligned token pair</td></tr>
+      </table>
+      <p>These annotations describe similarity in local structural state and are independent of nucleotide sequence identity. Positions count valid nucleotides only; databases without sequences show the target residues as <code>·</code>.</p>
+      <h3>6.2 Three-dimensional superposition</h3>
+      <p>The structure viewer displays the query and target after superposition, using the following colour scheme:</p>
+      <ul>
+        <li><b>Orange:</b> query RNA</li>
+        <li><b>Blue:</b> target RNA</li>
+        <li><b>Pale shading:</b> unaligned regions</li>
+      </ul>
+      <p>Structures may be rotated and zoomed to assess structural correspondence. Selecting a position in either the alignment or the viewer highlights the corresponding nucleotides in both representations.</p>
+
+      <h2>7. Case study: identification of structurally related RNAs</h2>
+      <p>The following workflow illustrates the use of RFoldSearch to identify candidate structural relatives of an RNA of unknown function.</p>
+      <ol>
+        <li><b>Query submission.</b> Upload the query structure in PDB or mmCIF format.</li>
+        <li><b>Database selection.</b> Select <b>RNAsolo 2.0</b> to search a non-redundant set of experimentally determined structures.</li>
+        <li><b>Mode selection.</b> Use the default <b>RFoldSearch</b> mode.</li>
+        <li><b>Initial screening.</b> Execute the search and examine the highest-ranking hits.</li>
+        <li><b>Metric assessment.</b> Evaluate TM-score, RMSD, query and target coverage, and functional annotations for each candidate.</li>
+        <li><b>Alignment inspection.</b> Examine the structural-token alignments and three-dimensional superpositions of promising candidates.</li>
+        <li><b>Refined ranking.</b> Where more accurate coordinate-based ranking is required, repeat the search in <b>RFoldSearch-TM</b> mode.</li>
+        <li><b>Extended search.</b> Optionally, search the <b>NuFold</b> database to identify related structures among predicted RNA models.</li>
+      </ol>
+      <p><b>Interpretation.</b> Structural similarity may indicate a conserved RNA architecture even in the absence of detectable sequence similarity. However, structural similarity alone is insufficient to establish common ancestry or shared function, and inferences of this kind should be supported by independent evidence.</p>
+
+      <h2>8. Data export</h2>
+      <p>Search results may be exported or shared from the results page:</p>
+      <table>
+        <tr><th>Option</th><th>Description</th></tr>
+        <tr><td><b>Download TSV</b></td><td>Tab-separated results for downstream statistical analysis</td></tr>
+        <tr><td><b>JSON</b></td><td>Structured results for programmatic processing</td></tr>
+        <tr><td><b>Copy link</b></td><td>Persistent link to the search results for sharing</td></tr>
+      </table>
+
+      <h2>9. Programmatic access</h2>
+      <p>RFoldSearch provides a REST API for programmatic structural searches, facilitating integration into automated analysis pipelines and high-throughput workflows. Interactive documentation of the endpoints, input formats, request parameters and response schemas is available at <a href="/api/docs" target="_blank">/api/docs</a>.</p>
+
+      <h2>10. Frequently asked questions</h2>
+      <h3>Can a search be performed using sequence information alone?</h3>
+      <p>No. RFoldSearch requires a three-dimensional RNA structure as input. Where only a nucleotide sequence is available, a structural model must first be obtained by experimental determination or computational prediction.</p>
+      <h3>Can RFoldSearch detect structural similarity between RNAs with low sequence identity?</h3>
+      <p>Yes. Because RFoldSearch relies on learned representations of local geometry rather than primarily on nucleotide sequence, it can retrieve structurally similar RNAs whose sequences have substantially diverged.</p>
+      <h3>Why may hits with identical sequence identity receive different structure scores?</h3>
+      <p>Sequence identity does not imply conformational identity. Because the structure score reflects both alignment quality and geometric agreement, structures with similar or identical sequences but distinct conformations may receive different scores.</p>
+      <h3>Why is the hit with the lowest RMSD not necessarily ranked first?</h3>
+      <p>RMSD is computed only over aligned positions and does not account for alignment length or token-level alignment quality. A short alignment may yield a low RMSD without representing the strongest overall structural match.</p>
+      <h3>Why are results not ordered by E-value?</h3>
+      <p>Results are ranked by the structure score, which incorporates geometric agreement, whereas the E-value reflects only the statistical significance of the structural-token alignment score. The two orderings may therefore differ.</p>
+      <h3>Which search mode is most appropriate?</h3>
+      <p>The default <b>RFoldSearch</b> mode is recommended for routine and large-scale searches. <b>RFoldSearch-TM</b> is recommended when accurate coordinate-based structural ranking is the primary consideration.</p>
+      <h3>Can predicted structures be used?</h3>
+      <p>Yes. Predicted RNA structures may be submitted as queries, and the NuFold database provides a large collection of predicted structures as search targets. In both cases, the uncertainty inherent in structure prediction should be taken into account when interpreting results; pLDDT values, where available, indicate model confidence.</p>
+      <h3>Does structural similarity imply homology?</h3>
+      <p>Not necessarily. Structural similarity may reflect conserved architecture or a possible evolutionary relationship, but establishing homology requires additional sequence, functional or phylogenetic evidence.</p>
+
+      <h2>11. Resources</h2>
+      <ul>
+        <li><b>RFoldSearch web server:</b> <a href="https://www.rfoldsearch.com/">https://www.rfoldsearch.com/</a></li>
+        <li><b>Interactive API documentation:</b> <a href="/api/docs" target="_blank">https://www.rfoldsearch.com/api/docs</a></li>
+      </ul>
+      <p>Technical details of the structural alphabet, alignment algorithm, indexing strategy and statistical calibration are described in the RFoldSearch manuscript and the accompanying source code.</p>
     </div>
   </section>
 
@@ -536,6 +674,7 @@
         <div>
           <h1 id="res-title"></h1>
           <div class="sub" id="res-sub"></div>
+          <div class="notice" id="res-notice" hidden></div>
         </div>
         <div class="actions">
           <button class="btn small" id="copy-link">Copy link</button>

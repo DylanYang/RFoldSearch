@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import asyncio
 import csv
+import gzip
 import io
 import json
 import os
@@ -32,13 +33,15 @@ from pathlib import Path
 from typing import Optional
 
 import numpy as np
-from fastapi import FastAPI, File, Form, HTTPException, UploadFile
+from fastapi import FastAPI, HTTPException, Request
+from starlette.datastructures import UploadFile as StarletteUpload
 from fastapi.responses import (FileResponse, JSONResponse, PlainTextResponse,
                                Response)
+from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from . import remote
-from .engine import Engine
+from .engine import Engine, first_rna_chain
 
 HERE = Path(__file__).resolve().parent
 STATIC = HERE.parent / "static"
@@ -54,6 +57,7 @@ JOB_ID = re.compile(r"^[A-Za-z0-9_-]{8,32}$")
 
 app = FastAPI(title="RFoldSearch", docs_url="/api/docs",
               openapi_url="/api/openapi.json")
+app.add_middleware(GZipMiddleware, minimum_size=4096)   # full-atom PDB text compresses ~10x
 engine = Engine(spec=os.environ.get("RFOLDSEARCH_DBS", ""),
                 model=os.environ.get("RFOLDSEARCH_MODEL") or None)
 pool = ThreadPoolExecutor(max_workers=MAX_CONCURRENT,
@@ -139,17 +143,36 @@ def examples():
 
 # ---- search ------------------------------------------------------------
 @app.post("/api/search")
-async def search(
-    structure: Optional[UploadFile] = File(None),
-    text: Optional[str] = Form(None),
-    databases: Optional[str] = Form(None),
-    database: Optional[str] = Form(None),
-    top_k: int = Form(50),
-    top_n: int = Form(200),
-    min_diag: int = Form(2),
-    rerank: str = Form("tm_a"),
-    tie_seed: Optional[int] = Form(None),
-):
+async def search(request: Request):
+    # Parsed here rather than through Form(...) parameters: Starlette caps a
+    # non-file form field at 1 MB, and pasted coordinates of a long rRNA
+    # chain are larger than that.
+    try:
+        form = await request.form(max_part_size=MAX_UPLOAD + 1)
+    except Exception as exc:
+        if "exceeded maximum size" in str(exc):
+            raise HTTPException(413, f"structure larger than {MAX_UPLOAD // (1024 * 1024)} MB")
+        raise HTTPException(400, f"could not read the form: {exc}")
+
+    def field(key, default=None, kind=str):
+        value = form.get(key)
+        if value is None or isinstance(value, StarletteUpload) or value == "":
+            return default
+        try:
+            return kind(value)
+        except ValueError:
+            raise HTTPException(422, f"{key} must be {'an integer' if kind is int else 'text'}")
+
+    structure = form.get("structure")
+    if not isinstance(structure, StarletteUpload):
+        structure = None
+    text = field("text")
+    databases, database = field("databases"), field("database")
+    top_k, top_n = field("top_k", 50, int), field("top_n", 200, int)
+    min_diag = field("min_diag", 2, int)
+    rerank = field("rerank", "tm_a")
+    tie_seed = field("tie_seed", None, int)
+
     if not engine.ready:
         raise HTTPException(503, engine.error or "server still loading")
     keys = [k.strip() for k in (databases or database or "").split(",") if k.strip()]
@@ -186,6 +209,10 @@ async def search(
         raise HTTPException(503, "all search slots busy; retry shortly")
     async with slots:
         loop = asyncio.get_running_loop()
+        try:
+            data, notice = await loop.run_in_executor(pool, first_rna_chain, data, name)
+        except Exception:               # unreadable here; the encoder reports why
+            notice = None
         try:
             enc = await loop.run_in_executor(pool, engine.tokenise, data, name)
         except ValueError as exc:
@@ -224,10 +251,13 @@ async def search(
                   "seq": enc.get("seq"),
                   "tokens": np.asarray(enc["tokens"]).tolist(),
                   "coords": np.round(np.asarray(enc["coords"], float), 3).tolist(),
-                  "mask": np.asarray(enc["mask"]).astype(bool).tolist()},
+                  "mask": np.asarray(enc["mask"]).astype(bool).tolist(),
+                  **({"notice": notice} if notice else {})},
         "results": results,
     }
     _save_job(job)
+    # the upload itself, so the 3D view can draw the query with all its atoms
+    (JOBS_DIR / f"{job['id']}.query.gz").write_bytes(gzip.compress(data))
     return JSONResponse(_public(job))
 
 
@@ -278,10 +308,20 @@ def hit_structure(job_id: str, db: str, rank: int):
         return _remote_hit(job, db, rank, "structure").decode()
     if db not in engine.databases:
         raise HTTPException(410, "database no longer served")
+    # a hit drawn with all its atoms is kept: the RCSB fetch is slow for large chains
+    cached = JOBS_DIR / f"{job_id}.{db}.{rank}.pdb.gz"
+    if cached.exists():
+        return gzip.decompress(cached.read_bytes()).decode()
     try:
-        return engine.superposition_pdb(db, _query_entry(job), hit["target"])
+        upload = JOBS_DIR / f"{job_id}.query.gz"
+        qfile = ((gzip.decompress(upload.read_bytes()), job["query"]["filename"])
+                 if upload.exists() else None)
+        text = engine.superposition_pdb(db, _query_entry(job), hit["target"], qfile)
     except ValueError as exc:
         raise HTTPException(422, str(exc))
+    if text.startswith("REMARK   1 FULLATOM") and " B" in text.split("\n", 1)[0]:
+        cached.write_bytes(gzip.compress(text.encode()))
+    return text
 
 
 TSV_FIELDS = ["database", "rank", "target", "pdb", "chain", "auth_asym", "desc",
@@ -289,7 +329,7 @@ TSV_FIELDS = ["database", "rank", "target", "pdb", "chain", "auth_asym", "desc",
               "raw_evalue", "structure_score", "tm_a", "aligned", "tm_mean",
               "tm_query", "tm_target", "q_start", "q_end",
               "t_start", "t_end", "q_len", "t_len", "n_aligned", "seq_identity",
-              "rmsd", "tm_aln"]
+              "rmsd"]
 
 
 @app.get("/api/result/{job_id}/download")

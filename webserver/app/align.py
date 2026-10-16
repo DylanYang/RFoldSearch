@@ -143,11 +143,6 @@ def kabsch(P, Q):
     return R, qc - pc @ R.T
 
 
-def tm_d0(n):
-    """RNA TM-score d0 (US-align's nucleic-acid form), in angstroms."""
-    return max(0.5, 0.6 * np.sqrt(max(n, 1) - 0.5) - 2.5)
-
-
 def describe(qtok, ttok, q_entry, t_entry, sub, q_seq=None, t_seq=None):
     """Everything the result page shows for one hit's alignment."""
     score, qi, tj = sw_align(qtok, ttok, sub)
@@ -195,12 +190,26 @@ def describe(qtok, ttok, q_entry, t_entry, sub, q_seq=None, t_seq=None):
         R, tr = kabsch(Pt, Pq)
         d = np.linalg.norm(Pt @ R.T + tr - Pq, axis=1)
         out["rmsd"] = float(np.sqrt(np.mean(d ** 2)))
-        # TM-like score of this superposition over the aligned pairs,
-        # normalised by query length (the T_align of the Methods)
-        out["tm_aln"] = float(np.sum(1.0 / (1.0 + (d / tm_d0(len(qtok))) ** 2))
-                              / len(qtok))
         out["_superpose"] = (R, tr, pq, pt)
+    tm_a = structure_tm_a(qtok, ttok, q_entry, t_entry, sub)
+    if tm_a is not None:
+        out["tm_a"] = tm_a
     return out
+
+
+def structure_tm_a(qtok, ttok, q_entry, t_entry, sub):
+    """TM_a exactly as the search ranks by it (the results table's TM-score):
+    the mean of the query- and target-normalised TM-scores, from the same
+    alignment and superposition search. None without C4' coordinates."""
+    from rfoldsearch import structure_score as ss
+    q = np.asarray(qtok, np.int64)
+    t = np.asarray(ttok, np.int64)
+    qxyz, txyz = ss.c4_coords(q_entry, len(q)), ss.c4_coords(t_entry, len(t))
+    if qxyz is None or txyz is None:
+        return None
+    _, tm_a, _ = ss.score_pair(q, qxyz, t, txyz, sub,
+                               np.float32(GAP_OPEN), np.float32(GAP_EXTEND))
+    return float(tm_a)
 
 
 _ATOM_NAMES = ["C3'", "C4'", "O4'", "C1'", "N1"]

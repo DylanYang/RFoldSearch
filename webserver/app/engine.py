@@ -31,7 +31,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
 
-from . import align
+from . import align, fullatom
 
 ALIGN_MAX = int(os.environ.get("RFOLDSEARCH_ALIGN_MAX", "100"))
 URS_ID = re.compile(r"^URS[0-9A-F]{10}_(\d+)")
@@ -56,6 +56,72 @@ def organism_of(target: str) -> Optional[str]:
     return f"{t['name']}{common} \u00b7 taxon {m.group(1)}"
 _ANNOTATION = ("pdb", "chain", "auth_asym", "desc", "organism", "title",
                "method", "resolution", "rfam", "plddt", "msa_depth")
+
+
+def first_rna_chain(data: bytes, filename: str):
+    """Keep only the first RNA chain of an uploaded structure.
+
+    The encoder takes one chain, so a file with several chains is cut down
+    to its first RNA chain in file order (first model; label_asym_id for
+    mmCIF, as the encoder reads it). Return (data, notice): the notice
+    names the chains when more than one was RNA, and is None otherwise.
+    """
+    from rfoldsearch.edges import RNA_RESIDUE_NAMES
+
+    text = data.decode(errors="replace")
+    if filename.lower().endswith((".cif", ".mmcif")):
+        import io
+        import numpy as np
+        import biotite.structure.io.pdbx as pdbx
+        f = pdbx.CIFFile.read(io.StringIO(text))
+        block = f.block
+        cat = block["atom_site"]
+        col = lambda k: cat[k].as_array(str)
+        model = col("pdbx_PDB_model_num") if "pdbx_PDB_model_num" in cat else None
+        first = np.ones(len(col("label_asym_id")), bool) if model is None else model == model[0]
+        label, comp = col("label_asym_id"), np.char.upper(col("label_comp_id"))
+        auth = col("auth_asym_id") if "auth_asym_id" in cat else label
+        rna = first & np.isin(comp, sorted(RNA_RESIDUE_NAMES))
+        chains, names = [], []
+        for lab, au in zip(label[rna], auth[rna]):
+            if lab not in chains:
+                chains.append(lab)
+                names.append(au)
+        if not chains or len(set(label[first])) <= 1:
+            return data, None
+        keep = label == chains[0]
+        block["atom_site"] = pdbx.CIFCategory(
+            {k: pdbx.CIFColumn(pdbx.CIFData(c.data.array[keep]),
+                               None if c.mask is None else pdbx.CIFData(c.mask.array[keep]))
+             for k, c in cat.items()})
+        if "atom_site_anisotrop" in block:     # per-atom, often most of the file
+            del block["atom_site_anisotrop"]
+        out = io.StringIO()
+        f.write(out)
+        data = out.getvalue().encode()
+    else:
+        lines, chains, out, model_done = text.splitlines(), [], [], False
+        for ln in lines:
+            if ln.startswith("ENDMDL"):
+                model_done = True
+            if (ln.startswith(("ATOM", "HETATM")) and not model_done and len(ln) > 21
+                    and ln[17:20].strip().upper() in RNA_RESIDUE_NAMES
+                    and ln[21] not in chains):
+                chains.append(ln[21])
+        every = {ln[21] for ln in lines if ln.startswith(("ATOM", "HETATM")) and len(ln) > 21}
+        if not chains or len(every) <= 1:
+            return data, None
+        for ln in lines:
+            if ln.startswith(("ATOM", "HETATM", "ANISOU", "TER")) and (len(ln) <= 21 or ln[21] != chains[0]):
+                continue
+            out.append(ln)
+        data = ("\n".join(out) + "\n").encode()
+        names = chains
+    if len(names) <= 1:                         # other chains were protein, ligands, ...
+        return data, None
+    shown = ", ".join(n.strip() or "(blank)" for n in names[:10]) + (", …" if len(names) > 10 else "")
+    return data, (f"The structure has {len(names)} RNA chains ({shown}); "
+                  f"only the first, chain {names[0].strip() or '(blank)'}, was searched.")
 
 
 @dataclass
@@ -230,17 +296,47 @@ class Engine:
             d.pop("_superpose", None)
         return d
 
-    def superposition_pdb(self, db_key: str, enc: dict, target: str) -> str:
-        """Query (chain A) and the target superposed onto it (chain B)."""
+    def superposition_pdb(self, db_key: str, enc: dict, target: str,
+                          query_file: Optional[tuple] = None) -> str:
+        """Query (chain A) and the target superposed onto it (chain B).
+
+        Each chain is written with all its atoms when they can be had (the
+        uploaded query file; a PDB hit from the RCSB) and as the five
+        stored atoms per nucleotide otherwise. A REMARK line names the
+        chains that are full-atom, for the viewer to pick a style.
+        """
         h = self.databases[db_key]
         s = h.searcher
         d = self.alignment(h, enc, target, keep_superposition=True)
-        tseq = h.meta.get(target, {}).get("seq")
+        ann = h.meta.get(target, {})
         if "_superpose" not in d:
             raise ValueError("too few aligned residues to superpose")
         R, tr, pq, pt = d["_superpose"]
-        qtxt, nxt = align.backbone_pdb(enc, enc.get("seq"), "A", highlight=pq)
-        ttxt, _ = align.backbone_pdb(s.ents[s.id2i[target]], tseq, "B",
-                                     rot=R, trans=tr, highlight=pt,
-                                     first_serial=nxt)
-        return qtxt + ttxt + "END\n"
+        tent = s.ents[s.id2i[target]]
+        full = []
+
+        def chain(entry, seq, letter, sources, rot=None, trans=None, mark=None, first=1):
+            for source in sources:
+                try:
+                    arr = fullatom.load_atoms(*source())
+                    txt, nxt = fullatom.chain_pdb(
+                        arr, align.masked_coords(entry)[:, 1], letter, rot, trans, mark, first)
+                    full.append(letter)
+                    return txt, nxt
+                except Exception as exc:          # next source, then the stored atoms
+                    print(f"[engine] full-atom chain {letter} unavailable: "
+                          f"{type(exc).__name__}: {exc}", flush=True)
+            return align.backbone_pdb(entry, seq, letter, rot=rot, trans=trans,
+                                      highlight=mark, first_serial=first)
+
+        qsrc = [lambda: query_file] if query_file else []
+        # PDB-RNA names chains by label_asym_id, RNAsolo by auth_asym_id
+        tsrc = []
+        if ann.get("pdb") and ann.get("chain"):
+            tsrc.append(lambda: (fullatom.rcsb_chain(ann["pdb"], ann["chain"]), "chain.cif"))
+            tsrc.append(lambda: (fullatom.rcsb_chain(ann["pdb"], ann.get("auth_asym") or ann["chain"],
+                                                     "auth"), "chain.cif"))
+        qtxt, nxt = chain(enc, enc.get("seq"), "A", qsrc, mark=pq)
+        ttxt, _ = chain(tent, ann.get("seq"), "B", tsrc, R, tr, pt, nxt)
+        head = f"REMARK   1 FULLATOM {' '.join(full)}\n" if full else ""
+        return head + qtxt + ttxt + "END\n"
