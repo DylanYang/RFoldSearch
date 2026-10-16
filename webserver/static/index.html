@@ -179,7 +179,7 @@
   .doc p, .doc li { color: var(--ink-2) }
   .doc code, .doc .kbd { font-family: var(--mono); font-size: 13px; background: var(--line-2);
                          padding: 1px 6px; border-radius: 5px }
-  .doc table { border-collapse: collapse; margin: 8px 0 }
+  .doc table { border-collapse: collapse; margin: 8px 0; max-width: 100% }
   .doc td, .doc th { border: 1px solid var(--line); padding: 6px 12px; text-align: left; font-size: 14px }
 
   /* results */
@@ -299,7 +299,7 @@
   td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap }
   .tgt { font-size: 14.5px }
   .chain { color: #a09a93; font-size: 12.5px; margin-left: 8px; white-space: nowrap }
-  td:nth-child(2) { white-space: nowrap }
+  table.hits td:nth-child(2) { white-space: nowrap }
   .desc { max-width: 240px; min-width: 170px }
   .desc .t { white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden }
   .desc .o { font-size: 13.5px }
