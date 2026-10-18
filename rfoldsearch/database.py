@@ -9,6 +9,7 @@ import numpy as np
 import torch
 
 from . import experimental_evalue as _experimental_evalue
+from . import predicted_evalue as _predicted_evalue
 
 from .backbone import extract_backbone_coords
 from .edges import find_base_pair_and_stack_idx
@@ -208,6 +209,11 @@ def build_database(checkpoint: str, data_paths: list[str], output: str,
             _experimental_evalue.validate_parameters(
                 embedded_evalue_params, n_clusters, target_fingerprint,
                 embedded_evalue_params.get("calibration_context_fingerprint"))
+        if embedded_evalue_params.get("scheme") == _predicted_evalue.SCHEME:
+            _predicted_evalue.validate_parameters(
+                embedded_evalue_params, n_clusters, target_fingerprint,
+                embedded_evalue_params.get("calibration_context_fingerprint"),
+                [entry["tokens"] for entry in entries])
         power = embedded_evalue_params.get("power_calibration")
         if power is not None:
             _validate_power_calibration(power)
@@ -305,6 +311,11 @@ def attach_evalue_calibration(database: str, clusters: str,
         _experimental_evalue.validate_parameters(
             params, n_clusters, target_fingerprint,
             params.get("calibration_context_fingerprint"))
+    if params.get("scheme") == _predicted_evalue.SCHEME:
+        _predicted_evalue.validate_parameters(
+            params, n_clusters, target_fingerprint,
+            params.get("calibration_context_fingerprint"),
+            [entry["tokens"] for entry in entries])
     for entry, label in zip(entries, labels):
         entry["cluster"] = label
     db["n_clusters"] = n_clusters

@@ -169,7 +169,7 @@ def main(argv=None):
     return fit_files(parser.parse_args(argv))
 
 
-def fit_files(args):
+def fit_files(args, *, predicted=False):
     """Run the package fitting workflow from parsed CLI arguments."""
     db_path = Path(args.db)
     workdir = Path(args.workdir)
@@ -180,8 +180,18 @@ def fit_files(args):
     labels = read_labels(args.labels)
     family = np.asarray([labels.get(chain_id, {}).get("family", "") for chain_id in ids])
     clan = np.asarray([labels.get(chain_id, {}).get("clan", "") for chain_id in ids])
-    query_indices = (np.load(args.query_indices).astype(int)
-                     if args.query_indices else np.flatnonzero(family))
+    if predicted:
+        core_indices = np.load(args.training_indices).astype(int)
+        auxiliary_indices = np.load(args.auxiliary_indices).astype(int)
+        calibration_indices = np.load(args.calibration_indices).astype(int)
+        if (core_indices.ndim != 1 or auxiliary_indices.ndim != 1
+                or calibration_indices.ndim != 1 or not len(auxiliary_indices)):
+            raise ValueError("core, auxiliary and calibration panels must be nonempty 1D arrays")
+        training = np.r_[core_indices, auxiliary_indices]
+        query_indices = np.r_[training, calibration_indices]
+    else:
+        query_indices = (np.load(args.query_indices).astype(int)
+                         if args.query_indices else np.flatnonzero(family))
     if (query_indices.ndim != 1 or len(set(query_indices)) != len(query_indices)
             or np.any(query_indices < 0) or np.any(query_indices >= len(ids))):
         raise ValueError("query index panel is invalid")
@@ -190,17 +200,23 @@ def fit_files(args):
         raise ValueError("--scores and --score-manifest must be supplied together")
     if bool(args.tm_matrix) != bool(args.tm_manifest):
         raise ValueError("--tm-matrix and --tm-manifest must be supplied together")
-    scores_path = Path(args.scores) if args.scores else workdir / "raw_sw.npy"
+    score_name = "compbias20_sw" if predicted else "raw_sw"
+    scores_path = Path(args.scores) if args.scores else workdir / f"{score_name}.npy"
     manifest_path = (Path(args.score_manifest) if args.score_manifest
-                     else workdir / "raw_sw.manifest.json")
+                     else workdir / f"{score_name}.manifest.json")
     if not scores_path.exists() and args.scores:
         raise FileNotFoundError(scores_path)
     if not scores_path.exists():
+        if predicted:
+            from . import compbias
+            background = compbias.background_frequencies(tokens, matrix.shape[0])
         scores_computed = np.empty((len(query_indices), len(ids)), dtype=np.float32)
         for row, qi in enumerate(query_indices):
+            qtokens, substitution = (compbias.query_profile(
+                tokens[qi], matrix, background) if predicted else (tokens[qi], matrix))
             for target, token in enumerate(tokens):
                 scores_computed[row, target] = smith_waterman_numba(
-                    tokens[qi], token, matrix, GAP_OPEN, GAP_EXTEND)
+                    qtokens, token, substitution, GAP_OPEN, GAP_EXTEND)
             if (row + 1) % 25 == 0:
                 print(f"scored {row + 1}/{len(query_indices)} calibration queries",
                       flush=True)
@@ -209,11 +225,13 @@ def fit_files(args):
             "database_sha256": sha256(db_path),
             "matrix_sha256": sha256(matrix_path),
             "n_targets": len(ids), "query_ids": query_ids,
+            "score_definition": score_name,
             "scores_sha256": sha256(scores_path)}, indent=2) + "\n")
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     if (manifest.get("database_sha256") != sha256(db_path)
             or manifest.get("matrix_sha256") != sha256(matrix_path)
             or manifest.get("n_targets") != len(ids)
+            or (predicted and manifest.get("score_definition") != score_name)
             or manifest.get("scores_sha256") != sha256(scores_path)):
         raise ValueError("score manifest does not match the target database and matrix")
     if len(manifest["query_ids"]) != len(set(manifest["query_ids"])):
@@ -244,14 +262,25 @@ def fit_files(args):
                 if record["query_id"] in index and record["target_id"] in target_index:
                     tm[index[record["query_id"]], target_index[record["target_id"]]] = .5 * (
                         float(record["tm_query"]) + float(record["tm_target"]))
-    model, calibration, audit = fit_from_matrices(
-        entries, tokens, ids, np.asarray(clusters), family, clan,
-        query_indices, scores, tm, audit_file=audit_file, usalign=args.usalign,
-        censored=not args.uncensored)
+    if predicted:
+        from . import compbias
+        from . import predicted_calibrate
+        from . import predicted_evalue
+        model, calibration, audit = predicted_calibrate.fit_from_matrices(
+            entries, tokens, ids, np.asarray(clusters), family, clan,
+            training, calibration_indices=calibration_indices, scores=scores, tm=tm,
+            auxiliary_count=len(auxiliary_indices),
+            audit_file=audit_file, usalign=args.usalign)
+    else:
+        model, calibration, audit = fit_from_matrices(
+            entries, tokens, ids, np.asarray(clusters), family, clan,
+            query_indices, scores, tm, audit_file=audit_file, usalign=args.usalign,
+            censored=not args.uncensored)
     target_digest = database_fingerprint(entries, clusters, n_codes)
     context_digest = calibration_context_fingerprint(
         target_digest, matrix, GAP_OPEN, GAP_EXTEND)
-    params = {"scheme": EV.SCHEME, "score_definition": "raw-sw",
+    params = {"scheme": (predicted_evalue.SCHEME if predicted else EV.SCHEME),
+              "score_definition": ("compbias20-raw-sw" if predicted else "raw-sw"),
               "n_chains": len(ids), "n_clusters": audit["n_clusters"],
               "target_database_fingerprint": target_digest,
               "calibration_context_fingerprint": context_digest,
@@ -266,17 +295,28 @@ def fit_files(args):
                              "tm_manifest_sha256": (sha256(args.tm_manifest)
                                                     if args.tm_manifest else None),
                              "query_indices_sha256": (sha256(args.query_indices)
-                                                      if args.query_indices else None),
+                                                      if not predicted and args.query_indices
+                                                      else None),
                              "new_usalign_sha256": (sha256(audit_file)
                                                      if audit_file.exists() else None)}}
-    EV.validate_parameters(params, audit["n_clusters"], target_digest,
-                           context_digest)
+    if predicted:
+        params["composition_window"] = compbias.WINDOW
+        params["composition_background"] = compbias.background_frequencies(
+            tokens, matrix.shape[0]).tolist()
+        params["provenance"]["training_indices_sha256"] = sha256(args.training_indices)
+        params["provenance"]["auxiliary_indices_sha256"] = sha256(args.auxiliary_indices)
+        params["provenance"]["calibration_indices_sha256"] = sha256(args.calibration_indices)
+        predicted_evalue.validate_parameters(params, audit["n_clusters"],
+                                             target_digest, context_digest, tokens)
+    else:
+        EV.validate_parameters(params, audit["n_clusters"], target_digest,
+                               context_digest)
     output = Path(args.output)
     output.parent.mkdir(parents=True, exist_ok=True)
     if output.exists():
         raise FileExistsError(output)
     output.write_text(json.dumps(params, indent=2) + "\n", encoding="utf-8")
-    print(f"wrote {output}: {audit['n_queries']} queries, "
+    print(f"wrote {output}: {len(query_indices)} queries, "
           f"{audit['n_clusters']} clusters, {audit['n_audited_pairs']} audited pairs")
     return params
 

@@ -9,6 +9,7 @@ import torch
 
 from .calibrate import AuditIncomplete, calibrate
 from .experimental_calibrate import fit_files as fit_experimental_evalues
+from .predicted_calibrate import fit_files as fit_predicted_evalues
 from .database import (attach_evalue_calibration, build_database, short_id,
                        structure_to_entry)
 from .search import (DEFAULT_MIN_DIAG, DEFAULT_RERANK, DEFAULT_TOP_N, RERANKERS,
@@ -60,6 +61,10 @@ def cmd_calibrate(a):
 
 def cmd_fit_experimental_evalues(a):
     fit_experimental_evalues(a)
+
+
+def cmd_fit_predicted_evalues(a):
+    fit_predicted_evalues(a)
 
 
 def cmd_search(a):
@@ -234,6 +239,18 @@ def main(argv=None):
     p.add_argument("--uncensored", action="store_true",
                    help="fit all Gumbel scores exactly instead of left-censoring")
     p.set_defaults(fn=cmd_fit_experimental_evalues)
+
+    p = sub.add_parser("fit-predicted-evalues",
+                       help="fit composition-adjusted SW, target-aware Gumbel and empirical map")
+    for name in ("db", "labels", "training_indices", "auxiliary_indices",
+                 "calibration_indices",
+                 "output", "workdir"):
+        p.add_argument("--" + name.replace("_", "-"), required=True)
+    for name in ("scores", "score_manifest", "tm_matrix", "tm_manifest"):
+        p.add_argument("--" + name.replace("_", "-"))
+    p.add_argument("--matrix")
+    p.add_argument("--usalign")
+    p.set_defaults(fn=cmd_fit_predicted_evalues)
 
     p = sub.add_parser("search", help="search a query against a token database")
     p.add_argument("--query", required=True,
