@@ -1,0 +1,590 @@
+{
+  "scope": "frozen exploratory fits; held-out annotated-background leaders; no structural refit",
+  "database_sha256": "1e5c41378043e07479bba90045dc08d62265248dce3ced11ac412b14f368e2eb",
+  "audit_table_sha256": "a7e35ee6b569ee8480792fab6f0aef9a99baa0a4d52a2c70291331d0864cdcb5",
+  "audit_complete": false,
+  "audit_completed_pairs": 496828,
+  "audit_metadata_completed_pairs": 496827,
+  "audit_required_pairs": 509687,
+  "n_query": 516,
+  "n_clusters": 878,
+  "n_grid_levels_replayed": 27,
+  "methods": {
+    "raw": {
+      "global": {
+        "thresholds": {
+          "0.01": {
+            "rfam_negative_proxy_per_query": 0.06312653772145309,
+            "proxy_ci95": [
+              0.012963804340688206,
+              0.12901133584520186
+            ],
+            "proxy_over_expected": 6.312653772145309,
+            "audit_unrelated_lower": 0.0,
+            "audit_unrelated_upper": 0.06004058063283641,
+            "queries_with_unknown_leader": 61,
+            "fraction_queries_inside_power_fit": 0.2364341085271318,
+            "fraction_queries_above_attainable_max": 0.0
+          },
+          "0.1": {
+            "rfam_negative_proxy_per_query": 0.07659180216332472,
+            "proxy_ci95": [
+              0.017297084318360915,
+              0.15140845511856157
+            ],
+            "proxy_over_expected": 0.7659180216332471,
+            "audit_unrelated_lower": 0.0,
+            "audit_unrelated_upper": 0.07301445063384553,
+            "queries_with_unknown_leader": 67,
+            "fraction_queries_inside_power_fit": 1.0,
+            "fraction_queries_above_attainable_max": 0.0
+          },
+          "1.0": {
+            "rfam_negative_proxy_per_query": 0.5391619616522982,
+            "proxy_ci95": [
+              0.25367514474373143,
+              0.9172766851163481
+            ],
+            "proxy_over_expected": 0.5391619616522982,
+            "audit_unrelated_lower": 0.29887862956397243,
+            "audit_unrelated_upper": 0.3941400388409102,
+            "queries_with_unknown_leader": 72,
+            "fraction_queries_inside_power_fit": 1.0,
+            "fraction_queries_above_attainable_max": 0.0
+          },
+          "10.0": {
+            "rfam_negative_proxy_per_query": 476.3053493006535,
+            "proxy_ci95": [
+              442.89779699438145,
+              510.4325546336455
+            ],
+            "proxy_over_expected": 47.63053493006535,
+            "audit_unrelated_lower": 468.5588558098613,
+            "audit_unrelated_upper": 474.30014033525487,
+            "queries_with_unknown_leader": 145,
+            "fraction_queries_inside_power_fit": 0.0,
+            "fraction_queries_above_attainable_max": 0.0
+          },
+          "100.0": {
+            "rfam_negative_proxy_per_query": 878.0,
+            "proxy_ci95": [
+              878.0,
+              878.0
+            ],
+            "proxy_over_expected": 8.78,
+            "audit_unrelated_lower": 869.7356906998174,
+            "audit_unrelated_upper": 875.7105989370684,
+            "queries_with_unknown_leader": 145,
+            "fraction_queries_inside_power_fit": 0.0,
+            "fraction_queries_above_attainable_max": 1.0
+          }
+        },
+        "fit_upper_e_cal_median": 3.450775771031594,
+        "attainable_e_cal_max_median": 30.297811269657394
+      },
+      "four_bin": {
+        "thresholds": {
+          "0.01": {
+            "rfam_negative_proxy_per_query": 0.056632733766398845,
+            "proxy_ci95": [
+              0.011830717449604719,
+              0.11762885995045397
+            ],
+            "proxy_over_expected": 5.663273376639884,
+            "audit_unrelated_lower": 0.0,
+            "audit_unrelated_upper": 0.0540381711186447,
+            "queries_with_unknown_leader": 55,
+            "fraction_queries_inside_power_fit": 0.2364341085271318,
+            "fraction_queries_above_attainable_max": 0.0
+          },
+          "0.1": {
+            "rfam_negative_proxy_per_query": 0.07101738135569068,
+            "proxy_ci95": [
+              0.017135003410044182,
+              0.1430547496238986
+            ],
+            "proxy_over_expected": 0.7101738135569067,
+            "audit_unrelated_lower": 0.0,
+            "audit_unrelated_upper": 0.06744002982621149,
+            "queries_with_unknown_leader": 64,
+            "fraction_queries_inside_power_fit": 1.0,
+            "fraction_queries_above_attainable_max": 0.0
+          },
+          "1.0": {
+            "rfam_negative_proxy_per_query": 0.20931585373179332,
+            "proxy_ci95": [
+              0.08727753998241214,
+              0.3574320119182866
+            ],
+            "proxy_over_expected": 0.20931585373179332,
+            "audit_unrelated_lower": 0.07212305974744807,
+            "audit_unrelated_upper": 0.16166210150337382,
+            "queries_with_unknown_leader": 71,
+            "fraction_queries_inside_power_fit": 1.0,
+            "fraction_queries_above_attainable_max": 0.0
+          },
+          "10.0": {
+            "rfam_negative_proxy_per_query": 329.24208955939304,
+            "proxy_ci95": [
+              291.2685684193585,
+              367.2113225564124
+            ],
+            "proxy_over_expected": 32.92420895593931,
+            "audit_unrelated_lower": 325.42031536056106,
+            "audit_unrelated_upper": 327.3403274944282,
+            "queries_with_unknown_leader": 116,
+            "fraction_queries_inside_power_fit": 0.13565891472868216,
+            "fraction_queries_above_attainable_max": 0.0
+          },
+          "100.0": {
+            "rfam_negative_proxy_per_query": 878.0,
+            "proxy_ci95": [
+              878.0,
+              878.0
+            ],
+            "proxy_over_expected": 8.78,
+            "audit_unrelated_lower": 869.7356906998174,
+            "audit_unrelated_upper": 875.7105989370684,
+            "queries_with_unknown_leader": 145,
+            "fraction_queries_inside_power_fit": 0.0,
+            "fraction_queries_above_attainable_max": 1.0
+          }
+        },
+        "fit_upper_e_cal_median": 6.767539945926679,
+        "attainable_e_cal_max_median": 59.419000725236245
+      }
+    },
+    "normalized": {
+      "global": {
+        "thresholds": {
+          "0.01": {
+            "rfam_negative_proxy_per_query": 0.008966503267973857,
+            "proxy_ci95": [
+              0.0,
+              0.02689950980392157
+            ],
+            "proxy_over_expected": 0.8966503267973858,
+            "audit_unrelated_lower": 0.008966503267973857,
+            "audit_unrelated_upper": 0.008966503267973857,
+            "queries_with_unknown_leader": 0,
+            "fraction_queries_inside_power_fit": 1.0,
+            "fraction_queries_above_attainable_max": 0.0
+          },
+          "0.1": {
+            "rfam_negative_proxy_per_query": 0.08516886299085961,
+            "proxy_ci95": [
+              0.03906373392666214,
+              0.14404801673862871
+            ],
+            "proxy_over_expected": 0.8516886299085961,
+            "audit_unrelated_lower": 0.0830904230203469,
+            "audit_unrelated_upper": 0.08430400877494158,
+            "queries_with_unknown_leader": 2,
+            "fraction_queries_inside_power_fit": 1.0,
+            "fraction_queries_above_attainable_max": 0.0
+          },
+          "1.0": {
+            "rfam_negative_proxy_per_query": 1.1739466313120335,
+            "proxy_ci95": [
+              0.9253270510187748,
+              1.435165439016223
+            ],
+            "proxy_over_expected": 1.1739466313120335,
+            "audit_unrelated_lower": 1.1424970111293662,
+            "audit_unrelated_upper": 1.1548351329677453,
+            "queries_with_unknown_leader": 10,
+            "fraction_queries_inside_power_fit": 1.0,
+            "fraction_queries_above_attainable_max": 0.0
+          },
+          "10.0": {
+            "rfam_negative_proxy_per_query": 10.081146920977472,
+            "proxy_ci95": [
+              8.598910762520784,
+              11.729210287270131
+            ],
+            "proxy_over_expected": 1.0081146920977473,
+            "audit_unrelated_lower": 9.729532757611656,
+            "audit_unrelated_upper": 9.750198588593632,
+            "queries_with_unknown_leader": 16,
+            "fraction_queries_inside_power_fit": 1.0,
+            "fraction_queries_above_attainable_max": 0.0
+          },
+          "100.0": {
+            "rfam_negative_proxy_per_query": 253.32154191508076,
+            "proxy_ci95": [
+              220.90598095167093,
+              288.0396937345144
+            ],
+            "proxy_over_expected": 2.5332154191508076,
+            "audit_unrelated_lower": 251.48453209481636,
+            "audit_unrelated_upper": 251.56479412216777,
+            "queries_with_unknown_leader": 48,
+            "fraction_queries_inside_power_fit": 0.0,
+            "fraction_queries_above_attainable_max": 0.0
+          }
+        },
+        "fit_upper_e_cal_median": 28.947568066955533,
+        "attainable_e_cal_max_median": 254.15964762786956
+      },
+      "four_bin": {
+        "thresholds": {
+          "0.01": {
+            "rfam_negative_proxy_per_query": 0.009831357483891903,
+            "proxy_ci95": [
+              0.0,
+              0.029494072451675707
+            ],
+            "proxy_over_expected": 0.9831357483891903,
+            "audit_unrelated_lower": 0.008966503267973857,
+            "audit_unrelated_upper": 0.009831357483891903,
+            "queries_with_unknown_leader": 1,
+            "fraction_queries_inside_power_fit": 0.9903100775193798,
+            "fraction_queries_above_attainable_max": 0.0
+          },
+          "0.1": {
+            "rfam_negative_proxy_per_query": 0.062032360594169465,
+            "proxy_ci95": [
+              0.028891125776740297,
+              0.1045161615472808
+            ],
+            "proxy_over_expected": 0.6203236059416947,
+            "audit_unrelated_lower": 0.05815214100716081,
+            "audit_unrelated_upper": 0.06116750637825141,
+            "queries_with_unknown_leader": 3,
+            "fraction_queries_inside_power_fit": 1.0,
+            "fraction_queries_above_attainable_max": 0.0
+          },
+          "1.0": {
+            "rfam_negative_proxy_per_query": 1.1436659977235173,
+            "proxy_ci95": [
+              0.9047126532973445,
+              1.37881863106908
+            ],
+            "proxy_over_expected": 1.1436659977235173,
+            "audit_unrelated_lower": 1.1223951689067404,
+            "audit_unrelated_upper": 1.1364629991769555,
+            "queries_with_unknown_leader": 12,
+            "fraction_queries_inside_power_fit": 1.0,
+            "fraction_queries_above_attainable_max": 0.0
+          },
+          "10.0": {
+            "rfam_negative_proxy_per_query": 12.819866179529171,
+            "proxy_ci95": [
+              9.04295300009729,
+              18.12868534655585
+            ],
+            "proxy_over_expected": 1.2819866179529171,
+            "audit_unrelated_lower": 12.522845748711191,
+            "audit_unrelated_upper": 12.545662090848344,
+            "queries_with_unknown_leader": 17,
+            "fraction_queries_inside_power_fit": 1.0,
+            "fraction_queries_above_attainable_max": 0.0
+          },
+          "100.0": {
+            "rfam_negative_proxy_per_query": 250.34218737838307,
+            "proxy_ci95": [
+              200.25474573457623,
+              300.52994583529255
+            ],
+            "proxy_over_expected": 2.5034218737838305,
+            "audit_unrelated_lower": 248.68621404765835,
+            "audit_unrelated_upper": 248.76742411506257,
+            "queries_with_unknown_leader": 57,
+            "fraction_queries_inside_power_fit": 0.0,
+            "fraction_queries_above_attainable_max": 0.03294573643410853
+          }
+        },
+        "fit_upper_e_cal_median": 39.162441006537414,
+        "attainable_e_cal_max_median": 343.8462320373985
+      }
+    },
+    "compbias_raw": {
+      "global": {
+        "thresholds": {
+          "0.01": {
+            "rfam_negative_proxy_per_query": 0.08983831682184462,
+            "proxy_ci95": [
+              0.019026792750197016,
+              0.166559350439305
+            ],
+            "proxy_over_expected": 8.983831682184462,
+            "audit_unrelated_lower": 0.0,
+            "audit_unrelated_upper": 0.0859122337536888,
+            "queries_with_unknown_leader": 70,
+            "fraction_queries_inside_power_fit": 0.2364341085271318,
+            "fraction_queries_above_attainable_max": 0.0
+          },
+          "0.1": {
+            "rfam_negative_proxy_per_query": 0.10029180888423626,
+            "proxy_ci95": [
+              0.01965577763450106,
+              0.18681495688795222
+            ],
+            "proxy_over_expected": 1.0029180888423626,
+            "audit_unrelated_lower": 0.0,
+            "audit_unrelated_upper": 0.09421521466090788,
+            "queries_with_unknown_leader": 72,
+            "fraction_queries_inside_power_fit": 1.0,
+            "fraction_queries_above_attainable_max": 0.0
+          },
+          "1.0": {
+            "rfam_negative_proxy_per_query": 0.37926353112436856,
+            "proxy_ci95": [
+              0.1772964660674113,
+              0.6677299123629408
+            ],
+            "proxy_over_expected": 0.37926353112436856,
+            "audit_unrelated_lower": 0.17790859419507274,
+            "audit_unrelated_upper": 0.2770641723205662,
+            "queries_with_unknown_leader": 73,
+            "fraction_queries_inside_power_fit": 1.0,
+            "fraction_queries_above_attainable_max": 0.0
+          },
+          "10.0": {
+            "rfam_negative_proxy_per_query": 414.8218890893756,
+            "proxy_ci95": [
+              389.4392108688858,
+              440.7688188499624
+            ],
+            "proxy_over_expected": 41.48218890893756,
+            "audit_unrelated_lower": 407.1353283305819,
+            "audit_unrelated_upper": 413.0509629323946,
+            "queries_with_unknown_leader": 145,
+            "fraction_queries_inside_power_fit": 0.0,
+            "fraction_queries_above_attainable_max": 0.0
+          },
+          "100.0": {
+            "rfam_negative_proxy_per_query": 878.0,
+            "proxy_ci95": [
+              878.0,
+              878.0
+            ],
+            "proxy_over_expected": 8.78,
+            "audit_unrelated_lower": 869.7365555540333,
+            "audit_unrelated_upper": 875.7105989370684,
+            "queries_with_unknown_leader": 145,
+            "fraction_queries_inside_power_fit": 0.0,
+            "fraction_queries_above_attainable_max": 1.0
+          }
+        },
+        "fit_upper_e_cal_median": 4.512226114596374,
+        "attainable_e_cal_max_median": 39.617345286156166
+      },
+      "four_bin": {
+        "thresholds": {
+          "0.01": {
+            "rfam_negative_proxy_per_query": 0.08460734374169517,
+            "proxy_ci95": [
+              0.019026792750197016,
+              0.16192429615301965
+            ],
+            "proxy_over_expected": 8.460734374169517,
+            "audit_unrelated_lower": 0.0,
+            "audit_unrelated_upper": 0.08068126067353934,
+            "queries_with_unknown_leader": 70,
+            "fraction_queries_inside_power_fit": 0.10077519379844961,
+            "fraction_queries_above_attainable_max": 0.0
+          },
+          "0.1": {
+            "rfam_negative_proxy_per_query": 0.0985481511908531,
+            "proxy_ci95": [
+              0.01965577763450106,
+              0.18206373272879794
+            ],
+            "proxy_over_expected": 0.985481511908531,
+            "audit_unrelated_lower": 0.0,
+            "audit_unrelated_upper": 0.09282028850620135,
+            "queries_with_unknown_leader": 72,
+            "fraction_queries_inside_power_fit": 1.0,
+            "fraction_queries_above_attainable_max": 0.0
+          },
+          "1.0": {
+            "rfam_negative_proxy_per_query": 0.7142382698308385,
+            "proxy_ci95": [
+              0.27611638772690666,
+              1.2830719581440981
+            ],
+            "proxy_over_expected": 0.7142382698308385,
+            "audit_unrelated_lower": 0.44025710599945,
+            "audit_unrelated_upper": 0.5376690264315603,
+            "queries_with_unknown_leader": 73,
+            "fraction_queries_inside_power_fit": 1.0,
+            "fraction_queries_above_attainable_max": 0.0
+          },
+          "10.0": {
+            "rfam_negative_proxy_per_query": 397.67503507809914,
+            "proxy_ci95": [
+              366.55575363571,
+              427.973181731911
+            ],
+            "proxy_over_expected": 39.76750350780991,
+            "audit_unrelated_lower": 392.4583101896429,
+            "audit_unrelated_upper": 395.87194130015786,
+            "queries_with_unknown_leader": 83,
+            "fraction_queries_inside_power_fit": 0.25,
+            "fraction_queries_above_attainable_max": 0.0
+          },
+          "100.0": {
+            "rfam_negative_proxy_per_query": 877.7443536272846,
+            "proxy_ci95": [
+              877.409571350155,
+              878.0
+            ],
+            "proxy_over_expected": 8.777443536272846,
+            "audit_unrelated_lower": 869.480909181318,
+            "audit_unrelated_upper": 875.454952564353,
+            "queries_with_unknown_leader": 145,
+            "fraction_queries_inside_power_fit": 0.0,
+            "fraction_queries_above_attainable_max": 0.8604651162790697
+          }
+        },
+        "fit_upper_e_cal_median": 5.454601841136513,
+        "attainable_e_cal_max_median": 47.89140416517858
+      }
+    },
+    "compbias_normalized": {
+      "global": {
+        "thresholds": {
+          "0.01": {
+            "rfam_negative_proxy_per_query": 0.010877552099921797,
+            "proxy_ci95": [
+              0.0,
+              0.03072160746781745
+            ],
+            "proxy_over_expected": 1.0877552099921797,
+            "audit_unrelated_lower": 0.009315234806650488,
+            "audit_unrelated_upper": 0.010528820561245164,
+            "queries_with_unknown_leader": 2,
+            "fraction_queries_inside_power_fit": 1.0,
+            "fraction_queries_above_attainable_max": 0.0
+          },
+          "0.1": {
+            "rfam_negative_proxy_per_query": 0.13151794974983771,
+            "proxy_ci95": [
+              0.06052287603398633,
+              0.21705656840290002
+            ],
+            "proxy_over_expected": 1.315179497498377,
+            "audit_unrelated_lower": 0.12398302363749797,
+            "audit_unrelated_upper": 0.13030436399524303,
+            "queries_with_unknown_leader": 4,
+            "fraction_queries_inside_power_fit": 1.0,
+            "fraction_queries_above_attainable_max": 0.0
+          },
+          "1.0": {
+            "rfam_negative_proxy_per_query": 0.9159583920681426,
+            "proxy_ci95": [
+              0.6610906444041388,
+              1.1869992967073377
+            ],
+            "proxy_over_expected": 0.9159583920681426,
+            "audit_unrelated_lower": 0.8782595027123898,
+            "audit_unrelated_upper": 0.8968468937238544,
+            "queries_with_unknown_leader": 14,
+            "fraction_queries_inside_power_fit": 1.0,
+            "fraction_queries_above_attainable_max": 0.0
+          },
+          "10.0": {
+            "rfam_negative_proxy_per_query": 9.109103425663664,
+            "proxy_ci95": [
+              7.309663407571638,
+              11.116233010991763
+            ],
+            "proxy_over_expected": 0.9109103425663664,
+            "audit_unrelated_lower": 8.980025457322734,
+            "audit_unrelated_upper": 9.002841799459885,
+            "queries_with_unknown_leader": 17,
+            "fraction_queries_inside_power_fit": 1.0,
+            "fraction_queries_above_attainable_max": 0.0
+          },
+          "100.0": {
+            "rfam_negative_proxy_per_query": 347.39075630441175,
+            "proxy_ci95": [
+              299.95206110716566,
+              395.5491085876403
+            ],
+            "proxy_over_expected": 3.4739075630441176,
+            "audit_unrelated_lower": 345.7842084766835,
+            "audit_unrelated_upper": 345.8566423249481,
+            "queries_with_unknown_leader": 40,
+            "fraction_queries_inside_power_fit": 0.0,
+            "fraction_queries_above_attainable_max": 0.0
+          }
+        },
+        "fit_upper_e_cal_median": 28.328941270596992,
+        "attainable_e_cal_max_median": 248.7281043558416
+      },
+      "four_bin": {
+        "thresholds": {
+          "0.01": {
+            "rfam_negative_proxy_per_query": 0.010877552099921797,
+            "proxy_ci95": [
+              0.0,
+              0.03072160746781745
+            ],
+            "proxy_over_expected": 1.0877552099921797,
+            "audit_unrelated_lower": 0.009315234806650488,
+            "audit_unrelated_upper": 0.010528820561245164,
+            "queries_with_unknown_leader": 2,
+            "fraction_queries_inside_power_fit": 1.0,
+            "fraction_queries_above_attainable_max": 0.0
+          },
+          "0.1": {
+            "rfam_negative_proxy_per_query": 0.08730487516392792,
+            "proxy_ci95": [
+              0.034571401989296376,
+              0.15379527588603834
+            ],
+            "proxy_over_expected": 0.8730487516392791,
+            "audit_unrelated_lower": 0.08133226634485947,
+            "audit_unrelated_upper": 0.08609128940933324,
+            "queries_with_unknown_leader": 3,
+            "fraction_queries_inside_power_fit": 1.0,
+            "fraction_queries_above_attainable_max": 0.0
+          },
+          "1.0": {
+            "rfam_negative_proxy_per_query": 0.657246989284728,
+            "proxy_ci95": [
+              0.46482200122515166,
+              0.8756059090166705
+            ],
+            "proxy_over_expected": 0.657246989284728,
+            "audit_unrelated_lower": 0.6398731840278583,
+            "audit_unrelated_upper": 0.6560334035301333,
+            "queries_with_unknown_leader": 12,
+            "fraction_queries_inside_power_fit": 1.0,
+            "fraction_queries_above_attainable_max": 0.0
+          },
+          "10.0": {
+            "rfam_negative_proxy_per_query": 7.77605799249951,
+            "proxy_ci95": [
+              6.213997960988163,
+              9.573710441995598
+            ],
+            "proxy_over_expected": 0.777605799249951,
+            "audit_unrelated_lower": 7.674479436585247,
+            "audit_unrelated_upper": 7.695493999105899,
+            "queries_with_unknown_leader": 16,
+            "fraction_queries_inside_power_fit": 1.0,
+            "fraction_queries_above_attainable_max": 0.0
+          },
+          "100.0": {
+            "rfam_negative_proxy_per_query": 210.21698192166107,
+            "proxy_ci95": [
+              168.6272856355156,
+              252.66884193752745
+            ],
+            "proxy_over_expected": 2.102169819216611,
+            "audit_unrelated_lower": 208.99956065447927,
+            "audit_unrelated_upper": 209.05944455624365,
+            "queries_with_unknown_leader": 34,
+            "fraction_queries_inside_power_fit": 0.0,
+            "fraction_queries_above_attainable_max": 0.001937984496124031
+          }
+        },
+        "fit_upper_e_cal_median": 45.785567939515616,
+        "attainable_e_cal_max_median": 401.9972865089471
+      }
+    }
+  }
+}

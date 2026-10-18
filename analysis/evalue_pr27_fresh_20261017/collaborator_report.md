@@ -1,5 +1,9 @@
 # RFoldSeek experimental E-value methods: fresh matched comparison
 
+**Follow-up:** the 0.01–100 recheck and its extrapolation/structural-audit limits
+are documented in [full_range_recheck.md](full_range_recheck.md). The audited
+E≤1 panel below does not establish calibration through E=100.
+
 **Status: exploratory, not a publication-ready Fig. S16A.** All score arrays, tokens,
 clusters and model coefficients in this run were recomputed from the 885 mmCIF
 files. Operational E≤1 negatives were structurally audited, but exclusions
@@ -82,6 +86,9 @@ are stored with the model and reused without restandardizing test queries.
 | Comp-bias SW/min + four-bin power | 0.793 [0.726, 0.852] | 0.036 [0.008, 0.083] | 0.069 [0.021, 0.134] | 0.143 [0.075, 0.221] | 0.292 [0.185, 0.391] | 0.657 [0.465, 0.876] | 0.135 | 0.00776 |
 
 ## Interim interpretation for method selection
+
+This interpretation was based on the operational E≤1 range; it must be read
+with the [0.01–100 recheck](full_range_recheck.md) before selecting a method.
 
 - Raw SW discriminates same-family from annotated negatives better than SW/min (family-macro AUC 0.892 versus 0.811); its global-power homolog recall at E≤1 is 0.415 versus 0.194.
 - After structural adjudication, the observed unrelated-cluster count at reported E=1 is 0.299 for raw/global, 0.072 for raw/four-bin, and 1.142 for SW/min/global. The raw candidates are conservative under the current fits; the normalized candidate is closer to the nominal count.
