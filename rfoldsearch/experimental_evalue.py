@@ -50,7 +50,7 @@ def _weighted_quantile(values, weights, probability):
 
 
 def fit_gumbel(scores, leaders, query_lengths, entropies, cluster_lengths,
-               families, *, censored=True):
+               families, *, censored=True, query_weights=None, compress=False):
     """Fit the validated five-feature Gumbel likelihood to clean cluster maxima."""
     scores = np.asarray(scores, dtype=float)
     leaders = np.asarray(leaders, dtype=int)
@@ -73,13 +73,20 @@ def fit_gumbel(scores, leaders, query_lengths, entropies, cluster_lengths,
     if np.any(~np.isfinite(y)) or np.any(y < 0):
         raise ValueError("Gumbel training scores must be finite nonnegative SW scores")
     query_counts = np.sum(leaders >= 0, axis=1)
-    weights = _family_weights(families)[rows] / query_counts[rows]
+    if query_weights is None:
+        query_weights = _family_weights(families)
+    else:
+        query_weights = np.asarray(query_weights, dtype=float)
+        if (query_weights.shape != families.shape
+                or np.any(~np.isfinite(query_weights))
+                or np.any(query_weights <= 0)):
+            raise ValueError("Gumbel query weights must be positive and finite")
+    weights = query_weights[rows] / query_counts[rows]
     weights /= weights.sum()
-    raw = feature_rows(query_lengths, entropies, cluster_lengths)[rows, cols]
-    mean = np.average(raw, axis=0, weights=weights)
-    scale = np.maximum(np.sqrt(np.average((raw - mean) ** 2,
-                                          axis=0, weights=weights)), 1e-8)
-    x = np.column_stack([np.ones(len(y)), (raw - mean) / scale])
+    qlog = np.log(query_lengths[rows])
+    clog = np.log(cluster_lengths[cols])
+    raw = np.column_stack((qlog, clog, np.abs(qlog - clog),
+                           np.asarray(entropies)[rows]))
     if censored:
         shorter = np.minimum(query_lengths[rows], cluster_lengths[cols])
         ratio = np.maximum(query_lengths[rows], cluster_lengths[cols]) / shorter
@@ -95,10 +102,26 @@ def fit_gumbel(scores, leaders, query_lengths, entropies, cluster_lengths,
     else:
         exact = np.ones(len(y))
         observed = y
-    beta0 = max(np.sqrt(np.average((y - np.average(y, weights=weights)) ** 2,
+    mean_y = np.average(y, weights=weights)
+    beta0 = max(np.sqrt(np.average((y - mean_y) ** 2,
                                      weights=weights)) * math.sqrt(6) / math.pi, 1e-4)
+    n_observations = len(y)
+    n_tail_observations = int(exact.sum())
+    if compress:
+        # Query, cluster median length and censored score determine identical
+        # likelihood terms. Summing their weights is an exact reduction.
+        keys = np.rec.fromarrays([rows, cluster_lengths[cols], observed, exact],
+                                 names="query,length,score,exact")
+        _, first, inverse = np.unique(keys, return_index=True,
+                                      return_inverse=True)
+        weights = np.bincount(inverse, weights=weights)
+        raw, observed, exact = raw[first], observed[first], exact[first]
+    mean = np.average(raw, axis=0, weights=weights)
+    scale = np.maximum(np.sqrt(np.average((raw - mean) ** 2,
+                                          axis=0, weights=weights)), 1e-8)
+    x = np.column_stack([np.ones(len(observed)), (raw - mean) / scale])
     initial = np.zeros((2, 5))
-    initial[0, 0] = np.average(y, weights=weights) - .5772156649 * beta0
+    initial[0, 0] = mean_y - .5772156649 * beta0
     initial[1, 0] = math.log(beta0)
 
     def objective(flat):
@@ -132,8 +155,9 @@ def fit_gumbel(scores, leaders, query_lengths, entropies, cluster_lengths,
     return {"coefficients_mu_logbeta": result.x.reshape(2, 5).T.tolist(),
             "feature_mean": mean.tolist(), "feature_scale": scale.tolist(),
             "censoring": "left-censored-95th-percentile" if censored else "none",
-            "n_observations": int(len(y)), "n_queries": int(len(families)),
-            "n_tail_observations": int(exact.sum()),
+            "n_observations": int(n_observations), "n_queries": int(len(families)),
+            "n_tail_observations": n_tail_observations,
+            "n_compressed_observations": int(len(observed)),
             "max_abs_gradient": float(np.max(np.abs(gradient)))}
 
 
@@ -184,7 +208,8 @@ def initial_evalue(scores, query_length, entropy, model):
     return float(out) if out.ndim == 0 else out
 
 
-def fit_empirical(evalue_rows, families, expansions, n_clusters, ceiling=100.0):
+def fit_empirical(evalue_rows, families, expansions, n_clusters, ceiling=100.0,
+                  background_scaling="annotated-to-full N_D/B_q"):
     """Family-balanced cumulative unrelated-cluster count and low-tail slope."""
     families = np.asarray(families)
     expansions = np.asarray(expansions, dtype=float)
@@ -225,7 +250,7 @@ def fit_empirical(evalue_rows, families, expansions, n_clusters, ceiling=100.0):
             "fit_raw_evalue_max": float(unique[-1]), "fit_raw_evalue_ceiling": float(ceiling),
             "n_clusters": int(n_clusters), "n_queries": int(len(families)),
             "n_families": int(len(np.unique(families))),
-            "background_scaling": "annotated-to-full N_D/B_q"}
+            "background_scaling": background_scaling}
 
 
 def apply_empirical(evalues, calibration):
