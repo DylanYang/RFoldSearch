@@ -6,7 +6,7 @@
   <a href="#installation"><img src="https://img.shields.io/badge/install-conda-44A833.svg" alt="Install with conda" /></a>
 </p>
 
-RFoldSearch enables fast RNA tertiary-structure search with 3Dr, a learned discrete structural alphabet. Each nucleotide is described by a 17-D vector: the rigid-body transform to its nearest non-sequential spatial neighbour and its local context. A VQ-VAE quantises this vector into one of 80 states, converting RNA chains into token strings. Targets sharing at least two token k-mers on a common diagonal with the query pass the prefilter, and the top N are aligned by affine-gap token Smith-Waterman, which gives the alignment score and the nucleotide correspondence. For the default search mode, RFoldSearch estimates token-alignment E-values using a database-specific Gumbel model followed by calibration of unrelated background counts. Hits are ranked by a structure score that combines the token-alignment score with the structural similarity of the aligned nucleotides, independently of the reported E-value. RFoldSearch-TM instead ranks candidates by US-align TM-score and does not report token-alignment E-values.
+RFoldSearch enables fast RNA tertiary-structure search with 3Dr, a learned discrete structural alphabet. Each nucleotide is described by a 17-D vector: the rigid-body transform to its nearest non-sequential spatial neighbour and its local context. A VQ-VAE quantises this vector into one of 80 states, converting RNA chains into token strings. Targets sharing at least two token k-mers on a common diagonal with the query pass the prefilter, and the top N are aligned by affine-gap token Smith-Waterman, which gives the alignment score and the nucleotide correspondence. For the default search mode, RFoldSearch estimates token-alignment E-values using a query-conditional Gumbel model followed by database-specific power-law calibration. Hits are ranked by a structure score that combines the token-alignment score with the structural similarity of the aligned nucleotides, independently of the reported E-value. RFoldSearch-TM instead ranks candidates by US-align TM-score and does not report token-alignment E-values.
 
 <p align="center"><img src=".github/fig1.jpeg" width="720" /></p>
 
@@ -172,53 +172,19 @@ rank  target                    TM_mean  TM_query  TM_target    len
 RFoldSearch reports Smith--Waterman E-values in `tm_a` and `sw` modes. The
 E-value is the expected number of unrelated database clusters (CD-HIT-EST,
 80% identity) reaching a hit's token-alignment score and it is not a significance
-estimate for the structure score R<sub>str</sub>. The experimental database uses
-raw Smith--Waterman scores, a target-aware Gumbel null conditioned on query
-length, target-cluster length, their difference and query-token entropy, and a
-family-balanced empirical monotone calibration. Its initial `E0` sums the
-predicted tail probability over all target clusters. Other calibrated databases
-continue to use the query-conditional Gumbel and power-law path.
+estimate for the structure score R<sub>str</sub>. A Gumbel null of per-cluster
+maximum scores, conditioned on the query's length and token entropy, gives an
+initial value `E0`, and a database-specific power law `E = a_D * E0**b_D`
+calibrates it to the observed number of structurally unrelated clusters.
 
-The experimental parameters bundled with RFoldSearch were fitted for the
-paper's 885-chain, 882-cluster database and are selected only when its database
-and scoring fingerprints match. An embedded or explicitly supplied parameter
-file takes precedence. A different database needs its own calibration.
-
-To refit the experimental model, use `rfoldsearch fit-experimental-evalues`.
-It requires an 80%-identity-clustered target database, Rfam labels and a
-calibration-query panel. With no score or TM caches, it computes raw SW scores
-for every query--target pair and audits high-scoring cluster leaders with
-US-align. To reuse caches, supply `--scores` with `--score-manifest`, and
-`--tm-matrix` with `--tm-manifest`; the manifests must record the database SHA-256,
-target count and query IDs (the score manifest also records the scoring-matrix
-SHA-256). `scripts/export_experimental_rfam_labels.py` can export the Rfam
-PDB-chain labels. For example:
-
-```
-rfoldsearch fit-experimental-evalues \
-  --db experimental_nr80.pt --labels rfam_labels.tsv \
-  --query-indices calibration_query_indices.npy \
-  --workdir experimental_fit --output experimental_evalues.json \
-  --usalign /path/to/USalign
-rfoldsearch attach-calibration --db experimental_nr80.pt \
-  --clusters experimental_nr80.clstr --params experimental_evalues.json \
-  --output experimental_calibrated.pt
-```
-
-The experimental fit excludes the query's own cluster and same Rfam
-family/clan, then removes US-align-related members (mean of the two normalised
-TM-scores >= 0.45) and uses the next eligible member in each cluster. There is
-no length-ratio filter. It refits the left-censored Gumbel after each round of
-missing leader audits with `E0 <= 100`; `--uncensored` is an optional alternative
-for a separately refitted database. The annotated background is expanded by
-`N_D/B_q`, where `B_q` is the eligible annotated-cluster count before structural
-exclusion. The empirical map interpolates cumulative counts inside the observed
-range, uses the fitted global power slope below it, and assigns `N_D` above
-the upper endpoint. These tails are extrapolations, not
-independently validated estimates.
-
-The following existing `calibrate` command remains the power-law workflow for
-other databases:
+The parameters belong to one database. Those bundled with RFoldSearch were
+fitted for the paper's 885-chain database and are used only
+when searching that database; a search of any other database reports no
+E-value until the database is calibrated. Their power-law correction was
+fitted after a US-align audit of every background cluster leader with
+`E0 <= 100`. The calibration holds on average over families: most
+families see fewer unrelated hits than nominal and a few see many more, and
+below E = 0.1 there are too few events to check it.
 
 To calibrate your own database, run once:
 

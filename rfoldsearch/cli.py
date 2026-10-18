@@ -8,7 +8,6 @@ import numpy as np
 import torch
 
 from .calibrate import AuditIncomplete, calibrate
-from .experimental_calibrate import fit_files as fit_experimental_evalues
 from .database import (attach_evalue_calibration, build_database, short_id,
                        structure_to_entry)
 from .search import (DEFAULT_MIN_DIAG, DEFAULT_RERANK, DEFAULT_TOP_N, RERANKERS,
@@ -56,10 +55,6 @@ def cmd_calibrate(a):
                   matrix=a.matrix, log=lambda m: print(m, flush=True))
     except (AuditIncomplete, FileExistsError) as e:
         raise SystemExit(str(e))
-
-
-def cmd_fit_experimental_evalues(a):
-    fit_experimental_evalues(a)
 
 
 def cmd_search(a):
@@ -221,19 +216,6 @@ def main(argv=None):
                    help="CD-HIT IDs based on database row positions, e.g. t for t0, t1, ...")
     p.add_argument("--matrix", default=None)
     p.set_defaults(fn=cmd_calibrate)
-
-    p = sub.add_parser("fit-experimental-evalues",
-                       help="fit raw-SW target-aware Gumbel and empirical mapping")
-    for name in ("db", "labels", "output", "workdir"):
-        p.add_argument("--" + name.replace("_", "-"), required=True)
-    for name in ("query_indices", "scores", "score_manifest", "tm_matrix",
-                 "tm_manifest"):
-        p.add_argument("--" + name.replace("_", "-"))
-    p.add_argument("--matrix")
-    p.add_argument("--usalign")
-    p.add_argument("--uncensored", action="store_true",
-                   help="fit all Gumbel scores exactly instead of left-censoring")
-    p.set_defaults(fn=cmd_fit_experimental_evalues)
 
     p = sub.add_parser("search", help="search a query against a token database")
     p.add_argument("--query", required=True,
