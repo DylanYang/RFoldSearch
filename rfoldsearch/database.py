@@ -8,6 +8,8 @@ import os
 import numpy as np
 import torch
 
+from . import experimental_evalue as _experimental_evalue
+
 from .backbone import extract_backbone_coords
 from .edges import find_base_pair_and_stack_idx
 from .prefilter import KMER_K
@@ -202,6 +204,10 @@ def build_database(checkpoint: str, data_paths: list[str], output: str,
         fitted_target = embedded_evalue_params.get("target_database_fingerprint")
         if fitted_target is not None and fitted_target != target_fingerprint:
             raise ValueError("E-value parameters were fitted for a different target database")
+        if embedded_evalue_params.get("scheme") == _experimental_evalue.SCHEME:
+            _experimental_evalue.validate_parameters(
+                embedded_evalue_params, n_clusters, target_fingerprint,
+                embedded_evalue_params.get("calibration_context_fingerprint"))
         power = embedded_evalue_params.get("power_calibration")
         if power is not None:
             _validate_power_calibration(power)
@@ -295,6 +301,10 @@ def attach_evalue_calibration(database: str, clusters: str,
     fitted_target = params.get("target_database_fingerprint")
     if fitted_target is not None and fitted_target != target_fingerprint:
         raise ValueError("E-value parameters were fitted for a different target database")
+    if params.get("scheme") == _experimental_evalue.SCHEME:
+        _experimental_evalue.validate_parameters(
+            params, n_clusters, target_fingerprint,
+            params.get("calibration_context_fingerprint"))
     for entry, label in zip(entries, labels):
         entry["cluster"] = label
     db["n_clusters"] = n_clusters
