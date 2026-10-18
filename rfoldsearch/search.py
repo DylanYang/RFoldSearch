@@ -20,6 +20,7 @@ from .prefilter import KMER_K, KmerPrefilter
 from .smith_waterman import smith_waterman_numba
 from . import structure_score as _ss
 from . import evalue as _evalue
+from . import experimental_evalue as _experimental_evalue
 from . import usalign as _usalign
 from . import tiebreak as _tiebreak
 
@@ -76,6 +77,16 @@ class Searcher:
             raise ValueError("stored database fingerprint does not match its contents")
         score_fingerprint = calibration_context_fingerprint(
             target_fingerprint, self.sub, GAP_OPEN, GAP_EXTEND)
+        if using_packaged_default:
+            experimental_path = asset("evalue_params_experimental_empirical.json")
+            if os.path.exists(experimental_path):
+                with open(experimental_path) as handle:
+                    experimental_params = json.load(handle)
+                if (experimental_params.get("target_database_fingerprint") ==
+                        target_fingerprint and
+                        experimental_params.get("calibration_context_fingerprint") ==
+                        score_fingerprint):
+                    self.ev_par = experimental_params
         if (self.ev_par is not None
                 and self.ev_par.get("validation_status") ==
                 "provisional-incomplete-structural-audit"):
@@ -119,7 +130,15 @@ class Searcher:
                 f"{int(fitted_clusters)} clusters, but the loaded database has "
                 f"{self.n_clusters}; attach parameters fitted for this database"
             )
-        self.power_ev = (self.ev_par or {}).get("power_calibration")
+        self.experimental_ev = (self.ev_par if self.ev_par is not None
+                                and self.ev_par.get("scheme") ==
+                                _experimental_evalue.SCHEME else None)
+        if self.experimental_ev is not None:
+            _experimental_evalue.validate_parameters(
+                self.experimental_ev, self.n_clusters, target_fingerprint,
+                score_fingerprint)
+        self.power_ev = ((self.ev_par or {}).get("power_calibration")
+                         if self.experimental_ev is None else None)
         if self.power_ev is not None:
             _evalue.apply_power_calibration(0.0, self.power_ev)
             validation_status = self.power_ev.get("validation_status")
@@ -155,7 +174,7 @@ class Searcher:
                         f"{int(fitted_n)} clusters, but the loaded database has "
                         f"{self.n_clusters}; recalibrate for this database"
                     )
-        elif self.ev_par is not None:
+        elif self.ev_par is not None and self.experimental_ev is None:
             fitted_n = self.ev_par.get("n_clusters")
             if (fitted_n and self.n_clusters
                     and not 0.5 < int(fitted_n) / self.n_clusters < 2.0):
@@ -255,8 +274,10 @@ class Searcher:
         else:
             order = np.lexsort((self.tie_keys(tie_seed)[cand], -score))
         hits = []
-        if self.ev_par is not None:
+        if self.ev_par is not None and self.experimental_ev is None:
             mu, beta = _evalue.clustermax_params_for_query(self.ev_par, qtok)
+        if self.experimental_ev is not None:
+            entropy = _experimental_evalue.token_entropy(qtok)
         for rank, oi in enumerate(order[:top_k], 1):
             t, sc = int(cand[oi]), float(sw[oi])
             hit = {"rank": rank, "target": self.ids[t], "sw_score": sc,
@@ -266,15 +287,25 @@ class Searcher:
                 hit["tm_a"] = float(tm_a[oi])
                 hit["aligned"] = int(aligned[oi])
             if self.ev_par is not None:
-                hit["bits"] = float(_evalue.bit_score_clustermax(sc, mu, beta))
-                raw_evalue = float(_evalue.evalue_clustermax(
-                    sc, mu, beta, self.n_clusters))
-                if self.power_ev is not None:
+                if self.experimental_ev is not None:
+                    raw_evalue = _experimental_evalue.initial_evalue(
+                        sc, len(qtok), entropy,
+                        self.experimental_ev["target_aware_gumbel"])
+                    hit["bits"] = float(-np.log2(max(
+                        raw_evalue / self.n_clusters, np.finfo(float).tiny)))
                     hit["raw_evalue"] = raw_evalue
-                    hit["evalue"] = float(_evalue.apply_power_calibration(
-                        raw_evalue, self.power_ev))
+                    hit["evalue"] = _experimental_evalue.apply_empirical(
+                        raw_evalue, self.experimental_ev["empirical_calibration"])
                 else:
-                    hit["evalue"] = raw_evalue
+                    hit["bits"] = float(_evalue.bit_score_clustermax(sc, mu, beta))
+                    raw_evalue = float(_evalue.evalue_clustermax(
+                        sc, mu, beta, self.n_clusters))
+                    if self.power_ev is not None:
+                        hit["raw_evalue"] = raw_evalue
+                        hit["evalue"] = float(_evalue.apply_power_calibration(
+                            raw_evalue, self.power_ev))
+                    else:
+                        hit["evalue"] = raw_evalue
             hits.append(hit)
         return hits
 
