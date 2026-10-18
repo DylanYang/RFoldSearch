@@ -1,8 +1,9 @@
 # RFoldSeek experimental E-value methods: fresh matched comparison
 
 **Follow-up:** the 0.01–100 recheck and its extrapolation/structural-audit limits
-are documented in [full_range_recheck.md](full_range_recheck.md). The audited
-E≤1 panel below does not establish calibration through E=100.
+are documented in [full_range_recheck.md](full_range_recheck.md), including
+the current method-comparison interval E=0.01–10. The audited E≤1 panel below
+does not establish calibration through E=10 or E=100.
 
 **Status: exploratory, not a publication-ready Fig. S16A.** All score arrays, tokens,
 clusters and model coefficients in this run were recomputed from the 885 mmCIF

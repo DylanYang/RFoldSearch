@@ -28,6 +28,16 @@ def family_mean(values: np.ndarray, families: np.ndarray) -> np.ndarray:
                     for family in sorted(set(families))], axis=0)
 
 
+def family_ci(values: np.ndarray, families: np.ndarray) -> dict:
+    by_family = np.asarray([np.mean(values[families == family])
+                            for family in sorted(set(families))])
+    rng = np.random.default_rng(27017)
+    draws = rng.integers(0, len(by_family), (2000, len(by_family)))
+    return {"value": float(by_family.mean()),
+            "ci95": np.quantile(by_family[draws].mean(axis=1), [.025, .975]).tolist(),
+            "n_queries": len(values), "n_families": len(by_family)}
+
+
 def power_at_e0(model: dict, query_length: int, e0: float,
                 n_clusters: int) -> float:
     """Independent boundary calculation, including the verified linear tail."""
@@ -176,6 +186,20 @@ def main() -> None:
                 "thresholds": summary,
                 "fit_upper_e_cal_median": float(np.median(edge)),
                 "attainable_e_cal_max_median": float(np.median(maximum)),
+            }
+            interval = (levels >= .01) & (levels <= 10)
+            ratio = family_mean(proxy[:, interval], families) / levels[interval]
+            short = lengths[qi] < 60
+            low_entropy = entropy_values[qi] <= np.quantile(entropy_values[qi], .25)
+            index_10 = threshold_indices[THRESHOLDS.index(10.0)]
+            mode_result[calibration]["decision_interval_0p01_10"] = {
+                "n_grid_levels": int(interval.sum()),
+                "n_zero_observed_levels": int(np.sum(ratio == 0)),
+                "log10_rmse_positive_levels": float(np.sqrt(np.mean(
+                    np.log10(ratio[ratio > 0]) ** 2))),
+                "short_lt60_at_e10": family_ci(proxy[short, index_10], families[short]),
+                "lowest_entropy_quartile_at_e10": family_ci(
+                    proxy[low_entropy, index_10], families[low_entropy]),
             }
             print(f"verified {mode}/{calibration}: {n_query} queries, {len(levels)} levels", flush=True)
         findings[mode] = mode_result

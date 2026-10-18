@@ -3,7 +3,7 @@ import json
 import numpy as np
 
 from scripts.recheck_fresh_experimental_evalue_range import (
-    audit_states, family_mean, power_at_e0,
+    audit_states, family_ci, family_mean, power_at_e0,
 )
 
 
@@ -17,6 +17,8 @@ def test_power_fit_boundary_and_linear_tail():
 def test_family_mean_balances_families_not_queries():
     values = np.array([[1, 2], [3, 4], [10, 20]], dtype=float)
     assert np.allclose(family_mean(values, np.array(["A", "A", "B"])), [6, 11.5])
+    assert family_ci(np.array([1, 3, 10], dtype=float),
+                     np.array(["A", "A", "B"]))["value"] == 6
 
 
 def test_partial_audit_keeps_unknown_and_inclusive_boundary(tmp_path):

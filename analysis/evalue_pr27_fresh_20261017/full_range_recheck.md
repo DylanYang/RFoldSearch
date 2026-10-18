@@ -2,6 +2,24 @@
 
 **Status: exploratory, fixed-fit recheck; not a structurally cleaned refit.** This check replays all 516 annotated held-out queries from the frozen 885-chain/878-cluster database, score matrices and cross-validation fold models. All 27 threshold counts, for four score modes and both power corrections, match the saved per-query and family-balanced results. The original candidate Panel A already plots 0.01–100; only its *separate US-align-audited panel* stopped at E=1. The two panels must not be conflated.
 
+## Decision interval: E=0.01–10
+
+For method comparison in this interval, the following are observed/expected background-count ratios; 1 is ideal. The final column is the RMSE of $\log_{10}[C_D(e)/e]$ over the 21 plotted thresholds in this interval (descriptive, not a test of significance).
+
+| Score / correction | E=0.01 | E=0.1 | E=1 | E=10 | Log-ratio RMSE |
+|---|---:|---:|---:|---:|---:|
+| Raw SW / global | 6.31 | 0.77 | 0.54 | 47.63 | 0.877 |
+| SW/min / global | 0.90 | 0.85 | 1.17 | 1.01 | 0.077 |
+| SW/min / four-bin | 0.98 | 0.62 | 1.14 | 1.28 | 0.170 |
+| Comp-bias SW/min / global | 1.09 | 1.32 | 0.92 | 0.91 | 0.075 |
+| Comp-bias SW/min / four-bin | 1.09 | 0.87 | 0.66 | 0.78 | 0.125 |
+
+Both normalized/global variants are close on the overall curve; their 0.077 versus 0.075 RMSE difference is too small to establish a winner. All annotated queries lie within the fitted $E_0$ range at both E=0.01 and E=10 for these two variants. In contrast, raw/global is below its lower fit limit for 76% of queries at E=0.01 and above its upper fit limit for all queries at E=10. The available structural audit bounds at E=10 are 9.73–9.75 unrelated clusters/query for SW/min/global and 8.98–9.00 for comp-bias SW/min/global, conditional on the unchanged fits.
+
+Overall calibration hides subgroup error. For SW/min/global at E=10, queries shorter than 60 nt have 18.55 [family-block bootstrap 95% CI 11.04–27.65] background clusters/query (48 queries), and the lowest token-entropy quartile has 14.68 [11.38–18.24] (129 queries), versus an expectation of 10. Comp-bias SW/min/global gives 28.22 [10.88–52.19] and 16.10 [9.56–24.04], respectively. The E=0.01 estimates are based on sparse events: the overall SW/min/global 95% interval for the *count* is 0–0.027, so precise calibration at this end is not established. Both normalized/global variants have homolog-cluster recall 0.194 at E≤1; their AUC difference (SW/min minus comp-bias SW/min) is 0.018 [paired family-block 95% CI −0.006 to 0.045], which does not establish a discrimination gain.
+
+**Provisional choice for E=0.01–10:** SW/min + one global power correction is the simpler leading candidate, not a validated deployment. It matches the overall expected count near E=10 without the four-bin penalty, while the composition-bias variant has no demonstrated sensitivity advantage. Before calling it calibrated, finish the structural audit, exclude related members before both fits, and re-evaluate short and low-entropy queries in family/clan-blocked held-out folds. The E=100 behavior below remains a diagnostic of extrapolation but is **not** used to rank methods for this narrower decision interval.
+
 ## Whole-range calibration
 
 Entries are family-balanced Rfam-negative cluster counts per query, expanded by the original $N_D/B_q$ factor. An ideally calibrated E-value would give 0.01, 0.1, 1, 10 and 100 in the five columns. Rfam-negative does not imply structurally unrelated.
