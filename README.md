@@ -176,7 +176,11 @@ estimate for the structure score R<sub>str</sub>. The experimental database uses
 raw Smith--Waterman scores, a target-aware Gumbel null conditioned on query
 length, target-cluster length, their difference and query-token entropy, and a
 family-balanced empirical monotone calibration. Its initial `E0` sums the
-predicted tail probability over all target clusters. Other calibrated databases
+predicted tail probability over all target clusters. A separately fitted
+predicted database can use a window-20 composition-adjusted raw SW score with
+the same target-aware Gumbel and a full-background empirical monotone map.
+Unadjusted SW still determines ranking and structure scoring; only the
+E-value uses the adjusted score. Databases without matching parameters
 continue to use the query-conditional Gumbel and power-law path.
 
 The experimental parameters bundled with RFoldSearch were fitted for the
@@ -201,7 +205,7 @@ rfoldsearch fit-experimental-evalues \
   --workdir experimental_fit --output experimental_evalues.json \
   --usalign /path/to/USalign
 rfoldsearch attach-calibration --db experimental_nr80.pt \
-  --clusters experimental_nr80.clstr --params experimental_evalues.json \
+  --clusters experimental_nr80.clstr --evalue_params experimental_evalues.json \
   --output experimental_calibrated.pt
 ```
 
@@ -217,8 +221,40 @@ range, uses the fitted global power slope below it, and assigns `N_D` above
 the upper endpoint. These tails are extrapolations, not
 independently validated estimates.
 
-The following existing `calibrate` command remains the power-law workflow for
-other databases:
+To fit the selected predicted-database model, supply distinct `.npy` index
+panels for core Gumbel training, auxiliary short/low-entropy Gumbel training,
+and Rfam-annotated empirical calibration. Auxiliary queries receive 20% of
+the Gumbel likelihood weight; they are not included in the empirical map.
+The scorer computes window-20 composition-adjusted raw SW scores against all
+target chains. Fitting excludes the query's own cluster and same family/clan,
+audits high-scoring cluster leaders with US-align, and backfills within a
+cluster after excluding members with mean bidirectional TM-score >= 0.45.
+There is no length-ratio filter. The Gumbel model is refitted after each
+audit round. Predicted empirical counts use every eligible cluster without
+`N_D/B_q` expansion.
+
+```
+rfoldsearch fit-predicted-evalues \
+  --db nufold_nr80.pt --labels nufold_rfam_labels.tsv \
+  --training-indices core.npy --auxiliary-indices auxiliary.npy \
+  --calibration-indices calibration.npy --workdir nufold_fit \
+  --output nufold_evalues.json --usalign /path/to/USalign
+rfoldsearch attach-calibration --db nufold_nr80.pt \
+  --clusters nufold_nr80.clstr --evalue_params nufold_evalues.json \
+  --output nufold_calibrated.pt
+```
+
+The fit can resume from `--workdir` or accept existing `--scores` and
+`--score-manifest`, plus `--tm-matrix` and `--tm-manifest`. The score manifest
+must give the database and substitution-matrix SHA-256 hashes, target count,
+ordered query IDs, score-file SHA-256, and
+`"score_definition": "compbias20_sw"`. The TM manifest records the database
+and TM-file hashes, target count, and ordered query IDs. The generated JSON
+is tied to the target-token database, matrix, gap costs, cluster count and
+composition window. No predicted-database parameters are bundled with this
+PR: the deployment NuFold release must be fitted and audited separately.
+
+The existing `calibrate` command remains the legacy power-law workflow:
 
 To calibrate your own database, run once:
 
