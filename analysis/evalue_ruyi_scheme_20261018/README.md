@@ -1,8 +1,13 @@
-# Ruyi's E-value scheme: leave-one-family-out test (2026-10-18)
+# Ruyi's and Hongxiang's E-value schemes: leave-one-family-out test (2026-10-18/19)
 
-Scheme under test: **raw SW score + target-aware null + one global power-law
-correction, fitted on a background cleaned with US-align**. Summary and tables
-are in Gitea issue #2, comment 243.
+Schemes under test:
+- **Ruyi:** raw SW score + target-aware null + one global power-law
+  correction, fitted on a background cleaned with US-align. Summary in Gitea
+  issue #2, comment 243.
+- **Hongxiang** (main `c25c6a5`, `rfoldsearch/experimental_evalue.py`): the
+  same target-aware null followed by a family-balanced empirical monotone map
+  (`fit_empirical`, ceiling 100). Added 2026-10-19 as `hx_emp_*`; summary in
+  Gitea issue #2.
 
 ## Contents
 
@@ -14,6 +19,7 @@ are in Gitea issue #2, comment 243.
 | `results/rnasolo_lofo.json`, `.log` | RNAsolo, background fully audited |
 | `results/rnasolo_lofo_partial_audit.json` | RNAsolo, original adjudication only (high-scoring pairs) |
 | `results/pdbrna_lofo.json`, `.log` | PDB-RNA, original adjudication only |
+| `results/{rnasolo,pdbrna}_lofo_v3.json`, `.log` | rerun with all seven methods incl. `hx_emp_*` (RNAsolo fully audited) |
 | `data/<db>/labels.tsv` | Rfam family and clan per chain |
 | `data/<db>/adjudication.tsv` | US-align TM-scores per (query, target) pair |
 
@@ -31,6 +37,11 @@ complete and partial audits give almost the same result.
 | `ta_norm_left` | SW / min(Lq, Lt) | target-aware, left-censored | per fold (PR #25 as merged) |
 | `ta_raw_left` | raw SW | target-aware, left-censored | per fold (**Ruyi's scheme**) |
 | `ta_raw_none` | raw SW | target-aware, uncensored | per fold |
+| `hx_emp_left` | raw SW | Hongxiang's target-aware fitter, left-censored | empirical map, per fold (**Hongxiang's scheme**) |
+| `hx_emp_none` | raw SW | as above, uncensored | empirical map, per fold |
+
+`hx_emp_*` fit the null and the map on all training families of a fold, as
+Hongxiang's fitter does, on the same annotated, US-align-cleaned background.
 
 - **Target-aware fitter:** `scripts/fit_target_aware_evalue_params.py` from PR #25, commit `98f650c`.
   - Covariates: log query length, log cluster median length, their absolute difference, and token entropy.
@@ -66,6 +77,11 @@ git worktree add /tmp/pr25 98f650c          # PR #25 code: evalue.py and the fit
 python lofo.py /tmp/pr25 out.json data/rnasolo rnasolo_calibrated.pt data/rnasolo/adjudication.tsv
 python lofo.py /tmp/pr25 out.json data/pdbrna  pdbrna_calibrated.pt  data/pdbrna/adjudication.tsv
 ```
+
+The `hx_emp_*` methods load `rfoldsearch.experimental_evalue`; set
+`HX_EVALUE=/path/to/experimental_evalue.py` to use a file from another checkout.
+An optional sixth argument names a pickle that caches the scored rows
+(default `<out>.rows.pkl`), so reruns skip the Smith-Waterman pass.
 
 RNAsolo takes about 40 minutes and PDB-RNA about 1.5 hours, on 1 core.
 

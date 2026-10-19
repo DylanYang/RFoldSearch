@@ -1,0 +1,332 @@
+144 queries, 18909 chains, 2345 clusters
+  scored 1/144 (13s)
+  scored 11/144 (375s)
+  scored 21/144 (636s)
+  scored 31/144 (877s)
+  scored 41/144 (1122s)
+  scored 51/144 (1575s)
+  scored 61/144 (2174s)
+  scored 71/144 (2301s)
+  scored 81/144 (2722s)
+  scored 91/144 (2932s)
+  scored 101/144 (3205s)
+  scored 111/144 (3486s)
+  scored 121/144 (3785s)
+  scored 131/144 (4131s)
+  scored 141/144 (4541s)
+  fold 1/48 RF00001 done
+  fold 2/48 RF00002 done
+  fold 3/48 RF00004 done
+  fold 4/48 RF00005 done
+  fold 5/48 RF00010 done
+  fold 6/48 RF00011 done
+  fold 7/48 RF00015 done
+  fold 8/48 RF00017 done
+  fold 9/48 RF00020 done
+  fold 10/48 RF00023 done
+  fold 11/48 RF00026 done
+  fold 12/48 RF00027 done
+  fold 13/48 RF00028 done
+  fold 14/48 RF00029 done
+  fold 15/48 RF00030 done
+  fold 16/48 RF00162 done
+  fold 17/48 RF00167 done
+  fold 18/48 RF00169 done
+  fold 19/48 RF00174 done
+  fold 20/48 RF00177 done
+  fold 21/48 RF00379 done
+  fold 22/48 RF00386 done
+  fold 23/48 RF00442 done
+  fold 24/48 RF00458 done
+  fold 25/48 RF00488 done
+  fold 26/48 RF00504 done
+  fold 27/48 RF00507 done
+  fold 28/48 RF00619 done
+  fold 29/48 RF01344 done
+  fold 30/48 RF01684 done
+  fold 31/48 RF01750 done
+  fold 32/48 RF01846 done
+  fold 33/48 RF01852 done
+  fold 34/48 RF01959 done
+  fold 35/48 RF01960 done
+  fold 36/48 RF02001 done
+  fold 37/48 RF02032 done
+  fold 38/48 RF02340 done
+  fold 39/48 RF02540 done
+  fold 40/48 RF02541 done
+  fold 41/48 RF02542 done
+  fold 42/48 RF02543 done
+  fold 43/48 RF02545 done
+  fold 44/48 RF02546 done
+  fold 45/48 RF03013 done
+  fold 46/48 RF03016 done
+  fold 47/48 RF03072 done
+  fold 48/48 RF03087 done
+{
+ "old_deployed": {
+  "0.001": {
+   "fp_per_query": 0.0,
+   "ratio": 0.0,
+   "families_over_3x": 0,
+   "tp_fraction": 0.40778981289232247
+  },
+  "0.01": {
+   "fp_per_query": 0.018297440699126092,
+   "ratio": 1.829744069912609,
+   "families_over_3x": 1,
+   "tp_fraction": 0.4627807621034994
+  },
+  "0.1": {
+   "fp_per_query": 0.1313871671107418,
+   "ratio": 1.3138716711074179,
+   "families_over_3x": 4,
+   "tp_fraction": 0.5404094637439869
+  },
+  "1.0": {
+   "fp_per_query": 0.9670718186583024,
+   "ratio": 0.9670718186583024,
+   "families_over_3x": 5,
+   "tp_fraction": 0.6507708311009228
+  },
+  "10.0": {
+   "fp_per_query": 8.68727150441718,
+   "ratio": 0.8687271504417181,
+   "families_over_3x": 4,
+   "tp_fraction": 0.7573570122286354
+  },
+  "100.0": {
+   "fp_per_query": 117.31768919960045,
+   "ratio": 1.1731768919960046,
+   "families_over_3x": 3,
+   "tp_fraction": 0.8780506916989937
+  }
+ },
+ "old_lofo": {
+  "0.001": {
+   "fp_per_query": 0.0,
+   "ratio": 0.0,
+   "families_over_3x": 0,
+   "tp_fraction": 0.40778981289232247
+  },
+  "0.01": {
+   "fp_per_query": 0.018297440699126092,
+   "ratio": 1.829744069912609,
+   "families_over_3x": 1,
+   "tp_fraction": 0.46268627986615996
+  },
+  "0.1": {
+   "fp_per_query": 0.24133665311359861,
+   "ratio": 2.413366531135986,
+   "families_over_3x": 4,
+   "tp_fraction": 0.5404094637439869
+  },
+  "1.0": {
+   "fp_per_query": 1.0436284099718385,
+   "ratio": 1.0436284099718385,
+   "families_over_3x": 6,
+   "tp_fraction": 0.650480129078908
+  },
+  "10.0": {
+   "fp_per_query": 9.202753965565954,
+   "ratio": 0.9202753965565954,
+   "families_over_3x": 4,
+   "tp_fraction": 0.7561996048212279
+  },
+  "100.0": {
+   "fp_per_query": 118.91002674472257,
+   "ratio": 1.1891002674472257,
+   "families_over_3x": 3,
+   "tp_fraction": 0.8780455877590368
+  }
+ },
+ "ta_norm_left": {
+  "0.001": {
+   "fp_per_query": 0.0,
+   "ratio": 0.0,
+   "families_over_3x": 0,
+   "tp_fraction": 0.033837275316216504
+  },
+  "0.01": {
+   "fp_per_query": 0.0,
+   "ratio": 0.0,
+   "families_over_3x": 0,
+   "tp_fraction": 0.07298306952754154
+  },
+  "0.1": {
+   "fp_per_query": 0.1890432098765432,
+   "ratio": 1.8904320987654317,
+   "families_over_3x": 2,
+   "tp_fraction": 0.15444048971329327
+  },
+  "1.0": {
+   "fp_per_query": 1.0111097219368368,
+   "ratio": 1.0111097219368368,
+   "families_over_3x": 4,
+   "tp_fraction": 0.3055775870305218
+  },
+  "10.0": {
+   "fp_per_query": 14.41190457487984,
+   "ratio": 1.441190457487984,
+   "families_over_3x": 5,
+   "tp_fraction": 0.6065146759084443
+  },
+  "100.0": {
+   "fp_per_query": 1027.8306145469242,
+   "ratio": 10.27830614546924,
+   "families_over_3x": 45,
+   "tp_fraction": 0.9179883318758569
+  }
+ },
+ "ta_raw_left": {
+  "0.001": {
+   "fp_per_query": 0.0,
+   "ratio": 0.0,
+   "families_over_3x": 0,
+   "tp_fraction": 0.47923927396109733
+  },
+  "0.01": {
+   "fp_per_query": 0.018276904850978926,
+   "ratio": 1.8276904850978926,
+   "families_over_3x": 1,
+   "tp_fraction": 0.5431026462191214
+  },
+  "0.1": {
+   "fp_per_query": 0.05499597702320708,
+   "ratio": 0.5499597702320708,
+   "families_over_3x": 3,
+   "tp_fraction": 0.6100238010824254
+  },
+  "1.0": {
+   "fp_per_query": 0.9434506907232323,
+   "ratio": 0.9434506907232323,
+   "families_over_3x": 5,
+   "tp_fraction": 0.714840648414663
+  },
+  "10.0": {
+   "fp_per_query": 12.329516247084177,
+   "ratio": 1.2329516247084178,
+   "families_over_3x": 6,
+   "tp_fraction": 0.8032841271518042
+  },
+  "100.0": {
+   "fp_per_query": 112.01547303569396,
+   "ratio": 1.1201547303569397,
+   "families_over_3x": 2,
+   "tp_fraction": 0.8871624898637114
+  }
+ },
+ "ta_raw_none": {
+  "0.001": {
+   "fp_per_query": 0.0,
+   "ratio": 0.0,
+   "families_over_3x": 0,
+   "tp_fraction": 0.46406264124418667
+  },
+  "0.01": {
+   "fp_per_query": 0.03657434555010502,
+   "ratio": 3.657434555010502,
+   "families_over_3x": 2,
+   "tp_fraction": 0.5125242755647862
+  },
+  "0.1": {
+   "fp_per_query": 0.10976410834660938,
+   "ratio": 1.0976410834660937,
+   "families_over_3x": 2,
+   "tp_fraction": 0.5986094334090579
+  },
+  "1.0": {
+   "fp_per_query": 1.2060584366153249,
+   "ratio": 1.2060584366153249,
+   "families_over_3x": 6,
+   "tp_fraction": 0.6944661662825077
+  },
+  "10.0": {
+   "fp_per_query": 11.403153102103142,
+   "ratio": 1.140315310210314,
+   "families_over_3x": 6,
+   "tp_fraction": 0.7947400773629338
+  },
+  "100.0": {
+   "fp_per_query": 114.14080399539318,
+   "ratio": 1.141408039953932,
+   "families_over_3x": 1,
+   "tp_fraction": 0.884102681413189
+  }
+ },
+ "hx_emp_left": {
+  "0.001": {
+   "fp_per_query": 0.0,
+   "ratio": 0.0,
+   "families_over_3x": 0,
+   "tp_fraction": 0.46603171002948907
+  },
+  "0.01": {
+   "fp_per_query": 0.018276904850978926,
+   "ratio": 1.8276904850978926,
+   "families_over_3x": 1,
+   "tp_fraction": 0.5194853924261843
+  },
+  "0.1": {
+   "fp_per_query": 0.11028173399231293,
+   "ratio": 1.1028173399231294,
+   "families_over_3x": 4,
+   "tp_fraction": 0.6323113987101445
+  },
+  "1.0": {
+   "fp_per_query": 1.1130653317962769,
+   "ratio": 1.1130653317962769,
+   "families_over_3x": 6,
+   "tp_fraction": 0.7024322761609274
+  },
+  "10.0": {
+   "fp_per_query": 10.659970349827281,
+   "ratio": 1.0659970349827281,
+   "families_over_3x": 7,
+   "tp_fraction": 0.7959724248286575
+  },
+  "100.0": {
+   "fp_per_query": 101.48951799433247,
+   "ratio": 1.0148951799433248,
+   "families_over_3x": 2,
+   "tp_fraction": 0.8787832653794871
+  }
+ },
+ "hx_emp_none": {
+  "0.001": {
+   "fp_per_query": 0.0,
+   "ratio": 0.0,
+   "families_over_3x": 0,
+   "tp_fraction": 0.43778626154350125
+  },
+  "0.01": {
+   "fp_per_query": 0.0,
+   "ratio": 0.0,
+   "families_over_3x": 0,
+   "tp_fraction": 0.49171158946676624
+  },
+  "0.1": {
+   "fp_per_query": 0.12818573981971146,
+   "ratio": 1.2818573981971144,
+   "families_over_3x": 3,
+   "tp_fraction": 0.5965987051419328
+  },
+  "1.0": {
+   "fp_per_query": 1.1292064089257254,
+   "ratio": 1.1292064089257254,
+   "families_over_3x": 5,
+   "tp_fraction": 0.6900483592714265
+  },
+  "10.0": {
+   "fp_per_query": 10.654254733424972,
+   "ratio": 1.0654254733424973,
+   "families_over_3x": 5,
+   "tp_fraction": 0.7788222296670554
+  },
+  "100.0": {
+   "fp_per_query": 101.32370869669306,
+   "ratio": 1.0132370869669307,
+   "families_over_3x": 1,
+   "tp_fraction": 0.8768990715310077
+  }
+ }
+}

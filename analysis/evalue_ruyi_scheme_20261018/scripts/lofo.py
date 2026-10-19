@@ -1,11 +1,12 @@
-"""Leave-one-family-out check of E-value schemes, incl. Ruyi's: raw SW + target-aware null + one power law.
+"""Leave-one-family-out check of E-value schemes: Ruyi's (raw SW + target-aware null + one power law)
+and Hongxiang's (target-aware null + family-balanced empirical map, hx_emp_*).
 
 Background = annotated targets of another Rfam family and clan, minus pairs that
 US-align finds related (mean TM >= 0.45); counts are scaled to the full database
 (N_D / B_q), as the old calibration did. A calibrated E-value gives, per query,
 about t unrelated clusters at E <= t.
 """
-import csv, importlib.util, json, math, sys, time
+import csv, importlib.util, json, math, os, sys, time
 from collections import defaultdict
 import numpy as np
 import torch
@@ -26,6 +27,12 @@ def load(name, path):
     m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m); return m
 new_ev = load("new_evalue", f"{NEW}/rfoldsearch/evalue.py")
 fitter = load("ta_fit", f"{NEW}/scripts/fit_target_aware_evalue_params.py")
+# Hongxiang's empirical-map scheme (rfoldsearch/experimental_evalue.py, main c25c6a5)
+HX_PATH = os.environ.get("HX_EVALUE")
+if HX_PATH:
+    HX = load("hx_ev", HX_PATH)
+else:
+    import rfoldsearch.experimental_evalue as HX
 
 db = torch.load(f"{D}/{DBFILE}", map_location="cpu", weights_only=False)
 qdb = torch.load(f"{D}/calibration_queries.pt", map_location="cpu", weights_only=False)
@@ -53,33 +60,40 @@ for e in qdb["entries"]:
     queries.append((q, np.asarray(e["tokens"], np.int64), fam, clan))
 print(f"{len(queries)} queries, {len(ents)} chains, {NC} clusters", flush=True)
 
-t0 = time.time()
-rows = []      # per query x cluster: background or true positive, both scores
-for qi, (q, qt, qf, qc) in enumerate(queries):
-    best = {}  # (cluster, kind) -> (norm score, raw sw)
-    for j in range(len(ents)):
-        tf, tc = lab.get(tid[j], (frozenset(), frozenset()))
-        if tid[j] == q:
-            continue
-        if tf & qf:
-            kind = "tp"
-        elif not tf or (tc & qc) or (q, tid[j]) in related:
-            continue            # unannotated, same clan, or structurally related
-        else:
-            kind = "bg"
-        sw = float(smith_waterman_numba(qt, ttok[j], sub, GAP_OPEN, GAP_EXTEND))
-        ns = sw / min(len(qt), len(ttok[j]))
-        k = (tclu[j], kind); b = best.get(k)
-        best[k] = (max(ns, b[0]) if b else ns, max(sw, b[1]) if b else sw)
-    n_bg = len({c for c, k in best if k == "bg"})
-    mu, beta = old_ev.clustermax_params_for_query(ev_old, qt)
-    ent = new_ev._token_entropy(qt)
-    for (c, kind), (ns, sw) in best.items():
-        rows.append(dict(query_id=q, family=qf, clan=qc, kind=kind, cluster_id=c, ns=ns, sw=sw,
-                         qlen=len(qt), ent=ent, expansion=NC / n_bg,
-                         old_raw=float(old_ev.evalue_clustermax(sw, mu, beta, NC))))
-    if qi % 10 == 0:
-        print(f"  scored {qi + 1}/{len(queries)} ({time.time() - t0:.0f}s)", flush=True)
+import os, pickle
+CACHE = sys.argv[6] if len(sys.argv) > 6 else OUT + ".rows.pkl"
+if os.path.exists(CACHE):
+    rows = pickle.load(open(CACHE, "rb"))
+else:
+    t0 = time.time()
+    rows = []      # per query x cluster: background or true positive, both scores
+    for qi, (q, qt, qf, qc) in enumerate(queries):
+        best = {}  # (cluster, kind) -> (norm score, raw sw)
+        for j in range(len(ents)):
+            tf, tc = lab.get(tid[j], (frozenset(), frozenset()))
+            if tid[j] == q:
+                continue
+            if tf & qf:
+                kind = "tp"
+            elif not tf or (tc & qc) or (q, tid[j]) in related:
+                continue            # unannotated, same clan, or structurally related
+            else:
+                kind = "bg"
+            sw = float(smith_waterman_numba(qt, ttok[j], sub, GAP_OPEN, GAP_EXTEND))
+            ns = sw / min(len(qt), len(ttok[j]))
+            k = (tclu[j], kind); b = best.get(k)
+            best[k] = (max(ns, b[0]) if b else ns, max(sw, b[1]) if b else sw)
+        n_bg = len({c for c, k in best if k == "bg"})
+        mu, beta = old_ev.clustermax_params_for_query(ev_old, qt)
+        ent = new_ev._token_entropy(qt)
+        for (c, kind), (ns, sw) in best.items():
+            rows.append(dict(query_id=q, family=qf, clan=qc, kind=kind, cluster_id=c, ns=ns, sw=sw,
+                             qlen=len(qt), ent=ent, expansion=NC / n_bg,
+                             old_raw=float(old_ev.evalue_clustermax(sw, mu, beta, NC))))
+        if qi % 10 == 0:
+            print(f"  scored {qi + 1}/{len(queries)} ({time.time() - t0:.0f}s)", flush=True)
+
+    pickle.dump(rows, open(CACHE, "wb"))
 
 fams = sorted({next(iter(sorted(r["family"]))) for r in rows})
 famof = lambda r: next(iter(sorted(r["family"])))
@@ -105,8 +119,31 @@ def old_power(sel):
     w = [r["expansion"] / (len(per_fam) * len(per_fam[famof(r)])) for r in sel]
     return old_ev.fit_power_calibration([r["old_raw"] for r in sel], w, NC, maximum=100.0)
 
+ci = {c: k for k, c in enumerate(clusters)}
+uniq_len, uniq_cnt = np.unique(np.asarray([cmed[c] for c in clusters]), return_counts=True)
+
+def hx_evalues(train, test, censored):
+    qs = sorted({r["query_id"] for r in train})
+    qrow = {q: k for k, q in enumerate(qs)}
+    scores = np.zeros((len(qs), NC)); leaders = np.full((len(qs), NC), -1)
+    meta = {}
+    for r in train:
+        k, c = qrow[r["query_id"]], ci[r["cluster_id"]]
+        scores[k, c] = r["sw"]; leaders[k, c] = c
+        meta[r["query_id"]] = (r["qlen"], r["ent"], famof(r), r["expansion"])
+    ql = np.array([meta[q][0] for q in qs]); en = np.array([meta[q][1] for q in qs])
+    fam = np.array([meta[q][2] for q in qs]); ex = np.array([meta[q][3] for q in qs])
+    model = HX.fit_gumbel(scores, leaders, ql, en, np.array([cmed[c] for c in clusters]),
+                          fam, censored=censored, compress=True)
+    model["cluster_median_lengths"] = uniq_len.tolist()
+    model["cluster_multiplicities"] = uniq_cnt.tolist()
+    erows = [HX.initial_evalue(scores[k, leaders[k] >= 0], ql[k], en[k], model) for k in range(len(qs))]
+    cal = HX.fit_empirical(erows, fam, ex, NC, ceiling=100.0)
+    e0 = np.array([HX.initial_evalue(r["sw"], r["qlen"], r["ent"], model) for r in test])
+    return np.asarray(HX.apply_empirical(e0, cal))
+
 SCORE = "ns"
-METHODS = ("old_deployed", "old_lofo", "ta_norm_left", "ta_raw_left", "ta_raw_none")
+METHODS = ("old_deployed", "old_lofo", "ta_norm_left", "ta_raw_left", "ta_raw_none", "hx_emp_left", "hx_emp_none")
 results = {m: {f: None for f in fams} for m in METHODS}
 tp = {m: [] for m in results}
 for fi, F in enumerate(fams):
@@ -125,6 +162,10 @@ for fi, F in enumerate(fams):
         e0 = fitter._predict_initial(prow, list(range(len(prow))), model, lengths_u, mult_u)
         power = fitter.fit_power(prow, list(range(len(prow))), e0, NC, 100.0, 128)
         results[key][F] = (test, new_evalues(model, power, test))
+    # Hongxiang (main c25c6a5): raw SW, target-aware Gumbel and empirical monotone
+    # map, both fitted on all training families (no split), as in his fitter
+    for cens, key in ((True, "hx_emp_left"), (False, "hx_emp_none")):
+        results[key][F] = (test, hx_evalues(train, test, cens))
     op = old_power(train)
     results["old_lofo"][F] = (test, np.asarray(old_ev.apply_power_calibration(
         np.array([r["old_raw"] for r in test]), op)))
