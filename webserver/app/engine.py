@@ -144,7 +144,9 @@ class DatabaseHandle:
                 "built": self.built,
                 "notice": self.notice,
                 "url": self.url,
-                "evalue_calibrated": self.searcher.power_ev is not None}
+                "evalue_calibrated": (self.searcher.power_ev is not None
+                                      or self.searcher.experimental_ev is not None
+                                      or self.searcher.predicted_ev is not None)}
 
 
 class Engine:
