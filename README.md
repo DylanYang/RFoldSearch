@@ -172,16 +172,60 @@ rank  target                    TM_mean  TM_query  TM_target    len
 RFoldSearch reports Smith--Waterman E-values in `tm_a` and `sw` modes. The
 E-value is the expected number of unrelated database clusters (CD-HIT-EST,
 80% identity) reaching a hit's token-alignment score and it is not a significance
-estimate for the structure score R<sub>str</sub>. The experimental database uses
-raw Smith--Waterman scores, a target-aware Gumbel null conditioned on query
-length, target-cluster length, their difference and query-token entropy, and a
-family-balanced empirical monotone calibration. Its initial `E0` sums the
-predicted tail probability over all target clusters. A separately fitted
-predicted database can use a window-20 composition-adjusted raw SW score with
-the same target-aware Gumbel and a full-background empirical monotone map.
-Unadjusted SW still determines ranking and structure scoring; only the
-E-value uses the adjusted score. Databases without matching parameters
-continue to use the query-conditional Gumbel and power-law path.
+estimate for the structure score R<sub>str</sub>.
+
+#### How E-values are estimated
+
+The experimental model uses the raw token Smith--Waterman score. The selected
+predicted-database model instead uses a position-specific query score: at each
+query position it subtracts the mean substitution score of the other tokens
+within 20 positions and adds the expected score under the target database's
+token frequencies. Smith--Waterman alignment with this adjusted profile gives
+the score used only for the E-value. Search ranking and structure scoring still
+use the unadjusted alignment.
+
+For each fitting query, the database is searched without a query--target
+length-ratio filter. The query's own sequence cluster and target members with
+the same recorded Rfam family or clan are removed from the background. Members
+identified as structurally related are also removed: US-align's query- and
+target-normalised TM-scores are averaged, and a mean of at least 0.45 counts as
+related. Each remaining cluster contributes its highest-scoring eligible member.
+If that member is excluded, the next eligible member takes its place. The fit
+and US-align audit are repeated until no unaudited cluster leader with initial
+`E0 <= 100` remains. Lower-scoring background pairs are not exhaustively
+audited for structural relatedness.
+
+A weighted Gumbel distribution is fitted to these cluster maxima. Its location
+and log scale depend on log query length, log median target-cluster length,
+their absolute difference, and query-token entropy; these features are
+standardised using the weighted Gumbel-training observations. By default, scores
+at or below a weighted 95th-percentile threshold are left-censored within
+strata of shorter length and length ratio. Sparse strata use a global threshold;
+the experimental fitter also supports an uncensored fit. For a candidate score
+`s`, the initial E-value is `E0(q, s) = sum_c [1 - F_qc(s)]`, the sum of the
+fitted Gumbel tail probabilities over **all** target clusters. It therefore
+counts expected background clusters, even though search results list chains.
+
+The final E-value applies a database-specific, non-decreasing empirical map to
+`E0`. At each observed `E0` knot, the map counts unrelated background clusters
+with `E0` no greater than that knot, weighting queries equally within each Rfam
+family and families equally. For experimental databases, the Gumbel fit uses
+maxima over all eligible members, but the empirical map recomputes maxima over
+eligible **annotated** members. Their counts are multiplied by `N_D/B_q`, where
+`N_D` is the number of database clusters and `B_q` is the number of eligible
+annotated clusters before structural exclusion. The predicted fit uses separate
+Gumbel-training and annotated empirical-calibration query panels. Its Gumbel
+training can assign 20% of the likelihood weight to auxiliary queries; its
+empirical map counts every eligible cluster without `N_D/B_q` expansion.
+
+Between knots, the map uses linear interpolation. Below its smallest observed
+`E0`, it continues with an endpoint-anchored power law whose slope is fitted
+from the cumulative background counts. Above its largest knot, the current
+implementation assigns `N_D`, which can produce a jump; neither tail is
+independently validated by the fitted background. The legacy
+query-conditional Gumbel and power-law path remains available with its own
+parameters. A packaged parameter set that fails the database or scoring
+fingerprint check is not used to report an E-value.
 
 The experimental parameters bundled with RFoldSearch were fitted for the
 paper's 885-chain, 882-cluster database and are selected only when its database
