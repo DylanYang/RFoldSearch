@@ -174,58 +174,47 @@ E-value is the expected number of unrelated database clusters (CD-HIT-EST,
 80% identity) reaching a hit's token-alignment score and it is not a significance
 estimate for the structure score R<sub>str</sub>.
 
-#### How E-values are estimated
+Experimental databases use the raw token Smith--Waterman score $S(q,j)$.
+For predicted databases, $S(q,j)$ is recomputed with a query profile that
+subtracts the mean substitution score of nearby tokens (window 20) and adds
+the expected score under the database token frequencies. This adjustment
+affects the E-value only; hits retain their unadjusted ranking and structure
+score.
 
-The experimental model uses the raw token Smith--Waterman score. The selected
-predicted-database model instead uses a position-specific query score: at each
-query position it subtracts the mean substitution score of the other tokens
-within 20 positions and adds the expected score under the target database's
-token frequencies. Smith--Waterman alignment with this adjusted profile gives
-the score used only for the E-value. Search ranking and structure scoring still
-use the unadjusted alignment.
+Calibration uses one maximum score per target cluster. For query $q$ and
+cluster $c$, eligible members $\mathcal M_{qc}$ exclude the query's own cluster,
+targets with the same recorded Rfam family or clan, and members identified as
+structurally related by US-align (mean query- and target-normalised TM-score
+$\geq 0.45$). No length-ratio filter is applied. The cluster score is
 
-For each fitting query, the database is searched without a query--target
-length-ratio filter. The query's own sequence cluster and target members with
-the same recorded Rfam family or clan are removed from the background. Members
-identified as structurally related are also removed: US-align's query- and
-target-normalised TM-scores are averaged, and a mean of at least 0.45 counts as
-related. Each remaining cluster contributes its highest-scoring eligible member.
-If that member is excluded, the next eligible member takes its place. The fit
-and US-align audit are repeated until no unaudited cluster leader with initial
-`E0 <= 100` remains. Lower-scoring background pairs are not exhaustively
-audited for structural relatedness.
+$$S_{qc}=\max_{j\in\mathcal M_{qc}}S(q,j).$$
 
-A weighted Gumbel distribution is fitted to these cluster maxima. Its location
-and log scale depend on log query length, log median target-cluster length,
-their absolute difference, and query-token entropy; these features are
-standardised using the weighted Gumbel-training observations. By default, scores
-at or below a weighted 95th-percentile threshold are left-censored within
-strata of shorter length and length ratio. Sparse strata use a global threshold;
-the experimental fitter also supports an uncensored fit. For a candidate score
-`s`, the initial E-value is `E0(q, s) = sum_c [1 - F_qc(s)]`, the sum of the
-fitted Gumbel tail probabilities over **all** target clusters. It therefore
-counts expected background clusters, even though search results list chains.
+If a cluster leader is excluded, the next eligible member takes its place.
+Leaders with initial $E_0\leq100$ are audited with US-align and the Gumbel
+model is refitted until no qualifying unaudited leader remains. Other
+background pairs are not exhaustively audited.
 
-The final E-value applies a database-specific, non-decreasing empirical map to
-`E0`. At each observed `E0` knot, the map counts unrelated background clusters
-with `E0` no greater than that knot, weighting queries equally within each Rfam
-family and families equally. For experimental databases, the Gumbel fit uses
-maxima over all eligible members, but the empirical map recomputes maxima over
-eligible **annotated** members. Their counts are multiplied by `N_D/B_q`, where
-`N_D` is the number of database clusters and `B_q` is the number of eligible
-annotated clusters before structural exclusion. The predicted fit uses separate
-Gumbel-training and annotated empirical-calibration query panels. Its Gumbel
-training can assign 20% of the likelihood weight to auxiliary queries; its
-empirical map counts every eligible cluster without `N_D/B_q` expansion.
+A target-aware Gumbel model fits these cluster maxima. Its location
+$\mu_{qc}$ and scale $\beta_{qc}$ depend on query length, median cluster
+length, their absolute log-length difference, and query-token entropy. The default
+fit left-censors scores at or below the weighted 95th percentile within
+length and length-ratio strata. For a candidate score $s$,
 
-Between knots, the map uses linear interpolation. Below its smallest observed
-`E0`, it continues with an endpoint-anchored power law whose slope is fitted
-from the cumulative background counts. Above its largest knot, the current
-implementation assigns `N_D`, which can produce a jump; neither tail is
-independently validated by the fitted background. The legacy
-query-conditional Gumbel and power-law path remains available with its own
-parameters. A packaged parameter set that fails the database or scoring
-fingerprint check is not used to report an E-value.
+$$
+F_{qc}(s)=\exp\!\left[-\exp\!\left(-\frac{s-\mu_{qc}}{\beta_{qc}}\right)\right],
+\qquad
+E_0(q,s)=\sum_{c=1}^{N_D}\left[1-F_{qc}(s)\right],
+$$
+
+where $N_D$ is the number of target clusters. A database-specific,
+family-balanced empirical map $\widehat g_D$ then gives
+$E_{\mathrm{cal}}(q,s)=\widehat g_D(E_0(q,s))$. The experimental map counts
+eligible annotated cluster maxima and expands their counts by $N_D/B_q$;
+$B_q$ is the annotated-background cluster count before structural exclusion.
+The predicted map uses a separate annotated calibration-query panel and
+counts all eligible clusters without this expansion. The map interpolates
+between observed background counts. Its handling outside the fitted range is
+described below.
 
 The experimental parameters bundled with RFoldSearch were fitted for the
 paper's 885-chain, 882-cluster database and are selected only when its database
@@ -253,30 +242,15 @@ rfoldsearch attach-calibration --db experimental_nr80.pt \
   --output experimental_calibrated.pt
 ```
 
-The experimental fit excludes the query's own cluster and same Rfam
-family/clan, then removes US-align-related members (mean of the two normalised
-TM-scores >= 0.45) and uses the next eligible member in each cluster. There is
-no length-ratio filter. It refits the left-censored Gumbel after each round of
-missing leader audits with `E0 <= 100`; `--uncensored` is an optional alternative
-for a separately refitted database. The annotated background is expanded by
-`N_D/B_q`, where `B_q` is the eligible annotated-cluster count before structural
-exclusion. The empirical map interpolates cumulative counts inside the observed
-range, uses the fitted global power slope below it, and assigns `N_D` above
-the upper endpoint. These tails are extrapolations, not
-independently validated estimates.
+`--uncensored` fits an alternative experimental model and requires refitting
+the database parameters. Below the empirical map's first knot, an
+endpoint-anchored fitted power slope is used; above its last knot, the current
+code assigns `N_D`. Neither tail has independent calibration support.
 
 To fit the selected predicted-database model, supply distinct `.npy` index
 panels for core Gumbel training, auxiliary short/low-entropy Gumbel training,
 and Rfam-annotated empirical calibration. Auxiliary queries receive 20% of
 the Gumbel likelihood weight; they are not included in the empirical map.
-The scorer computes window-20 composition-adjusted raw SW scores against all
-target chains. Fitting excludes the query's own cluster and same family/clan,
-audits high-scoring cluster leaders with US-align, and backfills within a
-cluster after excluding members with mean bidirectional TM-score >= 0.45.
-There is no length-ratio filter. The Gumbel model is refitted after each
-audit round. Predicted empirical counts use every eligible cluster without
-`N_D/B_q` expansion.
-
 ```
 rfoldsearch fit-predicted-evalues \
   --db nufold_nr80.pt --labels nufold_rfam_labels.tsv \
