@@ -172,16 +172,49 @@ rank  target                    TM_mean  TM_query  TM_target    len
 RFoldSearch reports Smith--Waterman E-values in `tm_a` and `sw` modes. The
 E-value is the expected number of unrelated database clusters (CD-HIT-EST,
 80% identity) reaching a hit's token-alignment score and it is not a significance
-estimate for the structure score R<sub>str</sub>. The experimental database uses
-raw Smith--Waterman scores, a target-aware Gumbel null conditioned on query
-length, target-cluster length, their difference and query-token entropy, and a
-family-balanced empirical monotone calibration. Its initial `E0` sums the
-predicted tail probability over all target clusters. A separately fitted
-predicted database can use a window-20 composition-adjusted raw SW score with
-the same target-aware Gumbel and a full-background empirical monotone map.
-Unadjusted SW still determines ranking and structure scoring; only the
-E-value uses the adjusted score. Databases without matching parameters
-continue to use the query-conditional Gumbel and power-law path.
+estimate for the structure score R<sub>str</sub>.
+
+Experimental databases use the raw token Smith--Waterman score $S(q,j)$.
+For predicted databases, $S(q,j)$ is recomputed with a query profile that
+subtracts the mean substitution score of nearby tokens (window 20) and adds
+the expected score under the database token frequencies. This adjustment
+affects the E-value only; hits retain their unadjusted ranking and structure
+score.
+
+Calibration uses one maximum score per target cluster. For query $q$ and
+cluster $c$, eligible members $\mathcal M_{qc}$ exclude the query's own cluster,
+targets with the same recorded Rfam family or clan, and members identified as
+structurally related by US-align (mean query- and target-normalised TM-score
+$\geq 0.45$). No length-ratio filter is applied. The cluster score is
+
+$$S_{qc}=\max_{j\in\mathcal M_{qc}}S(q,j).$$
+
+If a cluster leader is excluded, the next eligible member takes its place.
+Leaders with initial $E_0\leq100$ are audited with US-align and the Gumbel
+model is refitted until no qualifying unaudited leader remains. Other
+background pairs are not exhaustively audited.
+
+A target-aware Gumbel model fits these cluster maxima. Its location
+$\mu_{qc}$ and scale $\beta_{qc}$ depend on query length, median cluster
+length, their absolute log-length difference, and query-token entropy. The default
+fit left-censors scores at or below the weighted 95th percentile within
+length and length-ratio strata. For a candidate score $s$,
+
+$$
+F_{qc}(s)=\exp\!\left[-\exp\!\left(-\frac{s-\mu_{qc}}{\beta_{qc}}\right)\right],
+\qquad
+E_0(q,s)=\sum_{c=1}^{N_D}\left[1-F_{qc}(s)\right],
+$$
+
+where $N_D$ is the number of target clusters. A database-specific,
+family-balanced empirical map $\widehat g_D$ then gives
+$E_{\mathrm{cal}}(q,s)=\widehat g_D(E_0(q,s))$. The experimental map counts
+eligible annotated cluster maxima and expands their counts by $N_D/B_q$;
+$B_q$ is the annotated-background cluster count before structural exclusion.
+The predicted map uses a separate annotated calibration-query panel and
+counts all eligible clusters without this expansion. The map interpolates
+between observed background counts. Its handling outside the fitted range is
+described below.
 
 The experimental parameters bundled with RFoldSearch were fitted for the
 paper's 885-chain, 882-cluster database and are selected only when its database
@@ -209,30 +242,15 @@ rfoldsearch attach-calibration --db experimental_nr80.pt \
   --output experimental_calibrated.pt
 ```
 
-The experimental fit excludes the query's own cluster and same Rfam
-family/clan, then removes US-align-related members (mean of the two normalised
-TM-scores >= 0.45) and uses the next eligible member in each cluster. There is
-no length-ratio filter. It refits the left-censored Gumbel after each round of
-missing leader audits with `E0 <= 100`; `--uncensored` is an optional alternative
-for a separately refitted database. The annotated background is expanded by
-`N_D/B_q`, where `B_q` is the eligible annotated-cluster count before structural
-exclusion. The empirical map interpolates cumulative counts inside the observed
-range, uses the fitted global power slope below it, and assigns `N_D` above
-the upper endpoint. These tails are extrapolations, not
-independently validated estimates.
+`--uncensored` fits an alternative experimental model and requires refitting
+the database parameters. Below the empirical map's first knot, an
+endpoint-anchored fitted power slope is used; above its last knot, the current
+code assigns `N_D`. Neither tail has independent calibration support.
 
 To fit the selected predicted-database model, supply distinct `.npy` index
 panels for core Gumbel training, auxiliary short/low-entropy Gumbel training,
 and Rfam-annotated empirical calibration. Auxiliary queries receive 20% of
 the Gumbel likelihood weight; they are not included in the empirical map.
-The scorer computes window-20 composition-adjusted raw SW scores against all
-target chains. Fitting excludes the query's own cluster and same family/clan,
-audits high-scoring cluster leaders with US-align, and backfills within a
-cluster after excluding members with mean bidirectional TM-score >= 0.45.
-There is no length-ratio filter. The Gumbel model is refitted after each
-audit round. Predicted empirical counts use every eligible cluster without
-`N_D/B_q` expansion.
-
 ```
 rfoldsearch fit-predicted-evalues \
   --db nufold_nr80.pt --labels nufold_rfam_labels.tsv \
