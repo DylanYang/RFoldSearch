@@ -158,15 +158,19 @@ def test_fitting_cli_writes_attachable_predicted_parameters(tmp_path):
         "database_sha256": sha256(db), "tm_sha256": sha256(tm_path),
         "n_targets": 40, "query_ids": [f"t{i}" for i in range(32)]}))
     output = tmp_path / "predicted.json"
-    main(["fit-predicted-evalues", "--db", str(db), "--labels", str(labels),
+    command = ["fit-predicted-evalues", "--db", str(db), "--labels", str(labels),
           "--training-indices", str(training), "--calibration-indices", str(calibration),
           "--auxiliary-indices", str(auxiliary),
           "--workdir", str(tmp_path / "fit"), "--output", str(output),
+          "--audit-ceiling", "120",
           "--matrix", str(matrix_path), "--scores", str(scores_path),
           "--score-manifest", str(manifest), "--tm-matrix", str(tm_path),
-          "--tm-manifest", str(tm_manifest)])
+          "--tm-manifest", str(tm_manifest)]
+    main(command)
     params = json.loads(output.read_text())
     assert params["scheme"] == "target-aware-compbias20-raw-sw-empirical-v1"
+    assert params["audit_raw_evalue_ceiling"] == 120
+    assert params["empirical_calibration"]["upper_tail_rule"] == "anchored-power-cap"
     assert params["empirical_calibration"]["background_scaling"] == "complete-eligible-clusters"
     searcher = Searcher(str(db), matrix_path=str(matrix_path),
                         evalue_params_path=str(output))
@@ -177,3 +181,8 @@ def test_fitting_cli_writes_attachable_predicted_parameters(tmp_path):
     main(["attach-calibration", "--db", str(db), "--clusters", str(clusters),
           "--evalue_params", str(output), "--output", str(attached)])
     assert Searcher(str(attached), matrix_path=str(matrix_path)).predicted_ev is not None
+    audit_file = tmp_path / "fit" / "new_usalign.tsv"
+    audit_file.write_text("query_id\ttarget_id\ttm_query\ttm_target\n")
+    (tmp_path / "fit" / "new_usalign.manifest.json").write_text("{}")
+    with pytest.raises(ValueError, match="US-align cache does not match"):
+        main(command)

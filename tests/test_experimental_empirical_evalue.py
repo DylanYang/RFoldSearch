@@ -26,6 +26,19 @@ def test_structural_exclusion_backfills_within_cluster():
     assert before.tolist() == [2]
 
 
+def test_multilabel_family_and_clan_overlaps_are_excluded():
+    scores = np.array([[50., 40., 30., 20.]])
+    clusters = np.array(["a", "b", "c", "q"])
+    family = np.array(["RF1;RF2", "RF3", "RF4", "RF2"])
+    clan = np.array(["", "CL2|CL3", "", "CL3"])
+    leaders, annotated, before = _leader_tables(
+        scores, np.array([3]), clusters, [[0], [1], [2], [3]],
+        family, clan, np.full((1, 4), .1))
+    assert leaders.tolist() == [[-1, -1, 2, -1]]
+    assert annotated.tolist() == [[-1, -1, 2, -1]]
+    assert before.tolist() == [1]
+
+
 def test_empirical_map_is_monotone_and_uses_declared_tails():
     fitted = EV.fit_empirical([np.array([.1, .3, 1., 3., 10.]),
                                np.array([.2, .4, 2., 4., 20.])],
@@ -33,11 +46,20 @@ def test_empirical_map_is_monotone_and_uses_declared_tails():
     values = EV.apply_empirical(np.array([0., .01, .1, 1., 20., 21., 10000.]), fitted)
     assert np.all(np.diff(values) >= 0)
     assert values[0] == 0
-    assert values[-1] == 100
-    assert values[-2] == 100
+    assert values[-1] == pytest.approx(min(100, fitted["observed_counts"][-1]
+        * (10000 / fitted["raw_evalues"][-1]) ** fitted["low_tail_power_b"]))
+    assert EV.apply_empirical(1e100, fitted) == 100
+    assert fitted["upper_tail_rule"] == "anchored-power-cap"
+    assert values[-2] == pytest.approx(min(100, fitted["observed_counts"][-1]
+        * (21 / fitted["raw_evalues"][-1]) ** fitted["low_tail_power_b"]))
+    assert EV.apply_empirical(np.nextafter(20., np.inf), fitted) == pytest.approx(
+        fitted["observed_counts"][-1])
     assert values[1] == pytest.approx(
         fitted["observed_counts"][0] * (.01 / .1) ** fitted["low_tail_power_b"])
     assert EV.apply_empirical(1e-300, fitted) > 0
+    legacy = dict(fitted)
+    legacy.pop("upper_tail_rule")
+    assert EV.apply_empirical(21., legacy) == 100
 
 
 def test_fitter_uses_clean_background_for_both_stages():

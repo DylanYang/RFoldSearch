@@ -1,8 +1,4 @@
-"""Target-aware cluster E-values for the experimental RNA database.
-
-The fitted score is the *raw* token Smith--Waterman score. The null counts
-cluster maxima, while the empirical map counts unrelated clusters per query.
-"""
+"""Shared target-aware cluster E-value model and empirical calibration."""
 from __future__ import annotations
 
 import math
@@ -246,15 +242,17 @@ def fit_empirical(evalue_rows, families, expansions, n_clusters, ceiling=100.0,
         raise ValueError("low-tail power slope must be positive")
     return {"scheme": "family-balanced-monotone", "raw_evalues": unique.tolist(),
             "observed_counts": cumulative.tolist(), "low_tail_power_b": float(slope),
+            "upper_tail_rule": "anchored-power-cap",
             "fit_raw_evalue_min": float(unique[0]),
             "fit_raw_evalue_max": float(unique[-1]), "fit_raw_evalue_ceiling": float(ceiling),
+            "fit_reported_evalue_max": float(cumulative[-1]),
             "n_clusters": int(n_clusters), "n_queries": int(len(families)),
             "n_families": int(len(np.unique(families))),
             "background_scaling": background_scaling}
 
 
 def apply_empirical(evalues, calibration):
-    """Linear monotone interpolation; power below support, cluster cap above."""
+    """Interpolate observed counts and apply endpoint-anchored tails."""
     x = np.asarray(evalues, dtype=float)
     xp = np.asarray(calibration["raw_evalues"], dtype=float)
     yp = np.asarray(calibration["observed_counts"], dtype=float)
@@ -276,7 +274,15 @@ def apply_empirical(evalues, calibration):
             np.log(yp[0]) + b * (np.log(low) - np.log(xp[0])),
             np.log(np.nextafter(0., 1.))))
         y = np.where(x < xp[0], np.where(x == 0, 0., extrapolated), y)
-    y = np.where(x > xp[-1], float(n_clusters), y)
+    if calibration.get("upper_tail_rule") == "anchored-power-cap":
+        upper = np.exp(np.minimum(
+            np.log(yp[-1]) + b * (np.log(np.maximum(x, xp[-1])) - np.log(xp[-1])),
+            np.log(n_clusters)))
+        y = np.where(x > xp[-1], upper, y)
+    elif calibration.get("upper_tail_rule") not in (None, "cluster-cap"):
+        raise ValueError("invalid empirical upper-tail rule")
+    else:  # Preserve the behaviour of parameters fitted before this change.
+        y = np.where(x > xp[-1], float(n_clusters), y)
     y = np.minimum(y, n_clusters)
     return float(y) if np.ndim(y) == 0 else y
 

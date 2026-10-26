@@ -11,6 +11,7 @@ import argparse
 import csv
 import hashlib
 import json
+import re
 from collections import defaultdict
 from pathlib import Path
 
@@ -33,29 +34,36 @@ def sha256(path):
     return digest.hexdigest()
 
 
+def _labels(value):
+    return {label for label in re.split(r"[,;|\s]+", str(value).strip())
+            if label.upper() not in {"", "NA", "N/A", "NONE", ".", "-"}}
+
+
 def _leader_tables(scores, query_indices, clusters, members, family, clan, tm):
     """Apply member exclusions before maxima; related leaders backfill in cluster."""
     n_queries, n_clusters = len(query_indices), len(members)
     clean = np.full((n_queries, n_clusters), -1, dtype=np.int32)
     annotated = np.full_like(clean, -1)
     before = np.zeros(n_queries, dtype=np.int32)
+    families = [_labels(label) for label in family]
+    clans = [_labels(label) for label in clan]
     for row, qi in enumerate(query_indices):
         for column, group in enumerate(members):
             if clusters[group[0]] == clusters[qi]:
                 continue
             eligible = [j for j in group if np.isfinite(scores[row, j])
-                        and (not family[qi] or family[j] != family[qi])
-                        and (not clan[qi] or clan[j] != clan[qi])]
+                        and families[qi].isdisjoint(families[j])
+                        and clans[qi].isdisjoint(clans[j])]
             if not eligible:
                 continue
-            if any(family[j] for j in eligible):
+            if any(families[j] for j in eligible):
                 before[row] += 1
             remaining = [j for j in eligible if not (np.isfinite(tm[row, j])
                                                    and tm[row, j] >= .45)]
             if remaining:
                 clean[row, column] = max(remaining,
                                          key=lambda j: (scores[row, j], -j))
-            annotated_members = [j for j in remaining if family[j]]
+            annotated_members = [j for j in remaining if families[j]]
             if annotated_members:
                 annotated[row, column] = max(annotated_members,
                                              key=lambda j: (scores[row, j], -j))
@@ -166,12 +174,16 @@ def main(argv=None):
     parser.add_argument("--matrix")
     parser.add_argument("--usalign")
     parser.add_argument("--uncensored", action="store_true")
+    parser.add_argument("--audit-ceiling", type=float, default=100.0)
     return fit_files(parser.parse_args(argv))
 
 
 def fit_files(args, *, predicted=False):
     """Run the package fitting workflow from parsed CLI arguments."""
     db_path = Path(args.db)
+    audit_ceiling = float(args.audit_ceiling)
+    if not np.isfinite(audit_ceiling) or audit_ceiling < 100:
+        raise ValueError("--audit-ceiling must be finite and at least 100")
     workdir = Path(args.workdir)
     workdir.mkdir(parents=True, exist_ok=True)
     _, entries, tokens, ids, n_codes, clusters = load_database(str(db_path))
@@ -231,7 +243,7 @@ def fit_files(args, *, predicted=False):
     if (manifest.get("database_sha256") != sha256(db_path)
             or manifest.get("matrix_sha256") != sha256(matrix_path)
             or manifest.get("n_targets") != len(ids)
-            or (predicted and manifest.get("score_definition") != score_name)
+            or manifest.get("score_definition") != score_name
             or manifest.get("scores_sha256") != sha256(scores_path)):
         raise ValueError("score manifest does not match the target database and matrix")
     if len(manifest["query_ids"]) != len(set(manifest["query_ids"])):
@@ -254,7 +266,12 @@ def fit_files(args, *, predicted=False):
     if scores.shape != (len(query_indices), len(ids)) or tm.shape != scores.shape:
         raise ValueError("score and structural-audit matrices do not match the panel")
     audit_file = workdir / "new_usalign.tsv"
+    audit_manifest = workdir / "new_usalign.manifest.json"
+    audit_source = {"database_sha256": sha256(db_path), "query_ids": query_ids}
     if audit_file.exists():
+        if (not audit_manifest.exists() or
+                json.loads(audit_manifest.read_text(encoding="utf-8")) != audit_source):
+            raise ValueError("US-align cache does not match this database and query panel")
         with audit_file.open(newline="") as handle:
             index = {chain_id: row for row, chain_id in enumerate(query_ids)}
             target_index = {chain_id: column for column, chain_id in enumerate(ids)}
@@ -262,6 +279,9 @@ def fit_files(args, *, predicted=False):
                 if record["query_id"] in index and record["target_id"] in target_index:
                     tm[index[record["query_id"]], target_index[record["target_id"]]] = .5 * (
                         float(record["tm_query"]) + float(record["tm_target"]))
+    else:
+        audit_manifest.write_text(json.dumps(audit_source, indent=2) + "\n",
+                                  encoding="utf-8")
     if predicted:
         from . import compbias
         from . import predicted_calibrate
@@ -270,12 +290,13 @@ def fit_files(args, *, predicted=False):
             entries, tokens, ids, np.asarray(clusters), family, clan,
             training, calibration_indices=calibration_indices, scores=scores, tm=tm,
             auxiliary_count=len(auxiliary_indices),
-            audit_file=audit_file, usalign=args.usalign)
+            audit_file=audit_file, usalign=args.usalign,
+            audit_ceiling=audit_ceiling)
     else:
         model, calibration, audit = fit_from_matrices(
             entries, tokens, ids, np.asarray(clusters), family, clan,
             query_indices, scores, tm, audit_file=audit_file, usalign=args.usalign,
-            censored=not args.uncensored)
+            censored=not args.uncensored, audit_ceiling=audit_ceiling)
     target_digest = database_fingerprint(entries, clusters, n_codes)
     context_digest = calibration_context_fingerprint(
         target_digest, matrix, GAP_OPEN, GAP_EXTEND)
@@ -285,6 +306,7 @@ def fit_files(args, *, predicted=False):
               "target_database_fingerprint": target_digest,
               "calibration_context_fingerprint": context_digest,
               "validation_status": "audited-e0-le-100",
+              "audit_raw_evalue_ceiling": audit_ceiling,
               "target_aware_gumbel": model,
               "empirical_calibration": calibration,
               "audit": audit,

@@ -195,7 +195,8 @@ for every query--target pair and audits high-scoring cluster leaders with
 US-align. To reuse caches, supply `--scores` with `--score-manifest`, and
 `--tm-matrix` with `--tm-manifest`; the manifests must record the database SHA-256,
 target count and query IDs (the score manifest also records the scoring-matrix
-SHA-256). `scripts/export_experimental_rfam_labels.py` can export the Rfam
+SHA-256, score-file SHA-256 and `"score_definition": "raw_sw"`).
+`scripts/export_experimental_rfam_labels.py` can export the Rfam
 PDB-chain labels. For example:
 
 ```
@@ -213,13 +214,15 @@ The experimental fit excludes the query's own cluster and same Rfam
 family/clan, then removes US-align-related members (mean of the two normalised
 TM-scores >= 0.45) and uses the next eligible member in each cluster. There is
 no length-ratio filter. It refits the left-censored Gumbel after each round of
-missing leader audits with `E0 <= 100`; `--uncensored` is an optional alternative
+missing leader audits within the specified initial E-value ceiling (100 by
+default); `--uncensored` is an optional alternative
 for a separately refitted database. The annotated background is expanded by
 `N_D/B_q`, where `B_q` is the eligible annotated-cluster count before structural
 exclusion. The empirical map interpolates cumulative counts inside the observed
-range, uses the fitted global power slope below it, and assigns `N_D` above
-the upper endpoint. These tails are extrapolations, not
-independently validated estimates.
+range and uses the fitted global power slope below it. New fits continue the
+endpoint-anchored power slope above the last knot and cap it at `N_D`; older
+parameter files retain their original upper-endpoint rule. These tails are
+extrapolations, not independently validated estimates.
 
 To fit the selected predicted-database model, supply distinct `.npy` index
 panels for core Gumbel training, auxiliary short/low-entropy Gumbel training,
@@ -252,7 +255,13 @@ ordered query IDs, score-file SHA-256, and
 and TM-file hashes, target count, and ordered query IDs. The generated JSON
 is tied to the target-token database, matrix, gap costs, cluster count and
 composition window. No predicted-database parameters are bundled with this
-PR: the deployment NuFold release must be fitted and audited separately.
+package: the deployment NuFold release must be fitted and audited separately.
+Both fitting commands audit leaders through initial `E0 <= 100` by default;
+`--audit-ceiling` can extend this range. The new empirical parameter file
+records its highest directly supported reported E-value. Increase the audit
+ceiling and refit if that support does not reach the reporting range needed
+for a particular database. Cached US-align results in `--workdir` are reused
+only when their database SHA-256 and query panel match.
 
 The existing `calibrate` command remains the legacy power-law workflow:
 

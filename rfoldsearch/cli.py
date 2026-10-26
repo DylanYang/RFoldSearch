@@ -238,6 +238,8 @@ def main(argv=None):
     p.add_argument("--usalign")
     p.add_argument("--uncensored", action="store_true",
                    help="fit all Gumbel scores exactly instead of left-censoring")
+    p.add_argument("--audit-ceiling", type=float, default=100.0,
+                   help="audit cluster leaders through this initial E-value (at least 100)")
     p.set_defaults(fn=cmd_fit_experimental_evalues)
 
     p = sub.add_parser("fit-predicted-evalues",
@@ -250,6 +252,8 @@ def main(argv=None):
         p.add_argument("--" + name.replace("_", "-"))
     p.add_argument("--matrix")
     p.add_argument("--usalign")
+    p.add_argument("--audit-ceiling", type=float, default=100.0,
+                   help="audit cluster leaders through this initial E-value (at least 100)")
     p.set_defaults(fn=cmd_fit_predicted_evalues)
 
     p = sub.add_parser("search", help="search a query against a token database")
