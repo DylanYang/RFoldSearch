@@ -15,7 +15,10 @@ dependencies = [
     "numpy<2; python_version < '3.10'",
     "torch>=2.0",
     "numba>=0.55",
-    "scipy>=1.0",
+    # SciPy 1.15.x wheels fail to load on current macOS (dyld rejects their
+    # __thread_bss section); 1.14 and 1.16+ load normally. Python 3.10 then
+    # resolves to 1.14.1.
+    "scipy>=1.0,!=1.15.*",
     "biotite>=0.40",
 ]
 
