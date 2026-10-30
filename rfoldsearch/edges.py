@@ -137,8 +137,8 @@ def find_base_pair_and_stack_edges(*args, **kwargs):
 
 
 if __name__ == '__main__':
-    path = "/Users/cassie/Desktop/train/PDB_00001DDY_1_A.cif"
-    out = find_base_pair_and_stack_idx(path)
+    import sys
+    out = find_base_pair_and_stack_idx(sys.argv[1])
     print("pair_idx:\n",    out["pair_idx"])
     print("pair_orient:\n", out["pair_orient"])
     print("stack_idx:\n",   out["stack_idx"])

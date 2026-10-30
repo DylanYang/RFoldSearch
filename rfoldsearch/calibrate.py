@@ -238,7 +238,7 @@ def fit_clustermax_params(db_path, entries, tokens, chain_ids, n_codes, clusters
         "gap_extend": GAP_EXTEND,
         "seed": seed,
         "len_ratio": len_ratio,
-        "calibration_database": str(Path(db_path).resolve()),
+        "calibration_database": Path(db_path).name,
         "n_clusters": fitted["n_clusters"],
         "n_chains": fitted["n_chains"],
         "target_database_fingerprint": target_fingerprint,
