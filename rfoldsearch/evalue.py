@@ -73,7 +73,9 @@ def calibrate_clustermax(
         raise ValueError("need at least two clusters to calibrate")
 
     lens = np.array([len(t) for t in toks])
-    order = np.argsort(np.abs(lens - float(length)))
+    # Stable, so chains tied on length are picked by index: numpy's default
+    # sort orders ties differently across array sizes and CPUs.
+    order = np.argsort(np.abs(lens - float(length)), kind="stable")
     pool = [int(i) for i in order[: max(2, min(len(order), n_queries))]]
 
     maxima = []
@@ -135,7 +137,7 @@ def calibrate_clustermax_length_dependent(
     table, skipped = [], []
     n_clusters = len(set(np.asarray(clusters, dtype=object).tolist()))
     for L in lengths:
-        order = np.argsort(np.abs(lens - float(L)))
+        order = np.argsort(np.abs(lens - float(L)), kind="stable")
         pool = lens[order[: max(2, min(len(order), n_queries))]]
         med = float(np.median(pool))
         if med > max_length_gap * L or L > max_length_gap * med:

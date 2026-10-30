@@ -4,6 +4,7 @@ import numpy as np
 import pytest
 import torch
 
+from helpers import add_coords
 from rfoldsearch import experimental_evalue as EV
 from rfoldsearch.database import (calibration_context_fingerprint,
                                   database_fingerprint)
@@ -61,8 +62,8 @@ def test_fitter_uses_clean_background_for_both_stages():
 
 
 def test_searcher_uses_matching_experimental_empirical_parameters(tmp_path):
-    entries = [{"id": f"t{i}", "tokens": [i % 5, (i + 1) % 5] * 15,
-                "cluster": f"c{i}"} for i in range(5)]
+    entries = add_coords([{"id": f"t{i}", "tokens": [i % 5, (i + 1) % 5] * 15,
+                           "cluster": f"c{i}"} for i in range(5)])
     target = database_fingerprint(entries, [e["cluster"] for e in entries], 80)
     context = calibration_context_fingerprint(
         target, load_matrix(), GAP_OPEN, GAP_EXTEND)
@@ -88,7 +89,7 @@ def test_searcher_uses_matching_experimental_empirical_parameters(tmp_path):
                 "evalue_params": params}, db)
     searcher = Searcher(str(db))
     hit = searcher.search(np.asarray(entries[0]["tokens"]),
-                          rerank="sw", top_k=1)[0]
+                          query_entry=entries[0], top_k=1)[0]
     assert hit["raw_evalue"] == pytest.approx(EV.initial_evalue(
         hit["sw_score"], 30, EV.token_entropy(entries[0]["tokens"]),
         params["target_aware_gumbel"]))
