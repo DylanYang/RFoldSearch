@@ -136,7 +136,7 @@ A comment line names the query, database, and ranking mode, followed by one
 row per hit. Under the default mode, hits are ranked by `R_str`:
 
 ```
-# query: query_chain_id  (128 tokens)   database: target_db.pt   rerank: R_str = S_SW x TM_a
+# query: query_chain_id  (128 tokens)   database: target_db.pt  (2000 chains, 1500 clusters)   rerank: R_str = S_SW x TM_a
 rank  target                       R_str     TM_a      S_SW    E-value   aligned    len
    1  4V9F_A                       358.44   0.8700    412.00    2.1e-30       124    129
    2  6XU8_B                       221.38   0.7700    287.50    5.4e-19       111    121
@@ -146,7 +146,7 @@ rank  target                       R_str     TM_a      S_SW    E-value   aligned
 Under `--rerank tm` — RFoldSearch-TM — the comment line names the mode and the score columns change:
 
 ```
-# query: query_chain_id  (74 tokens)   database: target_db.pt   rerank: RFoldSearch-TM
+# query: query_chain_id  (74 tokens)   database: target_db.pt  (2000 chains)   rerank: RFoldSearch-TM
 rank  target                    TM_mean  TM_query  TM_target    len
    1  PDB_00008B2L_1_W2          0.7076    0.7143     0.7008     76
    2  PDB_00008KD9_1_M           0.6724    0.6674     0.6773     72
@@ -270,8 +270,8 @@ from rfoldsearch import Searcher
 
 s = Searcher("target_db.pt")
 hits = s.search_id("target_chain_id", top_k=10)
-# [{'rank': 1, 'target': …, 'structure_score': …, 'tm_a': …,
-#   'aligned': …, 'sw_score': …, 'bits': …, 'evalue': …}, …]
+# [{'rank': 1, 'target': …, 'sw_score': …, 'length': …,
+#   'structure_score': …, 'tm_a': …, 'aligned': …, 'bits': …, 'evalue': …}, …]
 ```
 
 Anything else is searched by handing `search` the tokens from above:
