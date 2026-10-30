@@ -64,9 +64,9 @@ def test_tie_seed_changes_which_candidates_survive_top_n(db_path):
 def test_index_order_admits_the_lowest_indices_when_everything_ties(db_path):
     s = Searcher(db_path)
 
-    hits = s.search_id("chain_000", top_k=3, top_n=3, rerank="sw")
+    hits = s.search_id("chain_000", top_k=3, top_n=3)
 
-    assert [h["target"] for h in hits] == ["chain_001", "chain_002", "chain_003"]
+    assert sorted(h["target"] for h in hits) == ["chain_001", "chain_002", "chain_003"]
 
 
 def test_same_tie_seed_gives_the_same_ranking(db_path):

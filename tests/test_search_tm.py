@@ -98,14 +98,12 @@ def test_cli_prints_the_tm_table_and_names_the_backend(db_path, monkeypatch, cap
     assert "0.5000" in out
 
 
-def test_cli_sw_output_is_unchanged(db_path, capsys):
+def test_cli_rejects_sw_rerank(db_path):
     from rfoldsearch import cli
 
-    cli.main(["search", "--query", "chain_000", "--db", db_path,
-              "--top_k", "2", "--rerank", "sw"])
-
-    out = capsys.readouterr().out
-    assert "SW_score" in out and "rerank:" not in out
+    with pytest.raises(SystemExit):
+        cli.main(["search", "--query", "chain_000", "--db", db_path,
+                  "--rerank", "sw"])
 
 
 def test_cli_default_prints_structure_score_table(db_path, capsys):

@@ -95,7 +95,7 @@ POST /api/search      multipart form
        top_k       int = 50    hits returned per database
        top_n       int = 200   candidate depth; 200 is the deployed default
        min_diag    int = 2     k-mer hits on a common diagonal; 1 is more sensitive
-       rerank      tm_a | sw | tm   structure score (default), token SW, or US-align
+       rerank      tm_a | tm   structure score (default) or US-align
        tie_seed    int         break score ties by a hash of the chain id
 GET  /api/result/{id}                          the stored record
 GET  /api/result/{id}/{db}/{rank}/alignment    alignment of one hit

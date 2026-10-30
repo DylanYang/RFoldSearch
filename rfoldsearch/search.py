@@ -1,9 +1,8 @@
 """The search pipeline: encode -> prefilter -> rerank.
 
-Three reranking backends share the token prefilter. ``tm_a`` (default) aligns
+Two reranking backends share the token prefilter. ``tm_a`` (default) aligns
 candidates by affine-gap token Smith-Waterman, superposes the aligned C4'
-atoms and ranks by R_str = S_SW * TM_a. ``sw`` keeps the token-only
-Smith-Waterman ranking. Both report the E-value of S_SW. ``tm``
+atoms, ranks by R_str = S_SW * TM_a and reports the E-value of S_SW. ``tm``
 (RFoldSearch-TM) hands the candidate pool to US-align and ranks by the mean of
 its two length-normalised TM-scores; that backend reports no E-value.
 """
@@ -31,7 +30,7 @@ GAP_EXTEND = -0.5
 DEFAULT_TOP_N = 200      # candidate-pool size after the prefilter (validation-selected)
 DEFAULT_MIN_DIAG = 2     # Foldseek double-match rule
 DEFAULT_RERANK = "tm_a"
-RERANKERS = ("tm_a", "sw", "tm")
+RERANKERS = ("tm_a", "tm")
 _NO_CUT = 1 << 62        # ask the prefilter for every candidate, uncut
 
 _ASSETS = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets")
@@ -232,8 +231,7 @@ class Searcher:
         ``rerank="tm_a"`` (default) ranks by ``structure_score``
         (R_str = S_SW * TM_a) and reports ``tm_a``, ``aligned`` (aligned
         nucleotide pairs), and the S_SW-derived fields ``sw_score``, ``bits``,
-        and E-value. ``rerank="sw"`` retains the token-only Smith-Waterman
-        ranking. ``rerank="tm"`` ranks by US-align TM-score and reports
+        and E-value. ``rerank="tm"`` ranks by US-align TM-score and reports
         ``tm_mean``/``tm_query``/``tm_target`` instead.
 
         ``tie_seed`` makes equal scores break by a hash of the chain id
@@ -265,21 +263,12 @@ class Searcher:
                     )
                 query_entry = self.ents[self_idx]
             return self._rerank_tm(query_entry, cand, top_k, usalign, tie_seed)
-        tm_a = aligned = None
-        if rerank == "tm_a":
-            (toks, offsets, xyz), qxyz = self._tm_a_inputs(
-                qtok, query_entry, self_idx)
-            sw, tm_a, aligned = _ss.score_candidates(
-                qtok, qxyz, np.asarray(cand, np.int64), toks, offsets, xyz,
-                self.sub, np.float32(GAP_OPEN), np.float32(GAP_EXTEND))
-            score = sw * tm_a
-        else:
-            sw = np.array([
-                smith_waterman_numba(qtok, self.toks[t], self.sub,
-                                     GAP_OPEN, GAP_EXTEND)
-                for t in cand
-            ])
-            score = sw
+        (toks, offsets, xyz), qxyz = self._tm_a_inputs(
+            qtok, query_entry, self_idx)
+        sw, tm_a, aligned = _ss.score_candidates(
+            qtok, qxyz, np.asarray(cand, np.int64), toks, offsets, xyz,
+            self.sub, np.float32(GAP_OPEN), np.float32(GAP_EXTEND))
+        score = sw * tm_a
         if tie_seed is None:
             order = np.argsort(-score, kind="stable")
         else:
@@ -296,11 +285,9 @@ class Searcher:
         for rank, oi in enumerate(order[:top_k], 1):
             t, sc = int(cand[oi]), float(sw[oi])
             hit = {"rank": rank, "target": self.ids[t], "sw_score": sc,
-                   "length": len(self.toks[t])}
-            if tm_a is not None:
-                hit["structure_score"] = float(score[oi])
-                hit["tm_a"] = float(tm_a[oi])
-                hit["aligned"] = int(aligned[oi])
+                   "length": len(self.toks[t]),
+                   "structure_score": float(score[oi]),
+                   "tm_a": float(tm_a[oi]), "aligned": int(aligned[oi])}
             if self.ev_par is not None:
                 if self.experimental_ev is not None or self.predicted_ev is not None:
                     if self.predicted_ev is not None:

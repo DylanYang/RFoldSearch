@@ -114,8 +114,6 @@ then a reranking of the candidates. What differs is how the candidates are reran
   **R<sub>str</sub> = S<sub>SW</sub> × TM<sub>a</sub>**. `TM_a` is the mean of
   query- and target-length-normalised TM terms for the fixed token alignment.
   The E-value is still calculated from `S_SW`, not from `R_str`.
-- **`sw`**: token-only Smith-Waterman ranking. It can search databases
-  without coordinates and reports the same Smith-Waterman E-value.
 - **`tm`** (RFoldSearch-TM): the candidate pool is handed to
   [US-align](https://github.com/pylelab/USalign) and ranked by the mean of its two length-normalised TM-scores. 
   This measures structural similarity directly instead of scoring a token alignment, at a large cost in speed.
@@ -160,7 +158,7 @@ rank  target                    TM_mean  TM_query  TM_target    len
 | Option       | Category    | Description                                                                        |
 | ------------ | ----------- | ---------------------------------------------------------------------------------- |
 | `--top_k`    | Output      | Number of top hits to return (default: 10)                                         |
-| `--rerank`   | Scoring     | `tm_a` (default), `sw`, or `tm`                                                    |
+| `--rerank`   | Scoring     | `tm_a` (default) or `tm`                                                           |
 | `--top_n`    | Sensitivity | Candidate-pool depth passed to the reranker (default: 200) |
 | `--min_diag` | Sensitivity | k-mer hits required on a common diagonal to admit a target (default: 2) |
 | `--query_id` | Input       | Chain id to look up inside `--query` when it is a database file                    |
@@ -176,8 +174,8 @@ identity) expected to score at least as high as a hit by chance. Smaller
 values mean the hit is less likely to be a chance match. E-values are
 computed from the raw Smith--Waterman token-alignment score, with a
 composition adjustment for predicted-structure databases (below). They are
-reported in the default mode and with `--rerank sw`, and they do not measure
-the structure score R<sub>str</sub> used for ranking in the default mode.
+reported in the default mode, and they do not measure the structure score
+R<sub>str</sub> used for ranking.
 RFoldSearch-TM (`--rerank tm`) aligns with US-align instead and reports no
 E-values.
 
@@ -284,8 +282,8 @@ import numpy as np
 hits = s.search(np.asarray(enc["tokens"], np.int64), query_entry=enc, top_k=10)
 ```
 
-`query_entry` is required by the default `rerank="tm_a"` and by `rerank="tm"`,
-because both use query coordinates. Plain `rerank="sw"` can leave it out.
+`query_entry` is required by both `rerank="tm_a"` (default) and `rerank="tm"`,
+because both use query coordinates.
 `search_id` forwards its keyword arguments to `search`, so `top_n`, `min_diag`, `rerank`
 and `tie_seed` are available from both. `bits` and `evalue` are present when
 E-value parameters matching the database are loaded (by default, only for the
