@@ -130,3 +130,13 @@ def test_cli_reports_a_missing_usalign_without_a_traceback(db_path, monkeypatch,
                   "--rerank", "tm"])
 
     assert "USalign" in str(e.value)
+
+
+def test_cli_prints_warnings_as_one_line(db_path, capsys):
+    from rfoldsearch import cli
+
+    cli.main(["search", "--query", "chain_000", "--db", db_path, "--top_k", "2"])
+
+    err = capsys.readouterr().err
+    assert "rfoldsearch: warning: " in err
+    assert "Searcher(" not in err

@@ -3,6 +3,7 @@ import argparse
 import glob
 import json
 import sys
+import warnings
 
 import numpy as np
 import torch
@@ -143,6 +144,10 @@ def cmd_search(a):
         print(line + f"{h['aligned']:>10}  {h['length']:>5}")
 
 
+def _show_warning(message, category, filename, lineno, file=None, line=None):
+    print(f"rfoldsearch: warning: {message}", file=sys.stderr)
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(prog="rfoldsearch",
                                  description="Fast RNA structural search with the 3Dr alphabet")
@@ -265,10 +270,14 @@ def main(argv=None):
     p.set_defaults(fn=cmd_search)
 
     a = ap.parse_args(argv)
-    try:
-        a.fn(a)
-    except (USalignNotFound, USalignFailed) as e:
-        raise SystemExit(str(e))
+    with warnings.catch_warnings():
+        # One line per warning on stderr, without the source line Python
+        # would otherwise echo after it.
+        warnings.showwarning = _show_warning
+        try:
+            a.fn(a)
+        except (USalignNotFound, USalignFailed) as e:
+            raise SystemExit(str(e))
 
 
 if __name__ == "__main__":
