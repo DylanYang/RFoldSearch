@@ -401,7 +401,7 @@ function targetCell(h) {
 // columns of the hit table; `get` gives the value used for sorting
 let sortKey = null, sortDir = -1;
 function tableColumns(res, noSeq) {
-  const tm = res.rerank === "tm", sw = res.rerank === "sw";
+  const tm = res.rerank === "tm";
   const num = (key, label, get, text, title) => ({ key, label, num: true, get, text, title });
   const cols = [];
   if (noSeq) cols.push(num("plddt", "pLDDT", (h) => h.plddt, (h) => h.plddt == null ? "—" : h.plddt.toFixed(1),
@@ -416,9 +416,6 @@ function tableColumns(res, noSeq) {
   if (tm) {
     cols.push(num("tm", "TM-score", (h) => h.tm_mean, (h) => h.tm_mean.toFixed(3),
                   "Mean of the query- and target-normalised US-align TM-scores"));
-  } else if (sw) {
-    cols.push(num("evalue", "E-value", (h) => h.evalue, (h) => fmtE(h.evalue)),
-              num("bits", "Bits", (h) => h.bits ?? h.sw_score, (h) => (h.bits ?? h.sw_score).toFixed(1)));
   } else {
     cols.push(num("rstr", "Structure score", (h) => h.structure_score, (h) => h.structure_score.toFixed(2),
                   "S_SW × TM-score"),

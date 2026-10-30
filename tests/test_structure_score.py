@@ -96,14 +96,9 @@ def test_tm_a_is_default_and_ranks_by_product(db_path):
     assert len({hit["target"] for hit in hits[:19]} & same_fold) >= 17
 
 
-def test_sw_backend_still_works_without_coordinates(tmp_path):
-    tokens = np.arange(40, dtype=np.int16) % 10
-    entries = [{"id": f"c{i}", "tokens": tokens.copy()} for i in range(5)]
-    path = tmp_path / "token_only.pt"
-    torch.save({"n_codes": 80, "entries": entries,
-                "checkpoint": "synthetic"}, path)
-    hits = Searcher(str(path)).search_id("c0", top_k=2, rerank="sw")
-    assert hits and "structure_score" not in hits[0]
+def test_sw_backend_is_gone(db_path):
+    with pytest.raises(ValueError, match="unknown rerank backend"):
+        Searcher(db_path).search_id("chain_000", rerank="sw")
 
 
 def test_tm_a_requires_database_coordinates(tmp_path):

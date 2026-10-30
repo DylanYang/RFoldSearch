@@ -183,8 +183,8 @@ async def search(request: Request):
     if unknown:
         raise HTTPException(400, f"unknown database {unknown[0]!r}; choose from "
                                  f"{sorted(engine.databases)}")
-    if rerank not in ("tm_a", "sw", "tm"):
-        raise HTTPException(400, "rerank must be 'tm_a', 'sw', or 'tm'")
+    if rerank not in ("tm_a", "tm"):
+        raise HTTPException(400, "rerank must be 'tm_a' or 'tm'")
     if not 1 <= top_k <= 1000:
         raise HTTPException(400, "top_k must be between 1 and 1000")
     if not 1 <= top_n <= TOP_N_CAP:

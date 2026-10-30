@@ -5,6 +5,7 @@ import numpy as np
 import pytest
 import torch
 
+from helpers import add_coords
 from rfoldsearch import compbias, experimental_evalue as EV
 from rfoldsearch.cli import main
 from rfoldsearch.database import (calibration_context_fingerprint,
@@ -65,8 +66,8 @@ def test_compressed_gumbel_likelihood_matches_uncompressed_fit():
 
 
 def test_search_uses_compbias_only_for_evalue_and_rejects_wrong_context(tmp_path):
-    entries = [{"id": f"t{i}", "tokens": [i % 5, (i + 1) % 5] * 15,
-                "cluster": f"c{i}"} for i in range(5)]
+    entries = add_coords([{"id": f"t{i}", "tokens": [i % 5, (i + 1) % 5] * 15,
+                           "cluster": f"c{i}"} for i in range(5)])
     tokens = [entry["tokens"] for entry in entries]
     matrix = load_matrix()
     background = compbias.background_frequencies(tokens, matrix.shape[0])
@@ -97,7 +98,7 @@ def test_search_uses_compbias_only_for_evalue_and_rejects_wrong_context(tmp_path
                 "evalue_params": params}, db)
     searcher = Searcher(str(db))
     query = np.asarray(tokens[0])
-    hit = searcher.search(query, rerank="sw", top_k=1)[0]
+    hit = searcher.search(query, query_entry=entries[0], top_k=1)[0]
     positions, profile = compbias.query_profile(query, matrix, background)
     target_index = searcher.id2i[hit["target"]]
     adjusted = smith_waterman_numba(positions, np.asarray(tokens[target_index]),
@@ -119,8 +120,8 @@ def test_search_uses_compbias_only_for_evalue_and_rejects_wrong_context(tmp_path
 
 def test_fitting_cli_writes_attachable_predicted_parameters(tmp_path):
     rng = np.random.default_rng(30)
-    entries = [{"id": f"t{i}", "tokens": rng.integers(0, 15, 25 + i % 8).tolist(),
-                "cluster": f"c{i}"} for i in range(40)]
+    entries = add_coords([{"id": f"t{i}", "tokens": rng.integers(0, 15, 25 + i % 8).tolist(),
+                           "cluster": f"c{i}"} for i in range(40)])
     tokens = [entry["tokens"] for entry in entries]
     db = tmp_path / "db.pt"
     torch.save({"n_codes": 80, "entries": entries, "n_clusters": 40}, db)
@@ -174,7 +175,8 @@ def test_fitting_cli_writes_attachable_predicted_parameters(tmp_path):
     assert params["empirical_calibration"]["background_scaling"] == "complete-eligible-clusters"
     searcher = Searcher(str(db), matrix_path=str(matrix_path),
                         evalue_params_path=str(output))
-    assert searcher.search(np.asarray(tokens[0]), rerank="sw", top_k=1)[0]["evalue"] >= 0
+    assert searcher.search(np.asarray(tokens[0]), query_entry=entries[0],
+                           top_k=1)[0]["evalue"] >= 0
     clusters = tmp_path / "clusters.tsv"
     clusters.write_text("".join(f"t{i}\tc{i}\n" for i in range(40)))
     attached = tmp_path / "attached.pt"

@@ -2,13 +2,13 @@
 
 <p>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-Apache_2.0-blue.svg" alt="License: Apache 2.0" /></a>
-  <img src="https://img.shields.io/badge/python-%3E%3D3.9-blue.svg" alt="Python >= 3.9" />
+  <img src="https://img.shields.io/badge/python-%3E%3D3.10-blue.svg" alt="Python >= 3.10" />
   <a href="#installation"><img src="https://img.shields.io/badge/install-conda-44A833.svg" alt="Install with conda" /></a>
 </p>
 
 RFoldSearch enables fast RNA tertiary-structure search with 3Dr, a learned discrete structural alphabet. Each nucleotide is described by a 17-D vector: the rigid-body transform to its nearest non-sequential spatial neighbour and its local context. A VQ-VAE quantises this vector into one of 80 states, converting RNA chains into token strings. Targets sharing at least two token k-mers on a common diagonal with the query pass the prefilter, and the top N are aligned by affine-gap token Smith-Waterman, which gives the alignment score and the nucleotide correspondence. For the default search mode, RFoldSearch estimates token-alignment E-values using a database-specific Gumbel model followed by calibration of unrelated background counts. Hits are ranked by a structure score that combines the token-alignment score with the structural similarity of the aligned nucleotides, independently of the reported E-value. RFoldSearch-TM instead ranks candidates by US-align TM-score and does not report token-alignment E-values.
 
-<p align="center"><img src=".github/fig1.jpeg" width="720" /></p>
+<p align="center"><img src=".github/fig1.jpeg" width="900" /></p>
 
 ## Table of Contents
 
@@ -20,9 +20,10 @@ RFoldSearch enables fast RNA tertiary-structure search with 3Dr, a learned discr
     + [Build a database](#build-a-database)
     + [Search](#search)
     + [E-values](#e-values)
+      - [Calibrating your own database](#calibrating-your-own-database)
     + [Python API](#python-api)
       - [Tokenize a structure into 3Dr](#tokenize-a-structure-into-3dr)
-      - [Search](#search) 
+      - [Search](#search-1)
   * [Third-party components](#third-party-components)
   * [License](#license)
 
@@ -38,7 +39,8 @@ conda activate rfoldsearch
 
 Without conda, `pip install .` installs RFoldSearch alone. CD-HIT-EST and US-align must
 then be installed separately and they are needed only for building clustered databases,
-`--rerank tm` and `rfoldsearch calibrate`.
+`--rerank tm` and E-value calibration (`rfoldsearch fit-experimental-evalues`,
+`rfoldsearch fit-predicted-evalues`).
 
 ## Hardware and memory requirements
 
@@ -112,8 +114,6 @@ then a reranking of the candidates. What differs is how the candidates are reran
   **R<sub>str</sub> = S<sub>SW</sub> × TM<sub>a</sub>**. `TM_a` is the mean of
   query- and target-length-normalised TM terms for the fixed token alignment.
   The E-value is still calculated from `S_SW`, not from `R_str`.
-- **`sw`**: token-only Smith-Waterman ranking. It can search databases
-  without coordinates and reports the same Smith-Waterman E-value.
 - **`tm`** (RFoldSearch-TM): the candidate pool is handed to
   [US-align](https://github.com/pylelab/USalign) and ranked by the mean of its two length-normalised TM-scores. 
   This measures structural similarity directly instead of scoring a token alignment, at a large cost in speed.
@@ -136,7 +136,7 @@ A comment line names the query, database, and ranking mode, followed by one
 row per hit. Under the default mode, hits are ranked by `R_str`:
 
 ```
-# query: query_chain_id  (128 tokens)   database: target_db.pt   rerank: R_str = S_SW x TM_a
+# query: query_chain_id  (128 tokens)   database: target_db.pt  (2000 chains, 1500 clusters)   rerank: R_str = S_SW x TM_a
 rank  target                       R_str     TM_a      S_SW    E-value   aligned    len
    1  4V9F_A                       358.44   0.8700    412.00    2.1e-30       124    129
    2  6XU8_B                       221.38   0.7700    287.50    5.4e-19       111    121
@@ -146,7 +146,7 @@ rank  target                       R_str     TM_a      S_SW    E-value   aligned
 Under `--rerank tm` — RFoldSearch-TM — the comment line names the mode and the score columns change:
 
 ```
-# query: query_chain_id  (74 tokens)   database: target_db.pt   rerank: RFoldSearch-TM
+# query: query_chain_id  (74 tokens)   database: target_db.pt  (2000 chains)   rerank: RFoldSearch-TM
 rank  target                    TM_mean  TM_query  TM_target    len
    1  PDB_00008B2L_1_W2          0.7076    0.7143     0.7008     76
    2  PDB_00008KD9_1_M           0.6724    0.6674     0.6773     72
@@ -158,7 +158,7 @@ rank  target                    TM_mean  TM_query  TM_target    len
 | Option       | Category    | Description                                                                        |
 | ------------ | ----------- | ---------------------------------------------------------------------------------- |
 | `--top_k`    | Output      | Number of top hits to return (default: 10)                                         |
-| `--rerank`   | Scoring     | `tm_a` (default), `sw`, or `tm`                                                    |
+| `--rerank`   | Scoring     | `tm_a` (default) or `tm`                                                           |
 | `--top_n`    | Sensitivity | Candidate-pool depth passed to the reranker (default: 200) |
 | `--min_diag` | Sensitivity | k-mer hits required on a common diagonal to admit a target (default: 2) |
 | `--query_id` | Input       | Chain id to look up inside `--query` when it is a database file                    |
@@ -169,138 +169,75 @@ rank  target                    TM_mean  TM_query  TM_target    len
 
 ### E-values
 
-RFoldSearch reports Smith--Waterman E-values in `tm_a` and `sw` modes. The
-E-value is the expected number of unrelated database clusters (CD-HIT-EST,
-80% identity) reaching a hit's token-alignment score and it is not a significance
-estimate for the structure score R<sub>str</sub>. The experimental database uses
-raw Smith--Waterman scores, a target-aware Gumbel null conditioned on query
-length, target-cluster length, their difference and query-token entropy, and a
-family-balanced empirical monotone calibration. Its initial `E0` sums the
-predicted tail probability over all target clusters. A separately fitted
-predicted database can use a window-20 composition-adjusted raw SW score with
-the same target-aware Gumbel and a full-background empirical monotone map.
-Unadjusted SW still determines ranking and structure scoring; only the
-E-value uses the adjusted score. Databases without matching parameters
-continue to use the query-conditional Gumbel and power-law path.
+An E-value is the number of unrelated database clusters (CD-HIT-EST, 80%
+identity) expected to score at least as high as a hit by chance. Smaller
+values mean the hit is less likely to be a chance match. E-values are
+computed from the raw Smith--Waterman token-alignment score, with a
+composition adjustment for predicted-structure databases (below). They are
+reported in the default mode, and they do not measure the structure score
+R<sub>str</sub> used for ranking.
+RFoldSearch-TM (`--rerank tm`) aligns with US-align instead and reports no
+E-values.
 
-The experimental parameters bundled with RFoldSearch were fitted for the
-paper's 885-chain, 882-cluster database and are selected only when its database
-and scoring fingerprints match. An embedded or explicitly supplied parameter
-file takes precedence. A different database needs its own calibration.
+E-values are calibrated separately for each database. A statistical model of
+chance scores, which accounts for query and target length, is fitted to
+structurally unrelated database hits and then corrected so that the reported
+values match the number of unrelated hits actually observed. RFoldSearch ships
+parameters for the paper's experimental-structure database. Any other database
+needs its own calibration. Without matching parameters, the search warns and
+reports no E-values.
 
-To refit the experimental model, use `rfoldsearch fit-experimental-evalues`.
-It requires an 80%-identity-clustered target database, Rfam labels and a
-calibration-query panel. With no score or TM caches, it computes raw SW scores
-for every query--target pair and audits high-scoring cluster leaders with
-US-align. To reuse caches, supply `--scores` with `--score-manifest`, and
-`--tm-matrix` with `--tm-manifest`; the manifests must record the database SHA-256,
-target count and query IDs (the score manifest also records the scoring-matrix
-SHA-256, score-file SHA-256 and `"score_definition": "raw_sw"`).
-`scripts/export_experimental_rfam_labels.py` can export the Rfam
-PDB-chain labels. For example:
+Predicted structures often contain long runs of a few repeated tokens, such as
+helices, that align well to many unrelated chains. For predicted databases the
+E-value therefore uses a composition-adjusted score: each query position is
+scored relative to its surrounding ±20 tokens, so matches that its
+neighbourhood would produce anyway count less. This adjustment affects only
+the E-value. Hits are still ranked by the unadjusted score.
+
+#### Calibrating your own database
+
+Both fitting commands need an 80%-identity-clustered database and a TSV of
+`chain_id`, `family` and `clan` (Rfam) for its chains.
+`scripts/export_experimental_rfam_labels.py` exports these labels for PDB
+chains, and `scripts/build_rfam_labels.py` builds them from `cmscan --fmt 2`
+output.
+
+Experimental structures:
 
 ```
 rfoldsearch fit-experimental-evalues \
-  --db experimental_nr80.pt --labels rfam_labels.tsv \
-  --query-indices calibration_query_indices.npy \
-  --workdir experimental_fit --output experimental_evalues.json \
-  --usalign /path/to/USalign
-rfoldsearch attach-calibration --db experimental_nr80.pt \
-  --clusters experimental_nr80.clstr --evalue_params experimental_evalues.json \
-  --output experimental_calibrated.pt
+  --db target_nr80.pt --labels rfam_labels.tsv \
+  --workdir fit --output evalues.json --usalign /path/to/USalign
 ```
 
-The experimental fit excludes the query's own cluster and same Rfam
-family/clan, then removes US-align-related members (mean of the two normalised
-TM-scores >= 0.45) and uses the next eligible member in each cluster. There is
-no length-ratio filter. It refits the left-censored Gumbel after each round of
-missing leader audits within the specified initial E-value ceiling (100 by
-default); `--uncensored` is an optional alternative
-for a separately refitted database. The annotated background is expanded by
-`N_D/B_q`, where `B_q` is the eligible annotated-cluster count before structural
-exclusion. The empirical map interpolates cumulative counts inside the observed
-range and uses the fitted global power slope below it. New fits continue the
-endpoint-anchored power slope above the last knot and cap it at `N_D`; older
-parameter files retain their original upper-endpoint rule. These tails are
-extrapolations, not independently validated estimates.
-
-To fit the selected predicted-database model, supply distinct `.npy` index
-panels for core Gumbel training, auxiliary short/low-entropy Gumbel training,
-and Rfam-annotated empirical calibration. Auxiliary queries receive 20% of
-the Gumbel likelihood weight; they are not included in the empirical map.
-The scorer computes window-20 composition-adjusted raw SW scores against all
-target chains. Fitting excludes the query's own cluster and same family/clan,
-audits high-scoring cluster leaders with US-align, and backfills within a
-cluster after excluding members with mean bidirectional TM-score >= 0.45.
-There is no length-ratio filter. The Gumbel model is refitted after each
-audit round. Predicted empirical counts use every eligible cluster without
-`N_D/B_q` expansion.
+Predicted structures:
 
 ```
 rfoldsearch fit-predicted-evalues \
-  --db nufold_nr80.pt --labels nufold_rfam_labels.tsv \
+  --db target_nr80.pt --labels rfam_labels.tsv \
   --training-indices core.npy --auxiliary-indices auxiliary.npy \
-  --calibration-indices calibration.npy --workdir nufold_fit \
-  --output nufold_evalues.json --usalign /path/to/USalign
-rfoldsearch attach-calibration --db nufold_nr80.pt \
-  --clusters nufold_nr80.clstr --evalue_params nufold_evalues.json \
-  --output nufold_calibrated.pt
+  --calibration-indices calibration.npy \
+  --workdir fit --output evalues.json --usalign /path/to/USalign
 ```
 
-The fit can resume from `--workdir` or accept existing `--scores` and
-`--score-manifest`, plus `--tm-matrix` and `--tm-manifest`. The score manifest
-must give the database and substitution-matrix SHA-256 hashes, target count,
-ordered query IDs, score-file SHA-256, and
-`"score_definition": "compbias20_sw"`. The TM manifest records the database
-and TM-file hashes, target count, and ordered query IDs. The generated JSON
-is tied to the target-token database, matrix, gap costs, cluster count and
-composition window. No predicted-database parameters are bundled with this
-package: the deployment NuFold release must be fitted and audited separately.
-Both fitting commands audit leaders through initial `E0 <= 100` by default;
-`--audit-ceiling` can extend this range. The new empirical parameter file
-records its highest directly supported reported E-value. Increase the audit
-ceiling and refit if that support does not reach the reporting range needed
-for a particular database. Cached US-align results in `--workdir` are reused
-only when their database SHA-256 and query panel match.
-
-The existing `calibrate` command remains the legacy power-law workflow:
-
-To calibrate your own database, run once:
+Then attach the parameters and search the new file as usual:
 
 ```
-rfoldsearch calibrate \
-  --db target_db.pt \
-  --clusters target_nr80.clstr \
-  --labels labels.tsv \
-  --queries calibration_queries.pt \
-  --db_type predicted \
-  --output calibrated_db.pt
+rfoldsearch attach-calibration --db target_nr80.pt \
+  --clusters target_nr80.clstr --evalue_params evalues.json \
+  --output target_calibrated.pt
 ```
 
-and search `calibrated_db.pt` as usual. The command fits the Gumbel model,
-scores the calibration queries against every target cluster, fits the power
-law, and attaches the result to a new database file.
+Fitting audits high-scoring background hits with US-align and can take a
+while. An interrupted fit resumes from `--workdir`, and precomputed scores or
+TM-scores can be supplied to skip those steps (see `--help`).
 
-| Option            | Description                                                               |
-| ----------------- | ------------------------------------------------------------------------- |
-| `--labels`        | TSV of `chain_id`, `family`, `clan` (Rfam) for every chain in `--db` and `--queries`; `scripts/build_rfam_labels.py` makes it from `cmscan --fmt 2` output |
-| `--queries`       | Independent database of calibration queries, built with `rfoldsearch build` |
-| `--db_type`       | `predicted` uses every eligible cluster as background; `experimental` uses Rfam-annotated targets, reweighted to the full database |
-| `--related_pairs` | Existing US-align results (`query_id`, `target_id`, `tm_query`, `tm_target`) |
-| `--usalign`       | Path to the `USalign` binary (default: `$USALIGN`, then `PATH`)           |
-| `--query_panel`   | TSV of `query_id` choosing the chains of `--db` that fit the Gumbel model (default: all) |
-| `--workdir`       | Intermediate files (default: `calibrated_db.calibration/`)                |
-
-Pairs with the same Rfam family or clan, and pairs US-align finds
-structurally related (mean TM-score >= 0.45), are excluded from the
-background. Every cluster leader with `E0 <= 100` needs a US-align result;
-those not in `--related_pairs` are aligned automatically and cached in the
-work directory, so a rerun does not align them again. Calibration should be
-assessed by leave-one-Rfam-family-out validation. Since `a_D > 0` and
-`b_D > 0`, the correction is monotone and preserves the token-score ordering
-for a fixed query. To run the stages separately, use
-`scripts/rebuild_evalue_params.py`, `scripts/build_evalue_calibration_background.py`
-and `scripts/fit_power_evalue_calibration.py`, then `rfoldsearch attach-calibration`.
+By default, background hits are audited up to an uncorrected E-value of 100.
+Above the highest audited value, reported E-values are extrapolated along a
+power law and capped at the number of clusters in the database. The parameter
+file records the highest E-value that the audit supports directly; if a
+database needs reliable E-values beyond it, refit with a larger
+`--audit-ceiling`.
 
 ### Python API
 
@@ -317,7 +254,8 @@ from rfoldsearch.tokenizer import encode_entry, load_model
 
 model, ckpt, n_codes, _ = load_model(asset("desc_vqvae_best.pt"))   # or your own
 enc = encode_entry(model, structure_to_entry("query.cif"), torch.device("cpu"),
-                   ckpt.get("norm_mean"), ckpt.get("norm_std"))
+                   ckpt.get("norm_mean"), ckpt.get("norm_std"),
+                   active_blocks=ckpt.get("active_blocks"))
 
 enc["tokens"]     # int16, one 3Dr state per resolved nucleotide, e.g. [22, 53, 53, 44, …]
 enc["n_valid"]    # how many nucleotides were resolved well enough to tokenize
@@ -339,8 +277,8 @@ from rfoldsearch import Searcher
 
 s = Searcher("target_db.pt")
 hits = s.search_id("target_chain_id", top_k=10)
-# [{'rank': 1, 'target': …, 'structure_score': …, 'tm_a': …,
-#   'aligned': …, 'sw_score': …, 'bits': …, 'evalue': …}, …]
+# [{'rank': 1, 'target': …, 'sw_score': …, 'length': …,
+#   'structure_score': …, 'tm_a': …, 'aligned': …, 'bits': …, 'evalue': …}, …]
 ```
 
 Anything else is searched by handing `search` the tokens from above:
@@ -351,11 +289,12 @@ import numpy as np
 hits = s.search(np.asarray(enc["tokens"], np.int64), query_entry=enc, top_k=10)
 ```
 
-`query_entry` is required by the default `rerank="tm_a"` and by `rerank="tm"`,
-because both use query coordinates. Plain `rerank="sw"` can leave it out.
+`query_entry` is required by both `rerank="tm_a"` (default) and `rerank="tm"`,
+because both use query coordinates.
 `search_id` forwards its keyword arguments to `search`, so `top_n`, `min_diag`, `rerank`
 and `tie_seed` are available from both. `bits` and `evalue` are present when
-E-value parameters are loaded, which they are by default.
+E-value parameters matching the database are loaded (by default, only for the
+paper's database).
 
 `Searcher` deliberately takes no tokenizer — searching happens on tokens, not
 structures. It does accept the two files that interpret those tokens,

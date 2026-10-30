@@ -95,7 +95,7 @@ POST /api/search      multipart form
        top_k       int = 50    hits returned per database
        top_n       int = 200   candidate depth; 200 is the deployed default
        min_diag    int = 2     k-mer hits on a common diagonal; 1 is more sensitive
-       rerank      tm_a | sw | tm   structure score (default), token SW, or US-align
+       rerank      tm_a | tm   structure score (default) or US-align
        tie_seed    int         break score ties by a hash of the chain id
 GET  /api/result/{id}                          the stored record
 GET  /api/result/{id}/{db}/{rank}/alignment    alignment of one hit
@@ -150,10 +150,3 @@ E = 0 followed by other large-subunit rRNAs, in 5.2 s; a 24-token query
 returns in 0.5 s. Malformed uploads, unknown database keys, out-of-range
 parameters and a missing `USalign` binary each return a useful message
 rather than a traceback.
-
-One packaging note found while testing: on Python 3.9, `pip install
-rfoldsearch` resolves `biotite` to 0.40, which is built against numpy 1.x,
-while `torch` pulls numpy 2. The import then fails inside biotite. The
-`python:3.11-slim` base image in the Dockerfile avoids this; a 3.9
-install needs `numpy<2` pinned. The package declares `>=3.9`, so this is
-worth either pinning or raising in `pyproject.toml`.
