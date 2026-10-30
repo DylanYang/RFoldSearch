@@ -150,10 +150,3 @@ E = 0 followed by other large-subunit rRNAs, in 5.2 s; a 24-token query
 returns in 0.5 s. Malformed uploads, unknown database keys, out-of-range
 parameters and a missing `USalign` binary each return a useful message
 rather than a traceback.
-
-One packaging note found while testing: on Python 3.9, `pip install
-rfoldsearch` resolves `biotite` to 0.40, which is built against numpy 1.x,
-while `torch` pulls numpy 2. The import then fails inside biotite. The
-`python:3.11-slim` base image in the Dockerfile avoids this; a 3.9
-install needs `numpy<2` pinned. The package declares `>=3.9`, so this is
-worth either pinning or raising in `pyproject.toml`.

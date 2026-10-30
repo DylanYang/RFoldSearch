@@ -8,11 +8,9 @@ version = "0.1.0"
 description = "Fast RNA tertiary-structure search with the learned 3Dr structural alphabet"
 readme = "README.md"
 license = {file = "LICENSE"}
-requires-python = ">=3.9"
+requires-python = ">=3.10"
 dependencies = [
     "numpy>=1.21",
-    # The last biotite for Python 3.9 (0.40) is built against NumPy 1.
-    "numpy<2; python_version < '3.10'",
     "torch>=2.0",
     "numba>=0.55",
     # SciPy 1.15.x wheels fail to load on current macOS (dyld rejects their
