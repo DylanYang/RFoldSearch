@@ -90,7 +90,8 @@ def test_fitter_uses_clean_background_for_both_stages():
     assert uncensored["censoring"] == "none"
 
 
-def test_experimental_cli_fit_attach_and_search(tmp_path):
+@pytest.mark.parametrize("ceiling", [100, 400])
+def test_experimental_cli_fit_attach_and_search(tmp_path, ceiling):
     rng = np.random.default_rng(41)
     entries = add_coords([{"id": f"t{i}", "tokens": rng.integers(0, 20, 28 + i % 7).tolist(),
                            "cluster": f"c{i}"} for i in range(32)])
@@ -122,8 +123,12 @@ def test_experimental_cli_fit_attach_and_search(tmp_path):
     main(["fit-experimental-evalues", "--db", str(db), "--labels", str(labels),
           "--workdir", str(tmp_path / "fit"), "--output", str(params_path),
           "--scores", str(score_path), "--score-manifest", str(score_manifest),
-          "--tm-matrix", str(tm_path), "--tm-manifest", str(tm_manifest)])
+          "--tm-matrix", str(tm_path), "--tm-manifest", str(tm_manifest),
+          "--audit-ceiling", str(ceiling)])
     params = json.loads(params_path.read_text())
+    assert params["validation_status"] == f"audited-e0-le-{ceiling}"
+    assert params["audit_raw_evalue_ceiling"] == ceiling
+    assert params["empirical_calibration"]["fit_raw_evalue_ceiling"] == ceiling
     assert params["target_aware_gumbel"]["censoring"] == "left-censored-95th-percentile"
     assert params["empirical_calibration"]["upper_tail_rule"] == "anchored-power-cap"
     cluster_file = tmp_path / "clusters.tsv"
@@ -140,7 +145,12 @@ def test_experimental_cli_fit_attach_and_search(tmp_path):
         hit["raw_evalue"], params["empirical_calibration"]))
 
 
-def test_searcher_uses_matching_experimental_empirical_parameters(tmp_path):
+@pytest.mark.parametrize("status,ceiling", [
+    ("audited-e0-le-100", None),
+    ("audited-e0-le-400", 400),
+    ("audited-e0-le-100", 400),  # Parameters from the old fixed-label fitter.
+])
+def test_searcher_uses_matching_experimental_empirical_parameters(tmp_path, status, ceiling):
     entries = add_coords([{"id": f"t{i}", "tokens": [i % 5, (i + 1) % 5] * 15,
                            "cluster": f"c{i}"} for i in range(5)])
     target = database_fingerprint(entries, [e["cluster"] for e in entries], 80)
@@ -150,7 +160,7 @@ def test_searcher_uses_matching_experimental_empirical_parameters(tmp_path):
         "scheme": EV.SCHEME, "score_definition": "raw-sw", "n_clusters": 5,
         "target_database_fingerprint": target,
         "calibration_context_fingerprint": context,
-        "validation_status": "audited-e0-le-100",
+        "validation_status": status,
         "target_aware_gumbel": {
             "coefficients_mu_logbeta": [[8., 0.], [0., 0.], [0., 0.],
                                          [0., 0.], [0., 0.]],
@@ -163,6 +173,9 @@ def test_searcher_uses_matching_experimental_empirical_parameters(tmp_path):
             "low_tail_power_b": 1., "n_clusters": 5,
         },
     }
+    if ceiling is not None:
+        params["audit_raw_evalue_ceiling"] = ceiling
+        params["empirical_calibration"]["fit_raw_evalue_ceiling"] = ceiling
     db = tmp_path / "db.pt"
     torch.save({"n_codes": 80, "entries": entries, "n_clusters": 5,
                 "evalue_params": params}, db)
@@ -174,6 +187,11 @@ def test_searcher_uses_matching_experimental_empirical_parameters(tmp_path):
         params["target_aware_gumbel"]))
     assert hit["evalue"] == pytest.approx(EV.apply_empirical(
         hit["raw_evalue"], params["empirical_calibration"]))
+    bad_audit = tmp_path / "bad_audit.json"
+    bad_audit.write_text(json.dumps(dict(params,
+        validation_status="audited-e0-le-400", audit_raw_evalue_ceiling=100)))
+    with pytest.raises(ValueError, match="audit label and ceiling disagree"):
+        Searcher(str(db), evalue_params_path=str(bad_audit))
     params["target_database_fingerprint"] = "wrong"
     bad = tmp_path / "wrong.json"
     bad.write_text(json.dumps(params))

@@ -287,13 +287,42 @@ def apply_empirical(evalues, calibration):
     return float(y) if np.ndim(y) == 0 else y
 
 
+def validate_audit_metadata(params):
+    """Check the audited range, including files with the old fixed-100 label."""
+    status = params.get("validation_status", "")
+    prefix = "audited-e0-le-"
+    if not isinstance(status, str) or not status.startswith(prefix):
+        raise ValueError("empirical E-values lack a completed structural audit")
+    try:
+        labelled = float(status[len(prefix):])
+        ceiling = float(params.get("audit_raw_evalue_ceiling", labelled))
+    except (TypeError, ValueError):
+        raise ValueError("invalid empirical audit ceiling") from None
+    if any(not math.isfinite(value) or value < 100 for value in (labelled, ceiling)):
+        raise ValueError("empirical audit ceilings must be finite and at least 100")
+    # Older fitters always wrote 100 in the label, even when the explicit
+    # audit_raw_evalue_ceiling recorded a larger, completed audit.
+    if labelled != ceiling and labelled != 100:
+        raise ValueError("empirical audit label and ceiling disagree")
+    calibration = params["empirical_calibration"]
+    try:
+        fit_ceiling = float(calibration.get("fit_raw_evalue_ceiling", ceiling))
+        last_knot = float(calibration["raw_evalues"][-1])
+        fit_max = float(calibration.get("fit_raw_evalue_max", last_knot))
+    except (TypeError, ValueError):
+        raise ValueError("invalid empirical calibration range") from None
+    if (not math.isfinite(fit_ceiling) or not 0 < fit_ceiling <= ceiling
+            or any(not math.isfinite(value) or not 0 < value <= fit_ceiling
+                   for value in (last_knot, fit_max))):
+        raise ValueError("empirical calibration range exceeds its audit or fitting ceiling")
+
+
 def validate_parameters(params, n_clusters, target_fingerprint, context_fingerprint):
     if params.get("scheme") != SCHEME or params.get("score_definition") != "raw-sw":
         raise ValueError("unsupported experimental E-value scheme or score")
     if (params.get("target_database_fingerprint") != target_fingerprint
             or params.get("calibration_context_fingerprint") != context_fingerprint
-            or int(params.get("n_clusters", -1)) != n_clusters
-            or params.get("validation_status") != "audited-e0-le-100"):
+            or int(params.get("n_clusters", -1)) != n_clusters):
         raise ValueError("experimental E-values belong to another database or lack audit")
     model = params["target_aware_gumbel"]
     _, _, _, _, multiplicities = _model_arrays(model)
@@ -303,3 +332,4 @@ def validate_parameters(params, n_clusters, target_fingerprint, context_fingerpr
     if int(calibration.get("n_clusters", -1)) != n_clusters:
         raise ValueError("empirical map cluster count does not match database")
     apply_empirical(np.array([0.0, 1.0]), calibration)
+    validate_audit_metadata(params)

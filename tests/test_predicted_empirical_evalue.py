@@ -65,7 +65,12 @@ def test_compressed_gumbel_likelihood_matches_uncompressed_fit():
         np.asarray(plain["coefficients_mu_logbeta"]), abs=1e-4)
 
 
-def test_search_uses_compbias_only_for_evalue_and_rejects_wrong_context(tmp_path):
+@pytest.mark.parametrize("status,ceiling", [
+    ("audited-e0-le-100", None),
+    ("audited-e0-le-400", 400),
+    ("audited-e0-le-100", 400),  # Parameters from the old fixed-label fitter.
+])
+def test_search_uses_compbias_only_for_evalue_and_rejects_wrong_context(tmp_path, status, ceiling):
     entries = add_coords([{"id": f"t{i}", "tokens": [i % 5, (i + 1) % 5] * 15,
                            "cluster": f"c{i}"} for i in range(5)])
     tokens = [entry["tokens"] for entry in entries]
@@ -79,7 +84,7 @@ def test_search_uses_compbias_only_for_evalue_and_rejects_wrong_context(tmp_path
         "composition_background": background.tolist(), "n_clusters": 5,
         "target_database_fingerprint": target,
         "calibration_context_fingerprint": context,
-        "validation_status": "audited-e0-le-100",
+        "validation_status": status,
         "target_aware_gumbel": {
             "coefficients_mu_logbeta": [[8., 0.], [0., 0.], [0., 0.],
                                          [0., 0.], [0., 0.]],
@@ -93,6 +98,9 @@ def test_search_uses_compbias_only_for_evalue_and_rejects_wrong_context(tmp_path
             "background_scaling": "complete-eligible-clusters",
         },
     }
+    if ceiling is not None:
+        params["audit_raw_evalue_ceiling"] = ceiling
+        params["empirical_calibration"]["fit_raw_evalue_ceiling"] = ceiling
     db = tmp_path / "db.pt"
     torch.save({"n_codes": 80, "entries": entries, "n_clusters": 5,
                 "evalue_params": params}, db)
@@ -111,6 +119,11 @@ def test_search_uses_compbias_only_for_evalue_and_rejects_wrong_context(tmp_path
         params["target_aware_gumbel"]))
     assert hit["evalue"] == pytest.approx(EV.apply_empirical(
         hit["raw_evalue"], params["empirical_calibration"]))
+    bad_audit = tmp_path / "bad_audit.json"
+    bad_audit.write_text(json.dumps(dict(params,
+        validation_status="audited-e0-le-400", audit_raw_evalue_ceiling=100)))
+    with pytest.raises(ValueError, match="audit label and ceiling disagree"):
+        Searcher(str(db), evalue_params_path=str(bad_audit))
     params["composition_background"][0] += .01
     bad = tmp_path / "wrong.json"
     bad.write_text(json.dumps(params))
@@ -118,7 +131,8 @@ def test_search_uses_compbias_only_for_evalue_and_rejects_wrong_context(tmp_path
         Searcher(str(db), evalue_params_path=str(bad))
 
 
-def test_fitting_cli_writes_attachable_predicted_parameters(tmp_path):
+@pytest.mark.parametrize("ceiling", [100, 400])
+def test_fitting_cli_writes_attachable_predicted_parameters(tmp_path, ceiling):
     rng = np.random.default_rng(30)
     entries = add_coords([{"id": f"t{i}", "tokens": rng.integers(0, 15, 25 + i % 8).tolist(),
                            "cluster": f"c{i}"} for i in range(40)])
@@ -163,14 +177,16 @@ def test_fitting_cli_writes_attachable_predicted_parameters(tmp_path):
           "--training-indices", str(training), "--calibration-indices", str(calibration),
           "--auxiliary-indices", str(auxiliary),
           "--workdir", str(tmp_path / "fit"), "--output", str(output),
-          "--audit-ceiling", "120",
+          "--audit-ceiling", str(ceiling),
           "--matrix", str(matrix_path), "--scores", str(scores_path),
           "--score-manifest", str(manifest), "--tm-matrix", str(tm_path),
           "--tm-manifest", str(tm_manifest)]
     main(command)
     params = json.loads(output.read_text())
     assert params["scheme"] == "target-aware-compbias20-raw-sw-empirical-v1"
-    assert params["audit_raw_evalue_ceiling"] == 120
+    assert params["validation_status"] == f"audited-e0-le-{ceiling}"
+    assert params["audit_raw_evalue_ceiling"] == ceiling
+    assert params["empirical_calibration"]["fit_raw_evalue_ceiling"] == ceiling
     assert params["empirical_calibration"]["upper_tail_rule"] == "anchored-power-cap"
     assert params["empirical_calibration"]["background_scaling"] == "complete-eligible-clusters"
     searcher = Searcher(str(db), matrix_path=str(matrix_path),

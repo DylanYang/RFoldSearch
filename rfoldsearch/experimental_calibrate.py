@@ -305,7 +305,7 @@ def fit_files(args, *, predicted=False):
               "n_chains": len(ids), "n_clusters": audit["n_clusters"],
               "target_database_fingerprint": target_digest,
               "calibration_context_fingerprint": context_digest,
-              "validation_status": "audited-e0-le-100",
+              "validation_status": f"audited-e0-le-{audit_ceiling:.17g}",
               "audit_raw_evalue_ceiling": audit_ceiling,
               "target_aware_gumbel": model,
               "empirical_calibration": calibration,
