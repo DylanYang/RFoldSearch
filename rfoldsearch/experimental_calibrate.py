@@ -86,6 +86,34 @@ def _missing_high_score(scores, leaders, lengths, entropies, model, tm,
     return missing
 
 
+def _add_cluster_mates(missing, scores, tm, lengths, entropies, model,
+                       query_indices, ids, members, column, label_sets, ceiling):
+    """Also audit the unaudited eligible mates of every flagged leader.
+
+    The loop audits one leader per cluster and promotes the next member when
+    the leader is related, so a large related but unlabelled cluster would take
+    one round per member. Mates score no higher than their eligible leader, so
+    these audits are the ones later rounds would request; a mate with TM < .45
+    stays in the background as if it had not been audited.
+    """
+    for row, target in list(missing):
+        qi = query_indices[row]
+        query_families, query_clans = label_sets[qi]
+        mates = [j for j in members[column[target]]
+                 if j != target and not np.isfinite(tm[row, j])
+                 and np.isfinite(scores[row, j])
+                 and query_families.isdisjoint(label_sets[j][0])
+                 and query_clans.isdisjoint(label_sets[j][1])]
+        if not mates:
+            continue
+        e0 = np.atleast_1d(EV.initial_evalue(scores[row, mates], lengths[row],
+                                             entropies[row], model))
+        for mate, value in zip(mates, e0):
+            if value <= ceiling:
+                missing.setdefault((row, mate), (ids[qi], ids[mate], float(value)))
+    return missing
+
+
 def _audit_missing(missing, entries, query_indices, ids, tm, path, binary):
     pairs = [(query, target) for query, target, _ in missing.values()]
     by_id = dict(zip(ids, entries))
@@ -112,6 +140,10 @@ def fit_from_matrices(entries, tokens, ids, clusters, family, clan, query_indice
     for index, label in enumerate(clusters):
         members_by_cluster[str(label)].append(index)
     members = [members_by_cluster[key] for key in sorted(members_by_cluster)]
+    column = np.empty(len(clusters), dtype=np.int64)
+    for index, group in enumerate(members):
+        column[group] = index
+    label_sets = [(_labels(f), _labels(c)) for f, c in zip(family, clan)]
     n_clusters = len(members)
     lengths_all = np.asarray([len(token) for token in tokens], dtype=float)
     cluster_lengths = np.asarray([np.median(lengths_all[group]) for group in members])
@@ -136,7 +168,10 @@ def fit_from_matrices(entries, tokens, ids, clusters, family, clan, query_indice
         missing.update(_missing_high_score(scores, annotated, query_lengths,
                                            entropies, fitted, tm, query_indices,
                                            ids, audit_ceiling))
-        log(f"round {iteration}: {len(missing)} unaudited leaders at E0<={audit_ceiling:g}")
+        _add_cluster_mates(missing, scores, tm, query_lengths, entropies, fitted,
+                           query_indices, ids, members, column, label_sets,
+                           audit_ceiling)
+        log(f"round {iteration}: {len(missing)} unaudited pairs at E0<={audit_ceiling:g}")
         if not missing:
             break
         if audit_file is None:

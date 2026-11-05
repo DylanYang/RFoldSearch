@@ -5,6 +5,7 @@ import pytest
 import torch
 
 from helpers import add_coords
+from rfoldsearch import experimental_calibrate as XC
 from rfoldsearch import experimental_evalue as EV
 from rfoldsearch.cli import main
 from rfoldsearch.database import (calibration_context_fingerprint,
@@ -88,6 +89,48 @@ def test_fitter_uses_clean_background_for_both_stages():
         entries, tokens, ids, clusters, family, clan, np.arange(24),
         scores, tm, censored=False, log=lambda _: None)
     assert uncensored["censoring"] == "none"
+
+
+def _related_cluster_panel(seed, n_labelled, n_related, n_codes=20):
+    """Labelled singletons plus one unlabelled cluster related to every query."""
+    rng = np.random.default_rng(seed)
+    n = n_labelled + n_related
+    tokens = [rng.integers(0, n_codes, size=30 + i % 7).tolist() for i in range(n)]
+    entries = [{"id": f"t{i}", "tokens": token} for i, token in enumerate(tokens)]
+    ids = [entry["id"] for entry in entries]
+    clusters = np.asarray([f"c{i}" for i in range(n_labelled)] + ["big"] * n_related)
+    family = np.asarray([f"RF{i % 4}" for i in range(n_labelled)] + [""] * n_related)
+    clan = np.asarray([""] * n)
+    truth = np.full((n, n), .1)
+    truth[:, n_labelled:] = .8
+    return entries, tokens, ids, clusters, family, clan, truth
+
+
+def test_audit_loop_audits_related_cluster_mates_together(monkeypatch, tmp_path):
+    entries, tokens, ids, clusters, family, clan, truth = _related_cluster_panel(5, 24, 12)
+    queries = np.arange(24)
+    rng = np.random.default_rng(6)
+    scores = np.maximum(rng.gumbel(12, 3, (24, 36)), 0)
+    scores[:, 24:] += 30
+    rounds = []
+
+    def audit(missing, entries, query_indices, ids, tm, path, binary):
+        rounds.append(len(missing))
+        for row, target in missing:
+            tm[row, target] = truth[query_indices[row], target]
+    monkeypatch.setattr(XC, "_audit_missing", audit)
+    monkeypatch.setattr(XC, "find_usalign", lambda path: "USalign")
+    tm = np.full(scores.shape, np.nan)
+    model, calibration, _ = fit_from_matrices(
+        entries, tokens, ids, clusters, family, clan, queries, scores, tm,
+        audit_file=tmp_path / "audit.tsv", max_rounds=2, log=lambda _: None)
+    assert len(rounds) == 1
+    audited = truth[queries].copy()
+    expected, expected_calibration, _ = fit_from_matrices(
+        entries, tokens, ids, clusters, family, clan, queries, scores, audited,
+        log=lambda _: None)
+    assert model == expected
+    assert calibration == expected_calibration
 
 
 @pytest.mark.parametrize("ceiling", [100, 400])
