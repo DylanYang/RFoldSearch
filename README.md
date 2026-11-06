@@ -228,16 +228,23 @@ rfoldsearch attach-calibration --db target_nr80.pt \
   --output target_calibrated.pt
 ```
 
-Fitting audits high-scoring background hits with US-align and can take a
-while. An interrupted fit resumes from `--workdir`, and precomputed scores or
-TM-scores can be supplied to skip those steps (see `--help`).
+Fitting audits high-scoring cluster leaders with US-align, excludes
+structurally related members, and refits the model with replacement leaders
+until no qualifying unaudited leaders remain.
+Pending [PR #39](https://github.com/DylanYang/RFoldSearch/pull/39), eligible
+unaudited members of a flagged leader's cluster within the current `E0` ceiling
+will be checked together to reduce repeated fitting for large clusters.
+An interrupted fit reuses cached audits from `--workdir`, and precomputed
+scores or TM-scores can be supplied (see `--help`).
 
-By default, background hits are audited up to an uncorrected E-value of 100.
-Above the highest audited value, reported E-values are extrapolated along a
-power law and capped at the number of clusters in the database. The parameter
-file records the highest E-value that the audit supports directly; if a
-database needs reliable E-values beyond it, refit with a larger
-`--audit-ceiling`.
+By default, structural auditing and empirical-map fitting both use an
+uncorrected E-value (`E0`) ceiling of 100. Set `--audit-ceiling` to change
+both; the parameter file records the actual ceiling in
+`audit_raw_evalue_ceiling` and `validation_status` (for example,
+`audited-e0-le-400`). Above the largest empirical-map knot, reported E-values
+follow an endpoint-anchored power law capped at the number of database
+clusters. These are extrapolations, not independently validated estimates;
+refit with a larger ceiling to extend the observed calibration range.
 
 ### Python API
 
