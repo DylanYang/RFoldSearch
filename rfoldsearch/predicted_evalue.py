@@ -13,7 +13,6 @@ def validate_parameters(params, n_clusters, target_fingerprint,
     if (params.get("scheme") != SCHEME
             or params.get("score_definition") != "compbias20-raw-sw"
             or params.get("composition_window") != compbias.WINDOW
-            or params.get("validation_status") != "audited-e0-le-100"
             or params.get("target_database_fingerprint") != target_fingerprint
             or params.get("calibration_context_fingerprint") != context_fingerprint
             or int(params.get("n_clusters", -1)) != n_clusters):
@@ -27,6 +26,7 @@ def validate_parameters(params, n_clusters, target_fingerprint,
             or calibration.get("background_scaling") != "complete-eligible-clusters"):
         raise ValueError("predicted empirical calibration needs the full eligible background")
     core.apply_empirical(np.array([0.0, 1.0]), calibration)
+    core.validate_audit_metadata(params)
     fitted = np.asarray(params["composition_background"], dtype=float)
     if fitted.ndim != 1 or not len(fitted):
         raise ValueError("invalid predicted composition background")
