@@ -231,9 +231,9 @@ rfoldsearch attach-calibration --db target_nr80.pt \
 Fitting audits high-scoring cluster leaders with US-align, excludes
 structurally related members, and refits the model with replacement leaders
 until no qualifying unaudited leaders remain.
-Pending [PR #39](https://github.com/DylanYang/RFoldSearch/pull/39), eligible
-unaudited members of a flagged leader's cluster within the current `E0` ceiling
-will be checked together to reduce repeated fitting for large clusters.
+When a leader is flagged, the eligible unaudited members of its cluster within
+the current `E0` ceiling are checked in the same round, so a large related
+cluster does not need one refit per member.
 An interrupted fit reuses cached audits from `--workdir`, and precomputed
 scores or TM-scores can be supplied (see `--help`).
 
