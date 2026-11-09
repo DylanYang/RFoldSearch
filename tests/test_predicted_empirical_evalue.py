@@ -6,10 +6,12 @@ import pytest
 import torch
 
 from helpers import add_coords
+from test_experimental_empirical_evalue import _related_cluster_panel
 from rfoldsearch import compbias, experimental_evalue as EV
 from rfoldsearch.cli import main
 from rfoldsearch.database import (calibration_context_fingerprint,
                                   database_fingerprint)
+from rfoldsearch import predicted_calibrate as PC
 from rfoldsearch.predicted_calibrate import fit_from_matrices
 from rfoldsearch.experimental_calibrate import sha256
 from rfoldsearch.search import GAP_EXTEND, GAP_OPEN, Searcher, load_matrix
@@ -46,6 +48,39 @@ def test_clean_predicted_fit_uses_full_background_without_expansion():
     assert empirical["background_scaling"] == "complete-eligible-clusters"
     assert empirical["n_queries"] == 8
     assert model["censoring"] == "left-censored-95th-percentile"
+
+
+def test_predicted_audit_settles_large_related_cluster_in_one_audit(monkeypatch, tmp_path):
+    entries, tokens, ids, clusters, family, clan, truth = _related_cluster_panel(
+        13, 40, 15, n_codes=10)
+    rng = np.random.default_rng(14)
+    scores = np.maximum(rng.gumbel(12, 2, (32, 55)), 0)
+    scores[:, 40:] += 25
+    rounds = []
+
+    def audit(missing, entries, query_indices, ids, tm, path, binary):
+        rounds.append(len(missing))
+        for row, target in missing:
+            tm[row, target] = truth[query_indices[row], target]
+    monkeypatch.setattr(PC, "_audit_missing", audit)
+    monkeypatch.setattr(PC, "find_usalign", lambda path: "USalign")
+    tm = np.full(scores.shape, np.nan)
+    model, empirical, _ = fit_from_matrices(
+        entries, tokens, ids, clusters, family, clan, np.arange(24),
+        np.arange(24, 32), scores, tm, audit_file=tmp_path / "audit.tsv",
+        max_rounds=2, log=lambda _: None)
+    assert len(rounds) == 1
+    expected, expected_empirical, _ = fit_from_matrices(
+        entries, tokens, ids, clusters, family, clan, np.arange(24),
+        np.arange(24, 32), scores, truth[:32].copy(), log=lambda _: None)
+    assert model == expected
+    assert empirical == expected_empirical
+    with pytest.raises(RuntimeError, match="after 1 rounds"):
+        fit_from_matrices(entries, tokens, ids, clusters, family, clan,
+                          np.arange(24), np.arange(24, 32), scores,
+                          np.full(scores.shape, np.nan),
+                          audit_file=tmp_path / "audit.tsv", max_rounds=1,
+                          log=lambda _: None)
 
 
 def test_compressed_gumbel_likelihood_matches_uncompressed_fit():

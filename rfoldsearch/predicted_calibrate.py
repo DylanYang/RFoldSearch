@@ -4,7 +4,8 @@ from __future__ import annotations
 import numpy as np
 
 from . import experimental_evalue as EV
-from .experimental_calibrate import (_audit_missing, _leader_tables,
+from .experimental_calibrate import (_add_cluster_mates, _audit_missing,
+                                     _labels, _leader_tables,
                                      _missing_high_score)
 from .usalign import find_usalign
 
@@ -13,7 +14,7 @@ def fit_from_matrices(entries, tokens, ids, clusters, family, clan,
                       training_indices, calibration_indices, scores, tm, *,
                       auxiliary_count=0,
                       audit_file=None, usalign=None, audit_ceiling=100.0,
-                      log=print):
+                      max_rounds=75, log=print):
     """Refit Gumbel on training queries and the empirical map on held-out queries.
 
     Rows of scores and tm are training rows followed by calibration rows.
@@ -34,6 +35,10 @@ def fit_from_matrices(entries, tokens, ids, clusters, family, clan,
     for index, label in enumerate(clusters):
         groups[str(label)].append(index)
     members = [groups[key] for key in sorted(groups)]
+    column = np.empty(len(clusters), dtype=np.int64)
+    for index, group in enumerate(members):
+        column[group] = index
+    label_sets = [(_labels(f), _labels(c)) for f, c in zip(family, clan)]
     lengths = np.asarray([len(token) for token in tokens], dtype=float)
     cluster_lengths = np.asarray([np.median(lengths[group]) for group in members])
     query_lengths = lengths[indices]
@@ -46,7 +51,7 @@ def fit_from_matrices(entries, tokens, ids, clusters, family, clan,
     training_weights = (np.r_[np.full(n_core, .8 / n_core),
                               np.full(auxiliary_count, .2 / auxiliary_count)]
                         if auxiliary_count else np.full(n_core, 1. / n_core))
-    for iteration in range(1, 76):
+    for iteration in range(1, max_rounds + 1):
         leaders, _, _ = _leader_tables(scores, indices, clusters, members,
                                        family, clan, tm)
         fitted = EV.fit_gumbel(scores[:len(training_indices)],
@@ -62,7 +67,10 @@ def fit_from_matrices(entries, tokens, ids, clusters, family, clan,
         missing = _missing_high_score(scores, leaders, query_lengths,
                                       entropies, fitted, tm, indices, ids,
                                       audit_ceiling)
-        log(f"round {iteration}: {len(missing)} unaudited leaders at E0<={audit_ceiling:g}")
+        _add_cluster_mates(missing, scores, tm, query_lengths, entropies, fitted,
+                           indices, ids, members, column, label_sets,
+                           audit_ceiling)
+        log(f"round {iteration}: {len(missing)} unaudited pairs at E0<={audit_ceiling:g}")
         if not missing:
             break
         if audit_file is None:
@@ -71,7 +79,8 @@ def fit_from_matrices(entries, tokens, ids, clusters, family, clan,
             binary = find_usalign(usalign)
         _audit_missing(missing, entries, indices, ids, tm, audit_file, binary)
     else:
-        raise RuntimeError("predicted structural audit did not converge")
+        raise RuntimeError(
+            f"predicted structural audit did not settle after {max_rounds} rounds")
     evalue_rows = []
     for row in range(len(training_indices), len(indices)):
         targets = leaders[row, leaders[row] >= 0]
