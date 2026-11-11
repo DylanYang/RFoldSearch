@@ -111,9 +111,8 @@ curl -sF structure=@query.cif -F databases=pdb-rna,rnasolo -F top_k=5 \
 
 `tm_a` hits carry `structure_score`, `tm_a`, `aligned`, `sw_score`, `bits`,
 and `evalue`; the E-value is derived from `sw_score`, not `structure_score`.
-`sw` hits carry `sw_score`, `bits` and `evalue`; `tm` hits carry
-`tm_mean`, `tm_query` and `tm_target` and no E-value, because TM-scores
-have no Karlin-Altschul statistics. Hits within `RFOLDSEARCH_ALIGN_MAX` carry
+`tm` hits carry `tm_mean`, `tm_query` and `tm_target` and no E-value,
+because TM-scores have no Karlin-Altschul statistics. Hits within `RFOLDSEARCH_ALIGN_MAX` carry
 `aln`: aligned ranges, sequence and 3Dr alignment lines, sequence and 3Dr
 identity, and the C4' RMSD and TM-score of the superposition over the
 aligned pairs. The alignment is recomputed with a full traceback
