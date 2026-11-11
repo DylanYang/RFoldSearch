@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "rfoldsearch"
-version = "0.1.0"
+version = "1.0.0"
 description = "Fast RNA tertiary-structure search with the learned 3Dr structural alphabet"
 readme = "README.md"
 license = {file = "LICENSE"}
