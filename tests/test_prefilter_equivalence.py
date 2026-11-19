@@ -43,3 +43,30 @@ def test_query_longer_than_targets(world):
     exp_c, exp_s = ref.candidates(long_q, toks, idx, expand, 2, -1, 100)
     assert np.array_equal(got_c, exp_c)
     assert np.array_equal(got_s, exp_s)
+
+
+def test_repeated_codes_match_reference():
+    """Helix-like chains: long homopolymer runs make the same 4-mer recur at
+    many query positions, which the kernel groups."""
+    rng = np.random.default_rng(23)
+    K = 80
+    helix = [62, 24, 30, 22]
+    toks = []
+    for _ in range(200):
+        parts = []
+        while sum(len(p) for p in parts) < rng.integers(30, 250):
+            if rng.random() < 0.6:
+                parts.append(np.full(rng.integers(4, 15), rng.choice(helix)))
+            else:
+                parts.append(rng.integers(0, K, size=rng.integers(1, 6)))
+        toks.append(np.concatenate(parts).astype(np.int64))
+    sub = load_matrix()
+    thr = THRESH_FRAC * KMER_K
+    kernel = KmerPrefilter(toks, K, sub)
+    idx, powers = ref.build_index(toks, K)
+    expand = ref.make_expander(sub, K, powers, thr)
+    for qi in (0, 5, 50, 120, 199):
+        got_c, got_s = kernel.candidates(toks[qi], 100, 2, self_idx=qi)
+        exp_c, exp_s = ref.candidates(toks[qi], toks, idx, expand, 2, qi, 100)
+        assert np.array_equal(got_c, exp_c)
+        assert np.array_equal(got_s, exp_s)

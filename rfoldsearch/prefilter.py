@@ -4,7 +4,8 @@ Computes exactly what the reference implementation computes -- per-target
 best-diagonal hit counts under similar-k-mer expansion, Foldseek's
 double-match rule, ties broken toward the lower target index -- but in three
 linear passes (counting-sort by target, diagonal scatter, per-segment
-bincount) instead of materialising and sorting every posting. Equivalence to
+bincount) instead of materialising and sorting every posting, reading each
+posting list once per distinct query code. Equivalence to
 `prefilter_reference` is enforced by tests/test_prefilter_equivalence.py and
 was verified against the paper pipeline query-for-query at database sizes of
 1,000 / 10,000 / 83,156 (20/20 identical rankings and scores at each).
@@ -63,19 +64,28 @@ def expand_query(qtok, powers, sub, diag, thr):
 
 
 @njit(cache=True)
-def _best_diagonal_counts(codes, qps, offsets, targets, positions,
+def _best_diagonal_counts(ucodes, gstart, gqps, offsets, targets, positions,
                           self_idx, n_targets, span, seg_count, best, span_buf):
+    """Best per-target diagonal hit count.
+
+    Query positions are grouped by code (``ucodes[g]`` occurs at query
+    positions ``gqps[gstart[g]:gstart[g + 1]]``), so each posting list is read
+    once however often its code recurs in the query. Helical homopolymer
+    4-mers recur at many consecutive query positions and have the longest
+    posting lists, so this removes most of the index reads.
+    """
     for t in range(n_targets):
         seg_count[t] = 0
         best[t] = 0
     total = 0
-    for i in range(codes.shape[0]):
-        lo, hi = offsets[codes[i]], offsets[codes[i] + 1]
+    for g in range(ucodes.shape[0]):
+        m = gstart[g + 1] - gstart[g]
+        lo, hi = offsets[ucodes[g]], offsets[ucodes[g] + 1]
         for e in range(lo, hi):
             t = targets[e]
             if t != self_idx:
-                seg_count[t] += 1
-                total += 1
+                seg_count[t] += m
+                total += m
     seg_off = np.empty(n_targets + 1, np.int64)
     s = 0
     for t in range(n_targets):
@@ -84,14 +94,18 @@ def _best_diagonal_counts(codes, qps, offsets, targets, positions,
     seg_off[n_targets] = s
     diags = np.empty(total, np.int32)
     cur = seg_off[:-1].copy()
-    for i in range(codes.shape[0]):
-        qp = qps[i]
-        lo, hi = offsets[codes[i]], offsets[codes[i] + 1]
+    for g in range(ucodes.shape[0]):
+        a, b = gstart[g], gstart[g + 1]
+        lo, hi = offsets[ucodes[g]], offsets[ucodes[g] + 1]
         for e in range(lo, hi):
             t = targets[e]
             if t != self_idx:
-                diags[cur[t]] = qp - positions[e] + span
-                cur[t] += 1
+                p = positions[e]
+                c = cur[t]
+                for k in range(a, b):
+                    diags[c] = gqps[k] - p + span
+                    c += 1
+                cur[t] = c
     for t in range(n_targets):
         lo, hi = seg_off[t], seg_off[t + 1]
         if lo == hi:
@@ -106,6 +120,14 @@ def _best_diagonal_counts(codes, qps, offsets, targets, positions,
         for e in range(lo, hi):
             span_buf[diags[e]] = 0
     return best
+
+
+def group_by_code(codes, qps):
+    """-> (unique codes, group starts, query positions sorted by code)."""
+    order = np.argsort(codes, kind="stable")
+    codes, qps = codes[order], qps[order].astype(np.int64)
+    ucodes, starts = np.unique(codes, return_index=True)
+    return ucodes, np.append(starts, len(codes)).astype(np.int64), qps
 
 
 class KmerPrefilter:
@@ -133,7 +155,7 @@ class KmerPrefilter:
         if need > self._buf.shape[0]:
             self._buf = np.zeros(need, np.int32)
         best = _best_diagonal_counts(
-            codes, qps.astype(np.int64), ix["offsets"], ix["targets"],
+            *group_by_code(codes, qps), ix["offsets"], ix["targets"],
             ix["positions"], self_idx, ix["n_targets"], self._span,
             self._seg, self._best, self._buf)
         cand = np.flatnonzero(best >= min_diag)
