@@ -109,3 +109,79 @@ def test_tm_a_requires_database_coordinates(tmp_path):
                 "checkpoint": "synthetic"}, path)
     with pytest.raises(ValueError, match="every database chain"):
         Searcher(str(path)).search_id("c0", top_k=2)
+
+
+def _batched_world(rng):
+    lens = np.r_[1, 2, 3, 5, rng.integers(4, 260, size=60)]
+    base = rng.integers(0, 80, size=300)
+    toks, xyz = [], []
+    for n in lens:
+        t = base[:n].copy()
+        k = max(1, n // 4)
+        t[rng.integers(0, n, k)] = rng.integers(0, 80, k)
+        toks.append(t)
+        xyz.append(np.cumsum(rng.normal(scale=3.0, size=(n, 3)), axis=0))
+    offsets = np.zeros(len(toks) + 1, np.int64)
+    offsets[1:] = np.cumsum(lens)
+    return base, np.concatenate(toks).astype(np.int64), offsets, np.concatenate(xyz)
+
+
+def _query(rng, base, qn):
+    q = base[:qn].copy()
+    q[rng.integers(0, qn, qn // 5)] = rng.integers(0, 80, qn // 5)
+    return q, np.cumsum(rng.normal(scale=3.0, size=(qn, 3)), axis=0)
+
+
+@pytest.mark.parametrize("parallel", [False, True])
+# shipped batching; one pair per batch; a budget that mixes lane counts
+@pytest.mark.parametrize("lanes,budget", [(ss.LANES, ss.PTR_BUDGET), (ss.LANES, 1),
+                                          (3, 150_000)])
+def test_batched_scorer_matches_score_pair_bitwise(parallel, lanes, budget):
+    """The lane-batched scorer equals score_pair per candidate, bit for bit,
+    whatever the number of lanes per batch."""
+    rng = np.random.default_rng(3)
+    sub = load_matrix()
+    base, flat_t, offsets, flat_x = _batched_world(rng)
+    for qn in (4, 37, 150, 290):
+        q, qx = _query(rng, base, qn)
+        cand = rng.permutation(len(offsets) - 1).astype(np.int64)[:61]
+        scorer = (ss._score_candidates_parallel if parallel
+                  else ss._score_candidates_serial)
+        S, T, A = scorer(q, qx, cand, flat_t, offsets, flat_x, sub, GO, GE,
+                         lanes, budget)
+        for k, c in enumerate(cand):
+            lo, hi = offsets[c], offsets[c + 1]
+            s, tm, a = ss.score_pair(q, qx, flat_t[lo:hi], flat_x[lo:hi], sub, GO, GE)
+            assert S[k] == s and T[k] == tm and A[k] == a
+
+
+def test_batch_bounds_respect_lanes_and_budget():
+    rng = np.random.default_rng(5)
+    lens = rng.integers(1, 3000, size=500).astype(np.int64)
+    order = np.argsort(lens, kind="mergesort")
+    for Lq, lanes, budget in ((50, 8, 1 << 25), (2800, 8, 1 << 25), (4000, 8, 1),
+                              (300, 5, 1_000_000)):
+        b = ss._batch_bounds(Lq, lens, order, lanes, budget)
+        assert b[0] == 0 and b[-1] == len(lens) and np.all(np.diff(b) >= 1)
+        for lo, hi in zip(b[:-1], b[1:]):
+            assert hi - lo <= lanes
+            width = lens[order[lo:hi]].max()
+            assert hi - lo == 1 or (Lq + 1) * (width + 1) * (hi - lo) <= budget
+
+
+@pytest.mark.parametrize("dtype,gaps", [(np.float64, (GO, GE)),
+                                        (np.float32, (float(GAP_OPEN), float(GAP_EXTEND)))])
+def test_non_float32_inputs_match_score_pair(dtype, gaps):
+    """score_candidates with a float64 matrix or Python-float gaps scores pair
+    by pair, so it still equals score_pair given the same inputs."""
+    rng = np.random.default_rng(4)
+    sub = load_matrix().astype(dtype)
+    go, ge = gaps
+    base, flat_t, offsets, flat_x = _batched_world(rng)
+    q, qx = _query(rng, base, 120)
+    cand = rng.permutation(len(offsets) - 1).astype(np.int64)[:40]
+    S, T, A = ss.score_candidates(q, qx, cand, flat_t, offsets, flat_x, sub, go, ge)
+    for k, c in enumerate(cand):
+        lo, hi = offsets[c], offsets[c + 1]
+        s, tm, a = ss.score_pair(q, qx, flat_t[lo:hi], flat_x[lo:hi], sub, go, ge)
+        assert S[k] == s and T[k] == tm and A[k] == a
