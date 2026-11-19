@@ -16,54 +16,62 @@ def smith_waterman_traceback(q, t, sub, go, ge):
     here; bit 3 the target-gap state was opened here.
     """
     Lq, Lt = len(q), len(t)
-    ptr = np.zeros((Lq + 1, Lt + 1), np.uint8)
-    H_prev = np.zeros(Lt + 1, np.float32)
-    H_curr = np.zeros(Lt + 1, np.float32)
-    F = np.full(Lt + 1, -np.inf, np.float32)
+    W = Lt + 1
+    # Flat row-major pointer matrix; row 0 and column 0 are never read, so
+    # it is left uninitialised.
+    ptr = np.empty((Lq + 1) * W, np.uint8)
+    H_prev = np.zeros(W, np.float32)
+    H_curr = np.zeros(W, np.float32)
+    F = np.full(W, -np.inf, np.float32)
+    tt = t.astype(np.int32)
     best, bi, bj = np.float32(0.0), 0, 0
     for i in range(1, Lq + 1):
         E = np.float32(-np.inf)
-        qi = q[i - 1]
-        for j in range(1, Lt + 1):
+        srow = sub[q[i - 1]]
+        base = i * W
+        h_left = np.float32(0.0)          # H(i, j - 1); H(i, 0) = 0
+        for j in range(1, W):
             p = 0
             f_open = H_prev[j] + go
             f_ext = F[j] + ge
             if f_open > f_ext:
-                F[j] = f_open
+                f = f_open
                 p |= 8
             else:
-                F[j] = f_ext
-            e_open = H_curr[j - 1] + go
+                f = f_ext
+            F[j] = f
+            e_open = h_left + go
             e_ext = E + ge
             if e_open > e_ext:
                 E = e_open
                 p |= 4
             else:
                 E = e_ext
-            v = H_prev[j - 1] + sub[qi, t[j - 1]]
+            v = H_prev[j - 1] + srow[tt[j - 1]]
             src = 1
             if E > v:
                 v = E
                 src = 2
-            if F[j] > v:
-                v = F[j]
+            if f > v:
+                v = f
                 src = 3
             if v < 0.0:
                 v = np.float32(0.0)
             if v == 0.0:
                 src = 0
             H_curr[j] = v
-            ptr[i, j] = p | src
+            h_left = v
+            ptr[base + j] = p | src
             if v > best:
                 best, bi, bj = v, i, j
-        for j in range(Lt + 1):
-            H_prev[j] = H_curr[j]
-            H_curr[j] = 0.0
+        # Every H_curr[j >= 1] is rewritten in the next row and H_curr[0]
+        # stays 0, so swapping the rows replaces copying and zeroing.
+        H_prev, H_curr = H_curr, H_prev
     qa = np.empty(min(Lq, Lt), np.int64)
     ta = np.empty(min(Lq, Lt), np.int64)
     k, i, j, state = 0, bi, bj, 0
     while i > 0 and j > 0:
-        c = ptr[i, j]
+        c = ptr[i * W + j]
         if state == 0:
             src = c & 3
             if src == 0:
@@ -125,12 +133,27 @@ def _best_block(q, t, qa, ta, sub):
 
 
 @njit(cache=True)
-def _refine(a, b, d0q, d0t, Lq, Lt, sel):
+def _refine(a, b, d0q, d0t, Lq, Lt, sel, seen, n_seen, record):
+    """Best TM_a over up to N_REFINE superposition refinements from ``sel``.
+
+    With ``record`` the selection used at each step k is stored in
+    ``seen[k]``; returns (best, number of stored steps). Otherwise the run
+    stops once its selection at step k equals ``seen[k1]`` for some
+    k1 <= k: the rest of the run then repeats the recorded run from step k1
+    with no more steps left than it had, so it cannot raise the maximum.
+    """
     cut = min(d0q, d0t) + 1.0
     best = 0.0
-    for _ in range(N_REFINE):
+    for k in range(N_REFINE):
         if sel.sum() < MIN_PAIRS:
             break
+        if record:
+            seen[k, :] = sel
+            n_seen = k + 1
+        else:
+            for k1 in range(min(k + 1, n_seen)):
+                if np.all(seen[k1] == sel):
+                    return best, n_seen
         r, tr = _kabsch(a[sel], b[sel])
         d = np.sqrt((((a @ r.T + tr) - b) ** 2).sum(1))
         s = 0.5 * ((1.0 / (1.0 + (d / d0q) ** 2)).sum() / Lq
@@ -141,7 +164,7 @@ def _refine(a, b, d0q, d0t, Lq, Lt, sel):
         if new.sum() < MIN_PAIRS or np.all(new == sel):
             break
         sel = new
-    return best
+    return best, n_seen
 
 
 @njit(cache=True)
@@ -150,17 +173,21 @@ def alignment_tm_a(a, b, Lq, Lt, block_start=0, block_end=0):
 
     Return the best mean of the query- and target-normalised TM-scores over
     two seeds (all pairs and ``block_start:block_end``) and every refinement
-    of each, refitting on pairs within min(d0) + 1 A.
+    of each, refitting on pairs within min(d0) + 1 A. Refinements of the
+    block seed that repeat a step of the all-pairs run are skipped (always
+    the case when the alignment is gapless and the block is every pair).
     """
     n = a.shape[0]
     if n < MIN_PAIRS:
         return 0.0
     d0q, d0t = d0(Lq), d0(Lt)
-    best = _refine(a, b, d0q, d0t, Lq, Lt, np.ones(n, np.bool_))
+    seen = np.empty((N_REFINE, n), np.bool_)
+    best, n_seen = _refine(a, b, d0q, d0t, Lq, Lt, np.ones(n, np.bool_),
+                           seen, 0, True)
     if block_end - block_start >= MIN_PAIRS:
         sel = np.zeros(n, np.bool_)
         sel[block_start:block_end] = True
-        v = _refine(a, b, d0q, d0t, Lq, Lt, sel)
+        v, _ = _refine(a, b, d0q, d0t, Lq, Lt, sel, seen, n_seen, False)
         if v > best:
             best = v
     return best
