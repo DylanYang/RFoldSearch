@@ -1,6 +1,15 @@
+import inspect
+import threading
+from contextlib import contextmanager
+
 import numpy as np
 import biotite.structure as struc
 import biotite.structure.io as strucio
+
+try:
+    import biotite.structure.basepairs as _bp
+except ImportError:                                    # pragma: no cover
+    _bp = None
 
 # Must stay in sync with extract_backbone.py and cdhit_dedup.py so that
 # every step of the pipeline operates on the same set of residues.
@@ -17,6 +26,76 @@ MODIFIED_TO_CANONICAL = {
 RNA_RESIDUE_NAMES = RNA_BASES | set(MODIFIED_TO_CANONICAL.keys())
 
 
+# ---- per-call cache of biotite's nucleotide base-frame fit ---------------
+# biotite's base_pairs and base_stacking fit every nucleotide of every
+# candidate pair to a standard base frame (basepairs._match_base), so one
+# nucleotide is refitted once per candidate pair, about 18 times per residue.
+# The fit depends only on the nucleotide's atoms, so while
+# find_base_pair_and_stack_idx runs the result is cached by atom content and a
+# copy is handed out on every repeat: biotite computes exactly what it would
+# without the cache. The cache is thread-local and dropped when the call ends.
+# If biotite's private function is missing or its signature changes, nothing
+# is patched and the uncached path runs (same output, slower).
+MEMOISE_BASE_FRAMES = True
+_local = threading.local()
+
+
+def _signature_ok(fn):
+    try:
+        return list(inspect.signature(fn).parameters) == [
+            "nucleotide", "min_atoms_per_base"]
+    except (TypeError, ValueError):
+        return False
+
+
+_ORIG_MATCH_BASE = getattr(_bp, "_match_base", None)
+if _ORIG_MATCH_BASE is not None and not _signature_ok(_ORIG_MATCH_BASE):
+    _ORIG_MATCH_BASE = None
+
+
+def _frame_key(nucleotide, min_atoms_per_base):
+    """Bytes identifying everything the base-frame fit can read, or None if
+    some annotation cannot be keyed by value (object arrays)."""
+    parts = [str(min_atoms_per_base).encode(),
+             np.ascontiguousarray(nucleotide.coord).tobytes()]
+    for name in sorted(nucleotide.get_annotation_categories()):
+        a = np.asarray(nucleotide.get_annotation(name))
+        if a.dtype.hasobject:
+            return None
+        parts.append(name.encode() + b"|" + a.dtype.str.encode() + b"|"
+                     + np.ascontiguousarray(a).tobytes())
+    return b"\x00".join(parts)
+
+
+def _match_base_cached(nucleotide, min_atoms_per_base):
+    cache = getattr(_local, "cache", None)
+    key = None if cache is None else _frame_key(nucleotide, min_atoms_per_base)
+    if key is None:
+        return _ORIG_MATCH_BASE(nucleotide, min_atoms_per_base)
+    if key in cache:
+        hit = cache[key]
+        return None if hit is None else hit.copy()
+    out = _ORIG_MATCH_BASE(nucleotide, min_atoms_per_base)
+    cache[key] = None if out is None else out.copy()
+    return out
+
+
+@contextmanager
+def _memoised_base_frames():
+    if not MEMOISE_BASE_FRAMES or _ORIG_MATCH_BASE is None:
+        yield
+        return
+    # Installed once; outside a cached call it forwards to biotite unchanged.
+    if _bp._match_base is not _match_base_cached:
+        _bp._match_base = _match_base_cached
+    previous = getattr(_local, "cache", None)
+    _local.cache = {}
+    try:
+        yield
+    finally:
+        _local.cache = previous
+
+
 def find_base_pair_and_stack_idx(
         path: str,
         model: int = 1,
@@ -28,7 +107,11 @@ def find_base_pair_and_stack_idx(
         pair_orient  — Leontis--Westhof cis/trans label (0 none, 1 cis, 2 trans)
         stack_idx    — sequence-nearest stacking partner per residue
     """
+    with _memoised_base_frames():
+        return _find_edges(path, model, unique_bp)
 
+
+def _find_edges(path, model, unique_bp):
     # Match backbone.py's loader (label_asym_id, not author) so residue
     # counts stay in sync — an auth-only mismatch would leave edges
     # indexed 0..17 while coords run 0..19, and the encoder would drop
