@@ -1,0 +1,10 @@
+{
+  "status": "passed",
+  "n_score_modes": 4,
+  "n_cv_models_per_mode": 17,
+  "n_query_folds": 4,
+  "all_cv_four_bin_models_have_four_bins": true,
+  "family_and_clan_blocking": true,
+  "score_arrays_finite_and_nonnegative": true,
+  "calibration_curves_monotone": true
+}
